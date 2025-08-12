@@ -7,6 +7,7 @@ namespace HosmelQ\SearchSyntaxParser\Adapter;
 use HosmelQ\SearchSyntaxParser\AST\Node\BinaryOperatorNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\ComparisonNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\ExistsNode;
+use HosmelQ\SearchSyntaxParser\AST\Node\InNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\NodeInterface;
 use HosmelQ\SearchSyntaxParser\AST\Node\RangeNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\TermNode;
@@ -75,6 +76,21 @@ readonly class ArrayAdapter implements QueryAdapterInterface, VisitorInterface
         return [
             'field' => $node->getField(),
             'type' => 'exists',
+        ];
+    }
+
+    /**
+     * Visit an in node (status:ACTIVE,DRAFT).
+     *
+     * @return array<string, mixed>
+     */
+    public function visitIn(InNode $node): array
+    {
+        return [
+            'field' => $node->getField(),
+            'operator' => $node->getOperator(),
+            'type' => 'in',
+            'values' => $node->getValues(),
         ];
     }
 

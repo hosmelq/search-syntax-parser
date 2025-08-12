@@ -5,7 +5,7 @@ declare(strict_types=1);
 use HosmelQ\SearchSyntaxParser\Lexer\TokenType;
 
 it('has correct enum case count', function (): void {
-    $expectedCount = 21;
+    $expectedCount = 22;
     expect(TokenType::names())->toHaveCount($expectedCount);
 });
 

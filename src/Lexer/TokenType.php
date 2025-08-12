@@ -16,6 +16,7 @@ enum TokenType: string
     case CloseBracket = 'close_bracket';
     case CloseParenthesis = 'close_parenthesis';
     case Colon = 'colon';
+    case Comma = 'comma';
     case Date = 'date';
     case Greater = 'greater';
     case GreaterEqual = 'greater_equal';

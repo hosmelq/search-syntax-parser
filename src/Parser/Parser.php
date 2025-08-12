@@ -8,6 +8,7 @@ use Doctrine\Common\Lexer\Token;
 use HosmelQ\SearchSyntaxParser\AST\Node\BinaryOperatorNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\ComparisonNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\ExistsNode;
+use HosmelQ\SearchSyntaxParser\AST\Node\InNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\NodeInterface;
 use HosmelQ\SearchSyntaxParser\AST\Node\RangeNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\TermNode;
@@ -68,7 +69,9 @@ class Parser
 
         // Check for remaining tokens after parsing the expression
         if ($this->lexer->getLookaheadType() instanceof TokenType) {
-            $remaining = $this->lexer->lookahead instanceof Token ? $this->lexer->lookahead->value : 'Unknown';
+            $remaining = $this->lexer->lookahead instanceof Token
+                ? $this->lexer->lookahead->value
+                : 'Unknown';
 
             throw ParseException::unexpectedToken($remaining);
         }
@@ -108,8 +111,8 @@ class Parser
      * Convert a parsed value to string for term nodes.
      *
      * Term nodes represent free-text terms, so their values are always stored
-     * as strings (even when the literal looked numeric). In contrast, field
-     * comparisons keep the original numeric types when applicable.
+     * as strings. In contrast, field comparisons keep the original numeric
+     * types when applicable.
      */
     private function convertValueToString(float|int|string $value): string
     {
@@ -158,7 +161,11 @@ class Parser
      */
     private function isFieldQuery(null|TokenType $nextType): bool
     {
-        return $nextType === TokenType::Colon || ($nextType instanceof TokenType && $this->isComparisonOperator($nextType));
+        if (TokenType::Colon->is($nextType)) {
+            return true;
+        }
+
+        return $nextType instanceof TokenType && $this->isComparisonOperator($nextType);
     }
 
     /**
@@ -189,7 +196,7 @@ class Parser
         $this->lexer->moveNext(); // consume ':'
 
         // Check for range syntax: field:[from TO to]
-        if ($this->lexer->getLookaheadType() === TokenType::OpenBracket) {
+        if (TokenType::OpenBracket->is($this->lexer->getLookaheadType())) {
             $range = $this->parseRange($field);
 
             ++$this->conditionCount;
@@ -206,13 +213,33 @@ class Parser
         }
 
         // Check for exists query: field:*
-        if ($this->lexer->getLookaheadType() === TokenType::Wildcard) {
+        if (TokenType::Wildcard->is($this->lexer->getLookaheadType())) {
             return $this->parseExistsQuery($field, $operator);
         }
 
-        // Regular field comparison
+        // Parse first value
         $value = $this->parseValue();
 
+        // Check for comma-separated values
+        if (TokenType::Comma->is($this->lexer->getLookaheadType())) {
+            $values = [$value];
+
+            while (TokenType::Comma->is($this->lexer->getLookaheadType())) {
+                $this->match(TokenType::Comma);
+
+                $values[] = $this->parseValue();
+            }
+
+            if (! $this->configuration->validateField($field, $values)) {
+                throw ParseException::invalidFieldValue($field);
+            }
+
+            ++$this->conditionCount;
+
+            return new InNode($field, $operator, $values);
+        }
+
+        // Regular field comparison (single value)
         if (! $this->configuration->validateField($field, $value)) {
             throw ParseException::invalidFieldValue($field);
         }
@@ -234,7 +261,7 @@ class Parser
 
         $type = $this->lexer->getLookaheadType();
 
-        if ($type === TokenType::Identifier) {
+        if (TokenType::Identifier->is($type)) {
             return $this->parseIdentifierExpression();
         }
 
@@ -270,6 +297,7 @@ class Parser
 
         while (TokenType::Or->is($this->lexer->getLookaheadType())) {
             $this->match(TokenType::Or);
+
             $right = $this->parseTerm();
             $left = new BinaryOperatorNode('OR', $left, $right);
         }
@@ -342,7 +370,7 @@ class Parser
         $operator = $this->parseOperator();
 
         // Check for exists query: field>* (not allowed)
-        if ($this->lexer->getLookaheadType() === TokenType::Wildcard) {
+        if (TokenType::Wildcard->is($this->lexer->getLookaheadType())) {
             throw ParseException::invalidWildcardUsage($field);
         }
 
@@ -390,8 +418,6 @@ class Parser
     /**
      * op := '>' | '<' | '>=' | '<=' | '!='
      * Returns symbolic operator for comparison nodes.
-     *
-     * @throws ParseException
      */
     private function parseOperator(): string
     {
@@ -432,7 +458,8 @@ class Parser
     }
 
     /**
-     * term := factor ((AND | implicit_and) factor)*
+     * term := factor ((AND | implicit_and) factor)*.
+     *
      * Handles AND precedence and implicit AND (space).
      *
      * @throws ParseException
@@ -444,7 +471,7 @@ class Parser
         while ($this->lexer->lookahead instanceof Token) {
             $type = $this->lexer->getLookaheadType();
 
-            if ($type === TokenType::And) {
+            if (TokenType::And->is($type)) {
                 $this->match(TokenType::And);
 
                 $right = $this->parseFactor();
@@ -468,6 +495,7 @@ class Parser
 
     /**
      * Parse a value token and handle trailing wildcard (e.g., "Nike*").
+     *
      * Returns typed values for numbers (int|float), or string otherwise.
      *
      * @throws ParseException

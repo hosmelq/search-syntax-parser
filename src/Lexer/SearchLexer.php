@@ -71,6 +71,8 @@ class SearchLexer extends AbstractLexer
             '\*',
             // Parentheses and brackets
             '\(|\)|\[|\]',
+            // Comma separator
+            ',',
             // Minus sign for negation
             '-',
         ];
@@ -137,22 +139,23 @@ class SearchLexer extends AbstractLexer
 
         // Check for keywords and operators
         return match (mb_strtoupper($value)) {
-            'AND' => TokenType::And,
-            ']' => TokenType::CloseBracket,
+            '!=' => TokenType::NotEqual,
+            '(' => TokenType::OpenParenthesis,
             ')' => TokenType::CloseParenthesis,
+            '*' => TokenType::Wildcard,
+            ',' => TokenType::Comma,
+            '-' => TokenType::Minus,
             ':' => TokenType::Colon,
-            '>' => TokenType::Greater,
-            '>=' => TokenType::GreaterEqual,
             '<' => TokenType::Less,
             '<=' => TokenType::LessEqual,
-            '-' => TokenType::Minus,
+            '>' => TokenType::Greater,
+            '>=' => TokenType::GreaterEqual,
+            'AND' => TokenType::And,
             'NOT' => TokenType::Not,
-            '!=' => TokenType::NotEqual,
-            '[' => TokenType::OpenBracket,
-            '(' => TokenType::OpenParenthesis,
             'OR' => TokenType::Or,
             'TO' => TokenType::To,
-            '*' => TokenType::Wildcard,
+            '[' => TokenType::OpenBracket,
+            ']' => TokenType::CloseBracket,
             default => TokenType::Identifier
         };
     }

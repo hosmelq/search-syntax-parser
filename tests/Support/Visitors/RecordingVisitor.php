@@ -7,6 +7,7 @@ namespace HosmelQ\SearchSyntaxParser\Tests\Support\Visitors;
 use HosmelQ\SearchSyntaxParser\AST\Node\BinaryOperatorNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\ComparisonNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\ExistsNode;
+use HosmelQ\SearchSyntaxParser\AST\Node\InNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\RangeNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\TermNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\UnaryOperatorNode;
@@ -40,6 +41,14 @@ class RecordingVisitor implements VisitorInterface
         $this->lastCalled = 'visitExists';
 
         return 'exists';
+    }
+
+    public function visitIn(InNode $node): string
+    {
+        $this->calls[] = 'visitIn';
+        $this->lastCalled = 'visitIn';
+
+        return 'in';
     }
 
     public function visitRange(RangeNode $node): string

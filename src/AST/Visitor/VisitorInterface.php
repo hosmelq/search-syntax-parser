@@ -7,6 +7,7 @@ namespace HosmelQ\SearchSyntaxParser\AST\Visitor;
 use HosmelQ\SearchSyntaxParser\AST\Node\BinaryOperatorNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\ComparisonNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\ExistsNode;
+use HosmelQ\SearchSyntaxParser\AST\Node\InNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\RangeNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\TermNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\UnaryOperatorNode;
@@ -27,6 +28,11 @@ interface VisitorInterface
      * Visit an exists node (category:*, title:*).
      */
     public function visitExists(ExistsNode $node): mixed;
+
+    /**
+     * Visit an in node (status:ACTIVE,DRAFT, type:A,B,C).
+     */
+    public function visitIn(InNode $node): mixed;
 
     /**
      * Visit a range node (date:[2025-01-01 TO 2025-12-31], price:[10 TO 50]).
