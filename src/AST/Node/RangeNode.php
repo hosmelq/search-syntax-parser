@@ -13,8 +13,8 @@ class RangeNode extends AbstractNode
      */
     public function __construct(
         private readonly string $field,
-        private readonly mixed $from,
-        private readonly mixed $to,
+        private readonly float|int|string $from,
+        private readonly float|int|string $to,
     ) {
     }
 
@@ -37,7 +37,7 @@ class RangeNode extends AbstractNode
     /**
      * Get the inclusive start value of the range.
      */
-    public function getFrom(): mixed
+    public function getFrom(): float|int|string
     {
         return $this->from;
     }
@@ -45,7 +45,7 @@ class RangeNode extends AbstractNode
     /**
      * Get the inclusive end value of the range.
      */
-    public function getTo(): mixed
+    public function getTo(): float|int|string
     {
         return $this->to;
     }

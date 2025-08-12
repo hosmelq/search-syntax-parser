@@ -16,20 +16,6 @@ use Safe\Exceptions\PcreException;
 class SearchLexer extends AbstractLexer
 {
     /**
-     * Get the current token as a TokenType enum.
-     */
-    public function getCurrentTokenType(): null|TokenType
-    {
-        if (! $this->token instanceof Token) {
-            return null;
-        }
-
-        $type = $this->token->type;
-
-        return $type instanceof TokenType ? $type : null;
-    }
-
-    /**
      * Get the lookahead token as TokenType enum.
      */
     public function getLookaheadType(): null|TokenType
@@ -53,14 +39,14 @@ class SearchLexer extends AbstractLexer
             '\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[Z\+\-]\d*:?\d*',
             // Simple date format YYYY-MM-DD
             '\d{4}-\d{2}-\d{2}',
-            // Numbers (integers and decimals)
-            '[0-9]+\.?[0-9]*',
             // Double-quoted strings with escape sequences
             '"[^"\\\\]*(?:\\\\.[^"\\\\]*)*"',
             // Single quoted strings with escape sequences
             "'[^'\\\\]*(?:\\\\.[^'\\\\]*)*'",
-            // Field identifiers (can contain dots for nested fields)
-            '[a-zA-Z_][a-zA-Z0-9_\.]*',
+            // Field identifiers (can contain dots for nested fields and start with numbers)
+            '[a-zA-Z0-9_][a-zA-Z0-9_\.]*',
+            // Numbers (integers and decimals) - must not be followed by identifier characters
+            '[0-9]+\.?[0-9]*(?![a-zA-Z_])',
             // Comparison operators (order matters - longer patterns first)
             '>=|<=|!=|>|<|:',
             // Boolean operators (word boundaries ensure complete words)

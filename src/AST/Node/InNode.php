@@ -11,7 +11,7 @@ class InNode extends AbstractNode
     /**
      * Create a new in node for multi-value field comparison.
      *
-     * @param array<int, mixed> $values
+     * @param array<int, float|int|string> $values
      */
     public function __construct(
         private readonly string $field,
@@ -55,7 +55,7 @@ class InNode extends AbstractNode
     /**
      * Get the array of values for this comparison.
      *
-     * @return array<int, mixed>
+     * @return array<int, float|int|string>
      */
     public function getValues(): array
     {

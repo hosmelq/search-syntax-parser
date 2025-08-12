@@ -23,22 +23,19 @@ it('casts numeric values', function (): void {
 });
 
 it('enforces max_conditions limit', function (): void {
-    $parser = new Parser((new SearchConfiguration())
-        ->setLimit('max_conditions', 2));
+    $parser = new Parser((new SearchConfiguration())->setLimit('max_conditions', 2));
 
     $parser->parse('a b c');
 })->throws(ParseException::class, 'Maximum number of conditions (2) exceeded.');
 
 it('enforces max_nesting_depth limit', function (): void {
-    $parser = new Parser((new SearchConfiguration())
-        ->setLimit('max_nesting_depth', 1));
+    $parser = new Parser((new SearchConfiguration())->setLimit('max_nesting_depth', 1));
 
     $parser->parse('((title:shoes))');
 })->throws(ParseException::class, 'Maximum nesting depth of 1 exceeded.');
 
 it('enforces max_query_length limit', function (): void {
-    $parser = new Parser((new SearchConfiguration())
-        ->setLimit('max_query_length', 5));
+    $parser = new Parser((new SearchConfiguration())->setLimit('max_query_length', 5));
 
     $parser->parse('123456');
 })->throws(ParseException::class, 'Query exceeds maximum length of 5 characters.');
@@ -63,7 +60,8 @@ it('handles wildcard values', function (): void {
 
     $ast = $parser->parse('title:Nike*');
 
-    expect($ast)->toBeInstanceOf(ComparisonNode::class)
+    expect($ast)
+        ->toBeInstanceOf(ComparisonNode::class)
         ->getValue()->toBe('Nike*');
 });
 
@@ -72,9 +70,10 @@ it('parses implicit AND', function (): void {
 
     $ast = $parser->parse('title:shoes price:>50');
 
-    expect($ast)->toBeInstanceOf(BinaryOperatorNode::class)
-        ->and($ast->getOperator())->toBe('AND')
+    expect($ast)
+        ->toBeInstanceOf(BinaryOperatorNode::class)
         ->and($ast->getLeft())->toBeInstanceOf(ComparisonNode::class)
+        ->and($ast->getOperator())->toBe('AND')
         ->and($ast->getRight())->toBeInstanceOf(ComparisonNode::class);
 });
 
@@ -95,13 +94,12 @@ it('parses OR precedence lower than AND', function (): void {
 
     $ast = $parser->parse('a AND b OR c AND d');
 
-    expect($ast)->toBeInstanceOf(BinaryOperatorNode::class)
-        ->and($ast->getOperator())->toBe('OR');
-
-    expect($ast->getLeft())->toBeInstanceOf(BinaryOperatorNode::class)
-        ->and($ast->getLeft()->getOperator())->toBe('AND');
-
-    expect($ast->getRight())->toBeInstanceOf(BinaryOperatorNode::class)
+    expect($ast)
+        ->toBeInstanceOf(BinaryOperatorNode::class)
+        ->and($ast->getLeft())->toBeInstanceOf(BinaryOperatorNode::class)
+        ->and($ast->getLeft()->getOperator())->toBe('AND')
+        ->and($ast->getOperator())->toBe('OR')
+        ->and($ast->getRight())->toBeInstanceOf(BinaryOperatorNode::class)
         ->and($ast->getRight()->getOperator())->toBe('AND');
 });
 
@@ -110,13 +108,12 @@ it('parses parentheses grouping', function (): void {
 
     $ast = $parser->parse('(title:shoes OR title:boots) AND price:>50');
 
-    expect($ast)->toBeInstanceOf(BinaryOperatorNode::class)
-        ->and($ast->getOperator())->toBe('AND');
-
-    expect($ast->getLeft())->toBeInstanceOf(BinaryOperatorNode::class)
-        ->and($ast->getLeft()->getOperator())->toBe('OR');
-
-    expect($ast->getRight())->toBeInstanceOf(ComparisonNode::class)
+    expect($ast)
+        ->toBeInstanceOf(BinaryOperatorNode::class)
+        ->and($ast->getLeft())->toBeInstanceOf(BinaryOperatorNode::class)
+        ->and($ast->getLeft()->getOperator())->toBe('OR')
+        ->and($ast->getOperator())->toBe('AND')
+        ->and($ast->getRight())->toBeInstanceOf(ComparisonNode::class)
         ->and($ast->getRight()->getField())->toBe('price');
 });
 
@@ -167,7 +164,8 @@ it('parses field comparisons with colon equals default', function (): void {
 
     $ast = $parser->parse('title:shoes');
 
-    expect($ast)->toBeInstanceOf(ComparisonNode::class)
+    expect($ast)
+        ->toBeInstanceOf(ComparisonNode::class)
         ->getField()->toBe('title')
         ->getOperator()->toBe('=')
         ->getValue()->toBe('shoes');
@@ -178,7 +176,8 @@ it('parses field comparisons with colon plus explicit operator', function (): vo
 
     $ast = $parser->parse('price:>50');
 
-    expect($ast)->toBeInstanceOf(ComparisonNode::class)
+    expect($ast)
+        ->toBeInstanceOf(ComparisonNode::class)
         ->getField()->toBe('price')
         ->getOperator()->toBe('>')
         ->getValue()->toBe(50);
@@ -189,7 +188,8 @@ it('parses field comparisons with direct operator', function (): void {
 
     $ast = $parser->parse('price>50');
 
-    expect($ast)->toBeInstanceOf(ComparisonNode::class)
+    expect($ast)
+        ->toBeInstanceOf(ComparisonNode::class)
         ->getField()->toBe('price')
         ->getOperator()->toBe('>')
         ->getValue()->toBe(50);
@@ -200,7 +200,8 @@ it('parses range syntax', function (): void {
 
     $ast = $parser->parse('created_at:[2024-01-01 TO 2024-12-31]');
 
-    expect($ast)->toBeInstanceOf(RangeNode::class)
+    expect($ast)
+        ->toBeInstanceOf(RangeNode::class)
         ->getField()->toBe('created_at')
         ->getFrom()->toBe('2024-01-01')
         ->getTo()->toBe('2024-12-31');
@@ -211,7 +212,8 @@ it('parses range with case-insensitive TO', function (): void {
 
     $ast = $parser->parse('price:[10 to 20]');
 
-    expect($ast)->toBeInstanceOf(RangeNode::class)
+    expect($ast)
+        ->toBeInstanceOf(RangeNode::class)
         ->getField()->toBe('price')
         ->getFrom()->toBe(10)
         ->getTo()->toBe(20);
@@ -224,15 +226,15 @@ it('parses term nodes', function (): void {
     $ast1 = $parser->parse('shoes');
     $ast2 = $parser->parse('"running shoes"');
 
-    expect($ast1)->toBeInstanceOf(TermNode::class)
+    expect($ast1)
+        ->toBeInstanceOf(TermNode::class)
         ->getValue()->toBe('shoes')
         ->and($ast2)->toBeInstanceOf(TermNode::class)
         ->getValue()->toBe('running shoes');
 });
 
 it('preserves prefix query functionality', function (): void {
-    $parser = new Parser((new SearchConfiguration())
-        ->setAllowedFields(['title']));
+    $parser = new Parser((new SearchConfiguration())->setAllowedFields(['title']));
 
     $ast = $parser->parse('title:Nike*');
 
@@ -244,8 +246,7 @@ it('preserves prefix query functionality', function (): void {
 });
 
 it('throws exception for disallowed fields', function (): void {
-    $parser = new Parser((new SearchConfiguration())
-        ->setAllowedFields(['title']));
+    $parser = new Parser((new SearchConfiguration())->setAllowedFields(['title']));
 
     $parser->parse('invalid:value');
 })->throws(ParseException::class, "Field 'invalid' is not allowed.");
@@ -304,6 +305,7 @@ it('throws exception for invalid field value with colon syntax', function (): vo
 
 it('throws exception for invalid field value with direct operator', function (): void {
     $config = new SearchConfiguration();
+
     $config->addFieldValidator('price', fn ($value): bool => is_numeric($value) && $value > 0);
 
     $parser = new Parser($config);

@@ -152,7 +152,8 @@ it('parses query string into AST', function (): void {
     $parser = new SearchParser();
     $ast = $parser->parse('test');
 
-    expect($ast)->toBeInstanceOf(TermNode::class)
+    expect($ast)
+        ->toBeInstanceOf(TermNode::class)
         ->getValue()->toBe('test');
 });
 

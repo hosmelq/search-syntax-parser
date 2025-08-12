@@ -34,24 +34,4 @@ enum TokenType: string
     case String = 'string';
     case To = 'to';
     case Wildcard = 'wildcard';
-
-    /**
-     * Create TokenType from numeric value.
-     */
-    public static function fromValue(int $value): null|self
-    {
-        $cases = self::cases();
-
-        return $cases[$value] ?? null;
-    }
-
-    /**
-     * Get numeric value for Doctrine Lexer compatibility.
-     */
-    public function getValue(): int
-    {
-        $result = array_search($this, self::cases(), true);
-
-        return $result !== false ? $result : 0;
-    }
 }

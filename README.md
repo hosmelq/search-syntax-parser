@@ -7,6 +7,7 @@ Parse search queries into structured data with support for field searches, boole
 - **Abstract Syntax Tree** - Generate structured AST from search queries
 - **Boolean Operators** - `AND`, `OR`, `NOT` operations with correct precedence handling
 - **Built-in ArrayAdapter** - Ready-to-use array conversion
+- **Comma-Separated Values** - Multi-value field searches with `field:value1,value2,value3` syntax
 - **Exists Queries** - Check field presence with `field:*` syntax
 - **Extensible Adapters** - Convert AST to multiple output formats
 - **Field-Specific Searches** - Support queries like `age:>25` and `name:john`
@@ -76,6 +77,38 @@ $result = $parser->build('price:>=10');     // Greater than or equal
 $result = $parser->build('price:<50');      // Less than
 $result = $parser->build('price:<=50');     // Less than or equal
 $result = $parser->build('status:!=sold');  // Not equal
+```
+
+#### Comma-Separated Values
+
+Multi-value field searches that act as syntactic sugar for OR operations:
+
+```php
+// Single field, multiple values
+$result = $parser->build('status:ACTIVE,DRAFT,PENDING');
+// Equivalent to: status:ACTIVE OR status:DRAFT OR status:PENDING
+
+// Works with any operator
+$result = $parser->build('status:!=SOLD,EXPIRED');
+// Equivalent to: status:!=SOLD OR status:!=EXPIRED
+
+// Can be combined with boolean logic
+$result = $parser->build('status:ACTIVE,DRAFT AND price:>100');
+
+// Supports quoted values
+$result = $parser->build('category:"Home & Garden","Sports & Outdoors"');
+
+// Array adapter output for comma-separated values
+array:4 [
+  "field" => "status"
+  "operator" => "="
+  "type" => "in"
+  "values" => array:3 [
+    0 => "ACTIVE"
+    1 => "DRAFT"
+    2 => "PENDING"
+  ]
+]
 ```
 
 #### Exists Queries

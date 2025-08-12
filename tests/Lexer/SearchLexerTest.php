@@ -9,6 +9,7 @@ use HosmelQ\SearchSyntaxParser\Lexer\TokenType;
 function lex(string $input): array
 {
     $lexer = new SearchLexer();
+
     $lexer->setInput($input);
     $lexer->moveNext();
 
@@ -165,19 +166,4 @@ it('tokenizes mixed complex query', function (): void {
         ['GreaterEqual', '>='],
         ['Number', '100'],
     ]);
-});
-
-it('provides Doctrine v3 compatibility helpers', function (): void {
-    $lexer = new SearchLexer();
-    $lexer->setInput('title:shoes');
-    $lexer->moveNext();
-    $lexer->moveNext();
-
-    expect($lexer->getCurrentTokenType())->toBe(TokenType::Identifier)
-        ->and($lexer->token->type)->toBe(TokenType::Identifier)
-        ->and($lexer->token->value)->toBe('title');
-
-    expect($lexer->getLookaheadType())->toBe(TokenType::Colon)
-        ->and($lexer->lookahead->type)->toBe(TokenType::Colon)
-        ->and($lexer->lookahead->value)->toBe(':');
 });

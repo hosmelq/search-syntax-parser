@@ -12,7 +12,8 @@ it('parses basic comma-separated values', function (): void {
 
     $ast = $parser->parse('status:ACTIVE,DRAFT');
 
-    expect($ast)->toBeInstanceOf(InNode::class)
+    expect($ast)
+        ->toBeInstanceOf(InNode::class)
         ->getField()->toBe('status')
         ->getOperator()->toBe('=')
         ->getValues()->toBe(['ACTIVE', 'DRAFT']);
@@ -23,7 +24,8 @@ it('parses multiple comma-separated values', function (): void {
 
     $ast = $parser->parse('type:A,B,C');
 
-    expect($ast)->toBeInstanceOf(InNode::class)
+    expect($ast)
+        ->toBeInstanceOf(InNode::class)
         ->getField()->toBe('type')
         ->getOperator()->toBe('=')
         ->getValues()->toBe(['A', 'B', 'C']);
@@ -34,7 +36,8 @@ it('parses comma-separated values with not equal operator', function (): void {
 
     $ast = $parser->parse('status:!=ACTIVE,DRAFT');
 
-    expect($ast)->toBeInstanceOf(InNode::class)
+    expect($ast)
+        ->toBeInstanceOf(InNode::class)
         ->getField()->toBe('status')
         ->getOperator()->toBe('!=')
         ->getValues()->toBe(['ACTIVE', 'DRAFT']);
@@ -84,7 +87,8 @@ it('handles quoted comma-separated values', function (): void {
 
     $ast = $parser->parse('name:"John Doe","Jane Smith"');
 
-    expect($ast)->toBeInstanceOf(InNode::class)
+    expect($ast)
+        ->toBeInstanceOf(InNode::class)
         ->getField()->toBe('name')
         ->getValues()->toBe(['John Doe', 'Jane Smith']);
 });
@@ -94,7 +98,8 @@ it('handles numeric comma-separated values', function (): void {
 
     $ast = $parser->parse('id:1,2,3');
 
-    expect($ast)->toBeInstanceOf(InNode::class)
+    expect($ast)
+        ->toBeInstanceOf(InNode::class)
         ->getField()->toBe('id')
         ->getValues()->toBe([1, 2, 3]);
 });

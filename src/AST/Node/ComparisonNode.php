@@ -14,7 +14,7 @@ class ComparisonNode extends AbstractNode
     public function __construct(
         private readonly string $field,
         private readonly string $operator,
-        private readonly mixed $value,
+        private readonly float|int|string $value,
     ) {
     }
 
@@ -53,7 +53,7 @@ class ComparisonNode extends AbstractNode
     /**
      * Get the comparison value.
      */
-    public function getValue(): mixed
+    public function getValue(): float|int|string
     {
         return $this->value;
     }
