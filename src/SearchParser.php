@@ -166,13 +166,7 @@ class SearchParser
             }
 
             if (is_array($value)) {
-                foreach ($value as $item) {
-                    if (! $allowed->validate($item)) {
-                        return false;
-                    }
-                }
-
-                return true;
+                return array_all($value, fn (mixed $item): bool => $allowed->validate($item));
             }
 
             return $allowed->validate($value);

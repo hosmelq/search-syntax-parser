@@ -69,7 +69,7 @@ it('reports allowed fields and validation helpers', function (): void {
 });
 
 it('validates array values via validateField', function (): void {
-    $parser = (new SearchParser())->allowedFields([
+    $parser = new SearchParser()->allowedFields([
         AllowedField::integer('age'),
     ]);
 

@@ -16,8 +16,8 @@ it('returns field name and internal name', function (): void {
 });
 
 it('handles default values and nullability', function (): void {
-    $fieldWithNullDefault = (new AllowedField('status'))->default(null);
-    $fieldWithDefault = (new AllowedField('status'))->default('DRAFT');
+    $fieldWithNullDefault = new AllowedField('status')->default(null);
+    $fieldWithDefault = new AllowedField('status')->default('DRAFT');
 
     expect($fieldWithNullDefault)
         ->hasDefault()->toBeTrue()

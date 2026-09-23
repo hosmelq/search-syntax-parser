@@ -82,12 +82,8 @@ class SearchLexer extends AbstractLexer
      *
      * @throws PcreException
      */
-    protected function getType(mixed &$value): TokenType
+    protected function getType(string &$value): TokenType
     {
-        if (! is_string($value)) {
-            $value = (string) $value;
-        }
-
         $type = $this->determineTokenType($value);
 
         if ($type->is(TokenType::String)) {

@@ -10,6 +10,8 @@ use Brick\Math\BigNumber;
 use Brick\Math\Exception\MathException;
 use InvalidArgumentException;
 use Safe\Exceptions\PcreException;
+use Stringable;
+use TypeError;
 
 trait ValidatesAttributes
 {
@@ -24,6 +26,10 @@ trait ValidatesAttributes
 
         if (is_array($value)) {
             return count($value);
+        }
+
+        if ($value !== null && ! is_string($value)) {
+            throw new TypeError('Attribute size requires a number, string, array, or null.');
         }
 
         return mb_strlen($value ?? '');
@@ -43,6 +49,12 @@ trait ValidatesAttributes
 
     /**
      * Trim the value if it is a string.
+     *
+     * @template TValue
+     *
+     * @param TValue $value
+     *
+     * @return (TValue is string ? string : TValue)
      */
     protected function trim(mixed $value): mixed
     {
@@ -59,10 +71,10 @@ trait ValidatesAttributes
         $this->requireParameterCount(2, $parameters, 'between');
 
         try {
-            $size = BigNumber::of($this->getSize($attribute, $value));
+            $size = BigNumber::of((string) $this->getSize($attribute, $value));
 
-            return $size->isGreaterThanOrEqualTo($this->trim($parameters[0]))
-                && $size->isLessThanOrEqualTo($this->trim($parameters[1]));
+            return $size->isGreaterThanOrEqualTo((string) $this->trim($parameters[0]))
+                && $size->isLessThanOrEqualTo((string) $this->trim($parameters[1]));
         } catch (MathException) {
             return false;
         }
@@ -111,22 +123,39 @@ trait ValidatesAttributes
     /**
      * Validate an attribute is contained within a list of values.
      *
-     * @param list<int|string> $parameters
+     * @param list<mixed> $parameters
      */
     protected function validateIn(string $attribute, mixed $value, array $parameters): bool
     {
-        if (is_array($value)) {
-            foreach ($value as $element) {
-                if (is_array($element)) {
-                    return false;
-                }
+        $allowed = [];
+
+        foreach ($parameters as $parameter) {
+            if ($parameter !== null && ! is_scalar($parameter) && ! is_resource($parameter) && ! $parameter instanceof Stringable) {
+                return false;
             }
 
-            return array_diff($value, $parameters) === [];
+            $allowed[] = (string) $parameter;
         }
 
-        // @phpstan-ignore-next-line cast.string function.impossibleType
-        return ! is_array($value) && in_array((string) $value, array_map('strval', $parameters), true);
+        if (is_array($value)) {
+            $values = [];
+
+            foreach ($value as $element) {
+                if ($element !== null && ! is_scalar($element) && ! is_resource($element) && ! $element instanceof Stringable) {
+                    return false;
+                }
+
+                $values[] = (string) $element;
+            }
+
+            return array_diff($values, $allowed) === [];
+        }
+
+        if ($value !== null && ! is_scalar($value) && ! is_resource($value) && ! $value instanceof Stringable) {
+            return false;
+        }
+
+        return in_array((string) $value, $allowed, true);
     }
 
     /**
@@ -147,7 +176,7 @@ trait ValidatesAttributes
         $this->requireParameterCount(1, $parameters, 'max');
 
         try {
-            return BigNumber::of($this->getSize($attribute, $value))->isLessThanOrEqualTo($this->trim($parameters[0]));
+            return BigNumber::of((string) $this->getSize($attribute, $value))->isLessThanOrEqualTo((string) $this->trim($parameters[0]));
         } catch (MathException) {
             return false;
         }
@@ -163,7 +192,7 @@ trait ValidatesAttributes
         $this->requireParameterCount(1, $parameters, 'min');
 
         try {
-            return BigNumber::of($this->getSize($attribute, $value))->isGreaterThanOrEqualTo($this->trim($parameters[0]));
+            return BigNumber::of((string) $this->getSize($attribute, $value))->isGreaterThanOrEqualTo((string) $this->trim($parameters[0]));
         } catch (MathException) {
             return false;
         }
@@ -171,6 +200,8 @@ trait ValidatesAttributes
 
     /**
      * Validate that an attribute is numeric.
+     *
+     * @phpstan-assert-if-true float|int|numeric-string $value
      */
     protected function validateNumeric(string $attribute, mixed $value): bool
     {
@@ -187,7 +218,7 @@ trait ValidatesAttributes
         $this->requireParameterCount(1, $parameters, 'size');
 
         try {
-            return BigNumber::of($this->getSize($attribute, $value))->isEqualTo($this->trim($parameters[0]));
+            return BigNumber::of((string) $this->getSize($attribute, $value))->isEqualTo((string) $this->trim($parameters[0]));
         } catch (MathException) {
             return false;
         }

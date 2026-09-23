@@ -48,7 +48,7 @@ it('maps comparison node', function (): void {
 });
 
 it('maps comparison node with internal field name', function (): void {
-    $searchParser = (new SearchParser())->allowedFields([
+    $searchParser = new SearchParser()->allowedFields([
         new AllowedField('price', 'unit_price'),
     ]);
 

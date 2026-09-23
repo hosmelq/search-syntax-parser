@@ -387,13 +387,7 @@ class AllowedField
             return true;
         }
 
-        foreach ($this->validators as $validator) {
-            if (! $validator($value, $this->internalName)) {
-                return false;
-            }
-        }
-
-        return true;
+        return array_all($this->validators, fn (ValidatorInterface $validator): bool => $validator($value, $this->internalName));
     }
 
     /**
