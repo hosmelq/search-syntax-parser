@@ -2,16 +2,18 @@
 
 declare(strict_types=1);
 
+use Rector\Caching\ValueObject\Storage\FileCacheStorage;
 use Rector\Config\RectorConfig;
 use Rector\Php74\Rector\Closure\ClosureToArrowFunctionRector;
 
 return RectorConfig::configure()
+    ->withCache('./.cache/rector', FileCacheStorage::class)
     ->withImportNames()
     ->withPaths([
         __DIR__.'/src',
         __DIR__.'/tests',
     ])
-    ->withPhpSets(php82: true)
+    ->withPhpSets(php84: true)
     ->withPreparedSets(
         deadCode: true,
         codeQuality: true,
@@ -19,7 +21,7 @@ return RectorConfig::configure()
         typeDeclarations: true,
         instanceOf: true,
         earlyReturn: true,
-        strictBooleans: true,
+        carbon: true,
         rectorPreset: true
     )
     ->withSkip([

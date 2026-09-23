@@ -8,7 +8,7 @@ parameters:
   checkBenevolentUnionTypes: true
   editorUrl: 'phpstorm://open?file=%%file%%&line=%%line%%'
   errorFormat: ticketswap
-  level: 8
+  level: max
   paths:
     - src
   type_coverage:
@@ -22,3 +22,6 @@ parameters:
     null_over_false: true
     narrow_param: true
     narrow_return: true
+  tips:
+    treatPhpDocTypesAsCertain: false
+  tmpDir: .cache/phpstan
