@@ -16,7 +16,9 @@ It returns a normalized PHP array describing the query.
 
 ## Requirements
 
-- PHP 8.2+
+- PHP 8.4+
+
+The package is framework-independent and can be installed alongside Laravel 12 and 13.
 
 ## Installation & setup
 
