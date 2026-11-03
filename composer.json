@@ -19,6 +19,10 @@
             "email": "hosmelq@gmail.com"
         }
     ],
+    "homepage": "https://github.com/hosmelq/search-syntax-parser",
+    "support": {
+        "docs": "https://github.com/hosmelq/search-syntax-parser#readme"
+    },
     "require": {
         "php": "^8.4",
         "archtechx/enums": "^1.1",
