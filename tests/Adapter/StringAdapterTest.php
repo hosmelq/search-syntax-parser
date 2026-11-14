@@ -108,3 +108,18 @@ it('refuses field names the query syntax cannot express', function (string $name
         ->build('string');
 })->throws(LogicException::class, 'This field name cannot be expressed by the query syntax.')
     ->with(['my field', 'AND', '-x', '*', 'a:b']);
+
+it('keeps datetime-like field names apart from their colon', function (
+    string $query,
+    string $expected,
+): void {
+    $parser = SearchParser::query($query);
+    $text = $parser->build('string');
+
+    expect($text)->toBe($expected)
+        ->and(SearchParser::query($text)->build())->toBe($parser->build());
+})->with([
+    ['2026-01-01T12 :12', '2026-01-01T12 :12'],
+    ['2026-01-01T12:30+05 :30', '2026-01-01T12:30+05 :30'],
+    ['2026-01-01T12:30 :*', '2026-01-01T12:30 :*'],
+]);

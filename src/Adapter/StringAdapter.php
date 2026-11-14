@@ -60,8 +60,7 @@ final readonly class StringAdapter implements QueryAdapterInterface, VisitorInte
     #[Override]
     public function visitComparison(ComparisonNode $node): string
     {
-        return $this->field($node->getField())
-            .':'
+        return $this->fieldPrefix($node->getField())
             .($node->getOperator() === '=' ? '' : $node->getOperator())
             .$this->value($node->getValue());
     }
@@ -69,14 +68,13 @@ final readonly class StringAdapter implements QueryAdapterInterface, VisitorInte
     #[Override]
     public function visitExists(ExistsNode $node): string
     {
-        return $this->field($node->getField()).':*';
+        return $this->fieldPrefix($node->getField()).'*';
     }
 
     #[Override]
     public function visitIn(InNode $node): string
     {
-        return $this->field($node->getField())
-            .':'
+        return $this->fieldPrefix($node->getField())
             .($node->getOperator() === '=' ? '' : $node->getOperator())
             .implode(',', array_map($this->value(...), $node->getValues()));
     }
@@ -84,7 +82,7 @@ final readonly class StringAdapter implements QueryAdapterInterface, VisitorInte
     #[Override]
     public function visitRange(RangeNode $node): string
     {
-        return $this->field($node->getField()).':['
+        return $this->fieldPrefix($node->getField()).'['
             .($node->getFrom() === null ? '*' : $this->value($node->getFrom()))
             .' TO '.($node->getTo() === null ? '*' : $this->value($node->getTo())).']';
     }
@@ -145,7 +143,7 @@ final readonly class StringAdapter implements QueryAdapterInterface, VisitorInte
         return (
             $field === null
             ? ''
-            : $this->field($field).':'.($node->getOperator() === '=' ? '' : $node->getOperator())
+            : $this->fieldPrefix($field).($node->getOperator() === '=' ? '' : $node->getOperator())
         )
             .$pattern;
     }
@@ -161,13 +159,17 @@ final readonly class StringAdapter implements QueryAdapterInterface, VisitorInte
         return $tokens->types === [TokenType::Word] && $tokens->values === [$value];
     }
 
-    private function field(string $name): string
+    /**
+     * Write a field name and its colon, refusing names the query syntax cannot express.
+     */
+    private function fieldPrefix(string $name): string
     {
         if ($name === '*' || ! $this->canBeBare($name)) {
             throw new LogicException('This field name cannot be expressed by the query syntax.');
         }
 
-        return $name;
+        // A name starting like an ISO datetime would absorb `:` and the value into one word.
+        return preg_match('/^\d{4}-\d{2}-\d{2}[Tt]\d{2}/', $name) === 0 ? $name.':' : $name.' :';
     }
 
     private function quote(string $value): string

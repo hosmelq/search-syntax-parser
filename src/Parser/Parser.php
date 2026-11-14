@@ -254,7 +254,10 @@ class Parser
                     if ($patternType === TokenType::Wildcard
                         || (
                             $patternType === TokenType::Word
-                            && $this->tokens->values[$patternIndex] !== '*'
+                            && (
+                                $type === TokenType::Minus
+                                || $this->tokens->values[$patternIndex] !== '*'
+                            )
                             && str_contains($this->tokens->values[$patternIndex], '*')
                         )) {
                         $allowed->assertClauseAllowed('wildcards', $rulePosition);

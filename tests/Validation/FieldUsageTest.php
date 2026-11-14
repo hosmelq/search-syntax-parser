@@ -209,3 +209,20 @@ it('reports invalid wildcard usage instead of a disabled clause', function (
         'n:a,*',
     ],
 ]);
+
+it('rejects negated wildcard patterns when wildcards are disabled', function (string $query): void {
+    try {
+        SearchParser::query($query)
+            ->allowedFields([AllowedField::string('x')->withoutWildcards()])
+            ->parse();
+    } catch (InvalidFieldOperatorException $invalidFieldOperatorException) {
+        expect($invalidFieldOperatorException->getParameters())->toBe([
+            'field' => 'x',
+            'clause' => 'wildcards',
+        ]);
+
+        return;
+    }
+
+    throw new RuntimeException('Expected an operator exception.');
+})->with(['x:-*', 'x:a,-*', 'x:-a*']);
