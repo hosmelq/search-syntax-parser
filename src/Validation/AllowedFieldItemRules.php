@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace HosmelQ\SearchSyntaxParser\Validation;
 
-use function Safe\preg_match;
-
 use Closure;
 use HosmelQ\SearchSyntaxParser\Validation\Validators\BetweenValidator;
 use HosmelQ\SearchSyntaxParser\Validation\Validators\BooleanValidator;

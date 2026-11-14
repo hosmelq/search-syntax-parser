@@ -4,10 +4,7 @@ declare(strict_types=1);
 
 namespace HosmelQ\SearchSyntaxParser\Lexer;
 
-use function Safe\preg_match_all;
-
 use HosmelQ\SearchSyntaxParser\Exception\ParseException;
-use Safe\Exceptions\PcreException;
 
 /**
  * @internal
@@ -38,16 +35,11 @@ final class SearchLexer
      */
     public function tokenize(string $input): Tokens
     {
-        try {
-            preg_match_all(self::PATTERN, $input, $matches, PREG_PATTERN_ORDER);
-        } catch (PcreException) {
+        if (preg_match_all(self::PATTERN, $input, $matches, PREG_PATTERN_ORDER) === false) {
             throw new ParseException(preg_last_error() === PREG_BAD_UTF8_ERROR
                 ? 'Search query must be valid UTF-8.'
                 : 'Search query is too complex to tokenize.');
         }
-
-        // PHPStan cannot infer match shapes for patterns with (*MARK) verbs; every alternative sets a mark.
-        /** @var array{0: list<string>, 1: list<string>, MARK?: array<int, string>} $matches */
 
         // Capture whitespace and accumulate byte lengths instead of allocating offset tuples.
         $types = [];

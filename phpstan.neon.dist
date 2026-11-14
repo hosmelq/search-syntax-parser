@@ -2,5 +2,9 @@ includes:
   - vendor/hosmelq/php-coding-standard/config/phpstan-php.neon
 
 parameters:
+  ignoreErrors:
+    # thecodingmachine/safe is not a runtime dependency: its Composer files autoload declares over
+    # a thousand functions on every request of consuming apps. preg_* results are checked instead.
+    - identifier: theCodingMachineSafe.function
   paths:
     - src

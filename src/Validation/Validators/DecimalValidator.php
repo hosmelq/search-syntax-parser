@@ -7,7 +7,6 @@ namespace HosmelQ\SearchSyntaxParser\Validation\Validators;
 use HosmelQ\SearchSyntaxParser\Validation\Concerns\ValidatesAttributes;
 use HosmelQ\SearchSyntaxParser\Validation\ValidatorInterface;
 use Override;
-use Safe\Exceptions\PcreException;
 
 readonly class DecimalValidator implements ValidatorInterface
 {
@@ -20,8 +19,6 @@ readonly class DecimalValidator implements ValidatorInterface
 
     /**
      * Validate that the value is numeric and has the specified decimal places.
-     *
-     * @throws PcreException
      */
     #[Override]
     public function __invoke(mixed $value, string $attribute): bool

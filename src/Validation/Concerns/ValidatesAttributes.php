@@ -4,12 +4,9 @@ declare(strict_types=1);
 
 namespace HosmelQ\SearchSyntaxParser\Validation\Concerns;
 
-use function Safe\preg_match;
-
 use Brick\Math\BigNumber;
 use Brick\Math\Exception\MathException;
 use InvalidArgumentException;
-use Safe\Exceptions\PcreException;
 use Stringable;
 
 trait ValidatesAttributes
@@ -102,8 +99,6 @@ trait ValidatesAttributes
      * Validate that an attribute has a given number of decimal places.
      *
      * @param list<int> $parameters
-     *
-     * @throws PcreException
      */
     protected function validateDecimal(string $attribute, mixed $value, array $parameters): bool
     {
@@ -119,7 +114,7 @@ trait ValidatesAttributes
             return false;
         }
 
-        $decimals = mb_strlen($matches[1] ?? '');
+        $decimals = mb_strlen($matches[1]);
 
         if (! isset($parameters[1])) {
             return $decimals === $parameters[0];
