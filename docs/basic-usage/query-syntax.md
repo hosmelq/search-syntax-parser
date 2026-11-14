@@ -18,7 +18,7 @@ assert(SearchParser::query('(coffee OR tea) -decaf')->build('string') === '(coff
 assert(SearchParser::query('this is not good')->build('string') === 'this AND is AND not AND good');
 ```
 
-Terms preserve their text, including `007`, `12.50`, and `true`. Words support Unicode, hyphens, and punctuation: `José`, `t-shirt`, and `john@example.com` are complete terms. A bare `*` is invalid.
+Terms preserve their text, including `007`, `12.50`, and `true`. `TermNode::isQuoted()` records whether a term used quotes, and array output includes that boolean as `quoted`. Words support Unicode, hyphens, and punctuation: `José`, `t-shirt`, and `john@example.com` are complete terms. A bare `*` is invalid.
 
 ## Field comparisons and lists
 
@@ -40,7 +40,7 @@ A leading `-` after a field comparator joins an adjacent word as a negative valu
 
 ## Ranges and existence
 
-Ranges include both endpoints. `TO` must be uppercase and is a separator only inside ranges. An unquoted bound exactly equal to `*` is open and bypasses casting and validation. Other bounds use the field rules. Wildcard text is not allowed in range bounds, including quoted bounds.
+Ranges include both endpoints. `TO` must be uppercase and is a separator only inside ranges. An unquoted bound exactly equal to `*` is open and bypasses casting and validation. Open bounds are `null` in the AST and array output. Other bounds use the field rules. Quoted `"*"` is the literal string `*`, and quoted bounds can contain literal asterisks; unquoted wildcard patterns are rejected.
 
 `field:*` checks existence. Use `NOT field:*` for missing values; `field:!=*` and `field:>*` are invalid.
 
@@ -48,7 +48,8 @@ Ranges include both endpoints. `TO` must be uppercase and is a separator only in
 use HosmelQ\SearchSyntaxParser\SearchParser;
 
 assert(SearchParser::query('price:[10 TO 50]')->build()['from'] === 10);
-assert(SearchParser::query('price:[* TO 50]')->build()['from'] === '*');
+assert(SearchParser::query('price:[* TO 50]')->build()['from'] === null);
+assert(SearchParser::query('title:["*" TO "z*"]')->build()['from'] === '*');
 assert(SearchParser::query('category:*')->build()['type'] === 'exists');
 assert(SearchParser::query('NOT discount:*')->build()['operator'] === 'NOT');
 ```

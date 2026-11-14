@@ -22,7 +22,7 @@ Each node has a lowercase `type`. Field nodes use the configured internal field 
 | Node | Array keys |
 | --- | --- |
 | Comparison | `field`, `operator`, `type: comparison`, `value` |
-| Term | `type: term`, `value` |
+| Term | `quoted: bool`, `type: term`, `value` |
 | Binary operator | `left`, `operator: AND/OR`, `right`, `type: binary` |
 | Unary operator | `operand`, `operator: NOT`, `type: unary` |
 | List | `field`, `operator: =/!=`, `type: in`, `values` |
@@ -30,7 +30,7 @@ Each node has a lowercase `type`. Field nodes use the configured internal field 
 | Exists | `field`, `type: exists` |
 | Wildcard | `field`, `operator: =/!=`, `segments`, `type: wildcard` |
 
-`left`, `right`, and `operand` contain nested node arrays. Range bounds are inclusive, and an open bound is the string `*`. Wildcard segments contain literal text between wildcard operators, including empty leading or trailing segments.
+`left`, `right`, and `operand` contain nested node arrays. Range bounds are inclusive, and an open bound is `null`. A quoted `"*"` bound remains the literal string `*`. Source spans are available on AST nodes and are omitted from array output. Wildcard segments contain literal text between wildcard operators, including empty leading or trailing segments.
 
 ```php
 use HosmelQ\SearchSyntaxParser\SearchParser;

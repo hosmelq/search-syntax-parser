@@ -19,13 +19,15 @@ assert(SearchParser::query($text)->build() === SearchParser::query('(coffee OR t
 
 Output uses explicit `AND` and `OR`, and `NOT` instead of `-`. Parentheses preserve precedence and the tree's grouping, including right-nested expressions such as `a AND (b AND c)`.
 
-Comparisons use `field:value` or `field:>value`, `field:>=value`, `field:<value`, `field:<=value`, and `field:!=value`. Lists use `field:a,b` or `field:!=a,b`. Ranges use `field:[a TO b]` with `*` for open bounds. Exists queries use `field:*`.
+Comparisons use `field:value` or `field:>value`, `field:>=value`, `field:<value`, `field:<=value`, and `field:!=value`. Lists use `field:a,b` or `field:!=a,b`. Ranges use `field:[a TO b]` with `*` for null open bounds and `"*"` for literal asterisk bounds. Exists queries use `field:*`.
 
-Booleans become `true` or `false`. Integers use digits, and floats retain a decimal point so reparsing infers a float. Exponent notation is expanded to a decimal literal. Strings are quoted when needed to preserve their type or syntax, including numeric-looking strings, logical keywords, empty strings, leading hyphens, whitespace, and literal asterisks. Double quotes and backslashes are escaped.
+Booleans become `true` or `false`. Integers use digits, and floats retain a decimal point so reparsing infers a float. Exponent notation is expanded to a decimal literal. Strings are quoted when needed to preserve their type or syntax, including numeric-looking strings, logical keywords, empty strings, leading hyphens, whitespace, and literal asterisks. Double quotes and backslashes are escaped. Terms retain their `isQuoted()` flag: quoted terms remain quoted, while unquoted terms such as `123`, `007`, and `true` remain unquoted. Source spans are omitted from the output.
 
 ```php
 use HosmelQ\SearchSyntaxParser\SearchParser;
 
+assert(SearchParser::query('"coffee"')->build('string') === '"coffee"');
+assert(SearchParser::query('007')->build('string') === '007');
 assert(SearchParser::query('value:1.00')->build('string') === 'value:1.0');
 assert(SearchParser::query('value:"123"')->build('string') === 'value:"123"');
 assert(SearchParser::query('title:"a b"*')->build('string') === 'title:"a b"*');

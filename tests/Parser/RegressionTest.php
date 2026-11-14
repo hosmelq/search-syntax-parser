@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use HosmelQ\SearchSyntaxParser\Exception\InvalidFieldValueException;
 use HosmelQ\SearchSyntaxParser\Exception\ParseException;
 use HosmelQ\SearchSyntaxParser\SearchParser;
 use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
@@ -228,8 +229,8 @@ it('rejects nonpositive limits', function (int $limit): void {
 
 it('keeps unquoted * range bounds open without casting or validating them', function (
     string $query,
-    int|string $from,
-    int|string $to,
+    null|int $from,
+    null|int $to,
 ): void {
     expect(
         SearchParser::query($query)->allowedFields([AllowedField::integer('x')->max(100)])->build(),
@@ -242,20 +243,20 @@ it('keeps unquoted * range bounds open without casting or validating them', func
         ],
     );
 })->with([
-    ['x:[* TO 50]', '*', 50],
-    ['x:[10 TO *]', 10, '*'],
-    ['x:[* TO *]', '*', '*'],
+    ['x:[* TO 50]', null, 50],
+    ['x:[10 TO *]', 10, null],
+    ['x:[* TO *]', null, null],
 ]);
 
-it('rejects quoted wildcard range bounds', function (): void {
+it('validates quoted asterisk range bounds as literal values', function (): void {
     SearchParser::query('x:["*" TO 5]')->allowedFields([AllowedField::integer('x')])->parse();
-})->throws(ParseException::class);
+})->throws(InvalidFieldValueException::class);
 
 it('accepts escaped line breaks inside quotes', function (): void {
     expect(SearchParser::query("title:\"a\\\nb\"")->parse()->getValue())->toBe("a\\\nb");
 });
 
-it('uses byte adjacency for negative values after unicode and escaped quotes', function (
+it('preserves adjacency for negative values after unicode and escaped quotes', function (
     string $prefix,
 ): void {
     expect(SearchParser::query($prefix.' temp:>-5')->parse()->getRight()->getValue())->toBe(-5);

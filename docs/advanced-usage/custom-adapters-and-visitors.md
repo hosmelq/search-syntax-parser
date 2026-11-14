@@ -29,7 +29,7 @@ assert($parser->build('envelope') === ['query' => 'coffee AND tea']);
 
 ## Visiting nodes
 
-Each node implements `getType()` and `accept(VisitorInterface $visitor)`. A visitor implements `visitBinaryOperator()`, `visitComparison()`, `visitExists()`, `visitIn()`, `visitRange()`, `visitTerm()`, `visitUnaryOperator()`, and `visitWildcard()`. Binary nodes expose left/right children; unary nodes expose an operand. Call `accept()` on children to traverse them.
+Each node implements `getType()`, `getSpan()`, and `accept(VisitorInterface $visitor)`. A visitor implements `visitBinaryOperator()`, `visitComparison()`, `visitExists()`, `visitIn()`, `visitRange()`, `visitTerm()`, `visitUnaryOperator()`, and `visitWildcard()`. Binary nodes expose left/right children; unary nodes expose an operand. Call `accept()` on children to traverse them.
 
 AST type names are `BinaryOperator`, `Comparison`, `Exists`, `In`, `Range`, `Term`, `UnaryOperator`, and `Wildcard`. All field nodes retain external names. `WildcardNode::getField()` can be null for a bare term; `getOperator()` returns `=` or `!=`; `getSegments()` returns literal segments, with runs of unquoted asterisks collapsed.
 
@@ -76,3 +76,39 @@ assert($parser->build('like') === [
 ```
 
 A quoted asterisk is literal text inside its segment and is not converted to `%`. Keep field allowlists and bound values in your backend integration; parsing alone does not execute or authorize a database query.
+
+## Source spans and literal values
+
+`getSpan()` returns a readonly `Span` with public `offset` and `length` integers, measured in Unicode code points from the exact query string. It uses the same coordinates as `SearchSyntaxException::getPosition()`. Quotes, a trailing wildcard, and closing range brackets are included. Binary nodes cover both operands, including consumed group delimiters; unary nodes start at `NOT` or `-` and include their operand's closing parenthesis. A group's inner node covers only its inner content. Each generated leaf and join in an expanded wildcard list covers the whole field clause.
+
+Every node constructor accepts an optional trailing `span: null|Span` argument; direct constructions default to null. `TermNode` also accepts `quoted: bool = false` before `span`, and exposes `isQuoted()`. Default-generated nodes and joins have null spans, so consumers can distinguish them from typed clauses. Neither built-in adapter emits spans. `RangeNode::getFrom()` and `getTo()` return null for open bounds and scalar values for literal bounds, including a quoted `*`.
+
+```php
+use HosmelQ\SearchSyntaxParser\SearchParser;
+
+$node = SearchParser::query('  title:"Café"')->parse();
+
+assert($node->getSpan()->offset === 2);
+assert($node->getSpan()->length === 12);
+assert(SearchParser::query('"Cold Brew"')->parse()->isQuoted());
+assert(SearchParser::query('price:[* TO 10]')->parse()->getFrom() === null);
+```
+
+Adapters can report unsupported operations with a subclass of `SearchSyntaxException`. Its public constructor accepts the message, an `ErrorReason`, an array of parameters, and an optional character position.
+
+```php
+use HosmelQ\SearchSyntaxParser\Exception\ErrorReason;
+use HosmelQ\SearchSyntaxParser\Exception\SearchSyntaxException;
+
+final class UnsupportedQueryException extends SearchSyntaxException {}
+
+$exception = new UnsupportedQueryException(
+    'Ranges are not supported by this adapter.',
+    ErrorReason::Unsupported,
+    ['field' => 'price'],
+    0,
+);
+
+assert($exception->getReason() === ErrorReason::Unsupported);
+assert($exception->getParameters() === ['field' => 'price']);
+```

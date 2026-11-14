@@ -116,6 +116,7 @@ readonly class ArrayAdapter extends AbstractAdapter
     public function visitTerm(TermNode $node): array
     {
         return [
+            'quoted' => $node->isQuoted(),
             'type' => 'term',
             'value' => $node->getValue(),
         ];

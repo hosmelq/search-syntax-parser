@@ -6,12 +6,21 @@ namespace HosmelQ\SearchSyntaxParser\Exception;
 
 class InvalidFieldException extends SearchSyntaxException
 {
+    /**
+     * @param list<string> $allowedFields
+     */
     public function __construct(
         string $message,
         private readonly string $field,
         null|int $position = null,
+        array $allowedFields = [],
     ) {
-        parent::__construct($message, $position);
+        parent::__construct(
+            $message,
+            ErrorReason::FieldNotAllowed,
+            ['field' => $field, 'allowed' => $allowedFields],
+            $position,
+        );
     }
 
     /**
@@ -28,7 +37,7 @@ class InvalidFieldException extends SearchSyntaxException
             "Field '%s' is not allowed. Allowed fields are: %s.",
             $field,
             implode(', ', $allowedFields),
-        ), $field, $position);
+        ), $field, $position, $allowedFields);
     }
 
     public function getField(): string

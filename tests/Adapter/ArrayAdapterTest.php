@@ -28,6 +28,7 @@ it('maps binary node recursively', function (): void {
         ],
         'operator' => 'AND',
         'right' => [
+            'quoted' => false,
             'type' => 'term',
             'value' => 'coffee',
         ],
@@ -101,6 +102,7 @@ it('maps term node', function (): void {
     $node = new TermNode('coffee');
 
     expect($adapter->build($node))->toBe([
+        'quoted' => false,
         'type' => 'term',
         'value' => 'coffee',
     ]);

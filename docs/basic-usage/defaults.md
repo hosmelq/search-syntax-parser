@@ -44,4 +44,21 @@ assert(SearchParser::query('   ')->allowedFields([
 
 Empty and whitespace-only queries return just the defaults when any exist. Without defaults, they still throw `Empty search query.`
 
-Defaults are trusted application configuration: they bypass field casting, validation, and clause/depth limits. The raw input still obeys the query length limit. A default string containing `*` is literal text rather than a wildcard pattern. Defaults can be overridden by a query reference, so enforce mandatory access filters separately from defaults.
+Defaults are trusted application configuration: they bypass field casting, aliases, validation, per-field operator and clause restrictions, and clause/depth limits. The raw input still obeys the query length limit. A default string containing `*` is literal text rather than a wildcard pattern. Defaults can be overridden by a query reference, so enforce mandatory access filters separately from defaults.
+
+## Source spans
+
+Every node created while applying defaults has a null `getSpan()`, including generated AND joins and the NOT/exists pair for a null default. Nodes parsed from typed clauses retain their original spans. Consumers can use the null span to distinguish generated defaults from typed clauses; spans are omitted from array and string output.
+
+```php
+use HosmelQ\SearchSyntaxParser\SearchParser;
+use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
+
+$node = SearchParser::query('coffee')->allowedFields([
+    AllowedField::string('status')->default('active'),
+])->parse();
+
+assert($node->getSpan() === null);
+assert($node->getLeft()->getSpan()->length === 6);
+assert($node->getRight()->getSpan() === null);
+```

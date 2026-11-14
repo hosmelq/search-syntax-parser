@@ -19,7 +19,7 @@ use HosmelQ\SearchSyntaxParser\SearchParser;
 
 $result = SearchParser::query('coffee')->build();
 
-assert($result === ['type' => 'term', 'value' => 'coffee']);
+assert($result === ['quoted' => false, 'type' => 'term', 'value' => 'coffee']);
 ```
 
 Continue with [query syntax](basic-usage/query-syntax) or configure [field validation and value types](basic-usage/field-validation-and-value-types).

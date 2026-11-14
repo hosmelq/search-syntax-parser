@@ -13,6 +13,7 @@ use HosmelQ\SearchSyntaxParser\AST\Node\RangeNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\TermNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\UnaryOperatorNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\WildcardNode;
+use HosmelQ\SearchSyntaxParser\AST\Span;
 use HosmelQ\SearchSyntaxParser\Exception\InvalidFieldException;
 use HosmelQ\SearchSyntaxParser\Exception\InvalidFieldValueException;
 use HosmelQ\SearchSyntaxParser\Exception\ParseException;
@@ -20,6 +21,7 @@ use HosmelQ\SearchSyntaxParser\Lexer\SearchLexer;
 use HosmelQ\SearchSyntaxParser\Lexer\Tokens;
 use HosmelQ\SearchSyntaxParser\Lexer\TokenType;
 use HosmelQ\SearchSyntaxParser\SearchParser;
+use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
 use HosmelQ\SearchSyntaxParser\Validation\AllowedFieldItemRules;
 
 /**
@@ -30,8 +32,6 @@ class Parser
     private int $clauses = 0;
 
     private int $index = 0;
-
-    private string $input = '';
 
     /**
      * Literal segments of the most recently parsed value, or null for a literal value.
@@ -55,7 +55,6 @@ class Parser
      */
     public function parse(string $input, bool $allowEmpty = false): null|NodeInterface
     {
-        $this->input = $input;
         $this->tokens = new SearchLexer()->tokenize($input);
         $this->index = 0;
         $this->clauses = 0;
@@ -76,13 +75,6 @@ class Parser
         }
 
         return $ast;
-    }
-
-    private function countClause(int $start): void
-    {
-        if (++$this->clauses > $this->maxClauses) {
-            throw ParseException::maximumClauses($this->maxClauses, $this->position($start));
-        }
     }
 
     /**
@@ -106,49 +98,20 @@ class Parser
     /**
      * @phpstan-impure
      */
-    private function parseComparison(): NodeInterface
-    {
-        $type = $this->tokens->types[$this->index] ?? null;
-        $value = $this->tokens->values[$this->index] ?? '';
-
-        if (
-            (
-                ! in_array($type, [TokenType::Word, TokenType::String, TokenType::Wildcard], true)
-            )
-            || ($type === TokenType::Word && $value === '*')
-        ) {
-            throw ParseException::expectedValue($this->position());
-        }
-
-        $this->countClause($this->index);
-
-        $this->index++;
-
-        $next = $this->tokens->types[$this->index] ?? null;
-
-        if ($type === TokenType::Word && match ($next) {
-            TokenType::Colon, TokenType::Greater, TokenType::GreaterEqual, TokenType::Less, TokenType::LessEqual, TokenType::NotEqual => true,
-            default => false,
-        }) {
-            return $this->parseFieldQuery($value);
-        }
-
-        $segments = $this->wildcardSegments($value, $type);
-
-        return $segments === null ? new TermNode($value) : new WildcardNode(null, '=', $segments);
-    }
-
-    /**
-     * @phpstan-impure
-     */
     private function parseExpression(int $depth): NodeInterface
     {
+        $start = $this->index;
         $left = $this->parseTerm($depth);
 
         while (($this->tokens->types[$this->index] ?? null) === TokenType::Or) {
             $this->index++;
 
-            $left = new BinaryOperatorNode('OR', $left, $this->parseTerm($depth));
+            $left = new BinaryOperatorNode(
+                'OR',
+                $left,
+                $this->parseTerm($depth),
+                $this->span($start),
+            );
         }
 
         return $left;
@@ -159,6 +122,7 @@ class Parser
      */
     private function parseFactor(int $depth): NodeInterface
     {
+        $start = $this->index;
         $type = $this->tokens->types[$this->index] ?? null;
 
         if ($type === null) {
@@ -176,7 +140,11 @@ class Parser
             $this->index++;
 
             if ($type !== TokenType::OpenParenthesis) {
-                return new UnaryOperatorNode('NOT', $this->parseFactor($depth + 1));
+                return new UnaryOperatorNode(
+                    'NOT',
+                    $this->parseFactor($depth + 1),
+                    $this->span($start),
+                );
             }
 
             $expression = $this->parseExpression($depth + 1);
@@ -186,13 +154,44 @@ class Parser
             return $expression;
         }
 
-        return $this->parseComparison();
+        $value = $this->tokens->values[$this->index] ?? '';
+
+        if (
+            (
+                ! in_array($type, [TokenType::Word, TokenType::String, TokenType::Wildcard], true)
+            )
+            || ($type === TokenType::Word && $value === '*')
+        ) {
+            throw ParseException::expectedValue($this->position());
+        }
+
+        if (++$this->clauses > $this->maxClauses) {
+            throw ParseException::maximumClauses($this->maxClauses, $this->position());
+        }
+
+        $this->index++;
+
+        $next = $this->tokens->types[$this->index] ?? null;
+
+        if ($type === TokenType::Word && match ($next) {
+            TokenType::Colon, TokenType::Greater, TokenType::GreaterEqual, TokenType::Less, TokenType::LessEqual, TokenType::NotEqual => true,
+            default => false,
+        }) {
+            return $this->parseFieldQuery($value, $start);
+        }
+
+        $segments = ($type !== TokenType::String && str_contains($value, '*'))
+            ? $this->wildcardSegments($value, $type) : null;
+
+        return $segments === null
+            ? new TermNode($value, $type === TokenType::String, $this->span($start))
+            : new WildcardNode(null, '=', $segments, $this->span($start));
     }
 
     /**
      * @phpstan-impure
      */
-    private function parseFieldQuery(string $field): NodeInterface
+    private function parseFieldQuery(string $field, int $start): NodeInterface
     {
         if (! $this->searchParser->isFieldAllowed($field)) {
             throw InvalidFieldException::fieldNotAllowed(
@@ -202,13 +201,16 @@ class Parser
             );
         }
 
+        $allowed = $this->searchParser->getAllowedField($field);
         $hasColon = ($this->tokens->types[$this->index] ?? null) === TokenType::Colon;
 
         if ($hasColon) {
             $this->index++;
 
             if (($this->tokens->types[$this->index] ?? null) === TokenType::OpenBracket) {
-                return $this->parseRange($field);
+                $allowed?->assertClauseAllowed('ranges', $this->position());
+
+                return $this->parseRange($field, $start, $allowed);
             }
         }
 
@@ -222,7 +224,50 @@ class Parser
         };
 
         if ($operator !== '=') {
+            $operatorIndex = $this->index;
+
             $this->index++;
+        } else {
+            $operatorIndex = $this->index;
+        }
+
+        if ($allowed instanceof AllowedField) {
+            $rulePosition = $this->position($operatorIndex);
+
+            // Inspect the whole clause before any alias, cast, or value validator runs.
+            $scan = $this->index;
+            $exists = ($this->tokens->types[$scan] ?? null) === TokenType::Word
+                && $this->tokens->values[$scan] === '*';
+
+            if ($exists) {
+                $allowed->assertClauseAllowed('exists', $rulePosition);
+            } else {
+                $allowed->assertOperatorAllowed($operator, $rulePosition);
+
+                do {
+                    $type = $this->tokens->types[$scan] ?? null;
+                    $patternIndex = $type === TokenType::Minus ? $scan + 1 : $scan;
+                    $patternType = $this->tokens->types[$patternIndex] ?? null;
+
+                    if ($patternType === TokenType::Wildcard
+                        || (
+                            $patternType === TokenType::Word
+                            && str_contains($this->tokens->values[$patternIndex], '*')
+                        )) {
+                        $allowed->assertClauseAllowed('wildcards', $rulePosition);
+                    }
+
+                    $scan += $type === TokenType::Minus ? 2 : 1;
+
+                    if (($this->tokens->types[$scan] ?? null) !== TokenType::Comma || ! $hasColon) {
+                        break;
+                    }
+
+                    $allowed->assertClauseAllowed('lists', $rulePosition);
+
+                    $scan++;
+                } while (true);
+            }
         }
 
         if (
@@ -235,11 +280,11 @@ class Parser
 
             $this->index++;
 
-            return new ExistsNode($field);
+            return new ExistsNode($field, $this->span($start));
         }
 
         $valueIndex = $this->index;
-        $value = $this->parseValue($field);
+        $value = $this->parseValue($field, $allowed);
         $segments = $this->segments;
 
         if ($hasColon && ($this->tokens->types[$this->index] ?? null) === TokenType::Comma) {
@@ -252,7 +297,7 @@ class Parser
                 $this->index++;
 
                 $starts[] = $this->index;
-                $values[] = $this->parseValue($field, count($values));
+                $values[] = $this->parseValue($field, $allowed, count($values));
                 $patterns[] = $this->segments;
                 $hasPattern = $hasPattern || $this->segments !== null;
             } while (($this->tokens->types[$this->index] ?? null) === TokenType::Comma);
@@ -271,23 +316,29 @@ class Parser
             $this->validateValue($field, $values, $valueIndex);
 
             if (! $hasPattern) {
-                return new InNode($field, $operator, $values);
+                return new InNode($field, $operator, $values, $this->span($start));
             }
 
             $left = null;
+            $span = $this->span($start);
 
             foreach ($values as $index => $item) {
                 if ($index > 0) {
-                    $this->countClause($starts[$index]);
+                    if (++$this->clauses > $this->maxClauses) {
+                        throw ParseException::maximumClauses(
+                            $this->maxClauses,
+                            $this->position($starts[$index]),
+                        );
+                    }
                 }
 
                 $pattern = $patterns[$index];
                 $node = $pattern === null
-                    ? new ComparisonNode($field, $operator, $item)
-                    : new WildcardNode($field, $operator, $pattern);
+                    ? new ComparisonNode($field, $operator, $item, $span)
+                    : new WildcardNode($field, $operator, $pattern, $span);
                 $left = $left === null
                     ? $node
-                    : new BinaryOperatorNode($operator === '=' ? 'OR' : 'AND', $left, $node);
+                    : new BinaryOperatorNode($operator === '=' ? 'OR' : 'AND', $left, $node, $span);
             }
 
             return $left;
@@ -300,20 +351,20 @@ class Parser
         $this->validateValue($field, $value, $valueIndex);
 
         return $segments === null
-            ? new ComparisonNode($field, $operator, $value)
-            : new WildcardNode($field, $operator, $segments);
+            ? new ComparisonNode($field, $operator, $value, $this->span($start))
+            : new WildcardNode($field, $operator, $segments, $this->span($start));
     }
 
     /**
      * @phpstan-impure
      */
-    private function parseRange(string $field): RangeNode
+    private function parseRange(string $field, int $start, null|AllowedField $allowed): RangeNode
     {
         $valueIndex = $this->index;
 
         $this->index++;
 
-        $from = $this->parseRangeBound($field);
+        $from = $this->parseRangeBound($field, $allowed);
         $separator = $this->tokens->types[$this->index] ?? null;
 
         if (
@@ -329,7 +380,7 @@ class Parser
 
         $this->index++;
 
-        $to = $this->parseRangeBound($field);
+        $to = $this->parseRangeBound($field, $allowed);
 
         $this->match(TokenType::CloseBracket);
 
@@ -339,7 +390,7 @@ class Parser
             }
         }
 
-        return new RangeNode($field, $from ?? '*', $to ?? '*');
+        return new RangeNode($field, $from, $to, $this->span($start));
     }
 
     /**
@@ -347,8 +398,10 @@ class Parser
      *
      * @phpstan-impure
      */
-    private function parseRangeBound(string $field): null|bool|float|int|string
-    {
+    private function parseRangeBound(
+        string $field,
+        null|AllowedField $allowed,
+    ): null|bool|float|int|string {
         if (
             ($this->tokens->types[$this->index] ?? null) === TokenType::Word
             && $this->tokens->values[$this->index] === '*'
@@ -359,9 +412,9 @@ class Parser
         }
 
         $start = $this->index;
-        $value = $this->parseValue($field);
+        $value = $this->parseValue($field, $allowed);
 
-        if ($this->segments !== null || (is_string($value) && str_contains($value, '*'))) {
+        if ($this->segments !== null) {
             throw ParseException::invalidWildcardPattern($this->position($start));
         }
 
@@ -373,6 +426,7 @@ class Parser
      */
     private function parseTerm(int $depth): NodeInterface
     {
+        $start = $this->index;
         $left = $this->parseFactor($depth);
 
         while (true) {
@@ -387,7 +441,12 @@ class Parser
                 break;
             }
 
-            $left = new BinaryOperatorNode('AND', $left, $this->parseFactor($depth));
+            $left = new BinaryOperatorNode(
+                'AND',
+                $left,
+                $this->parseFactor($depth),
+                $this->span($start),
+            );
         }
 
         return $left;
@@ -396,8 +455,11 @@ class Parser
     /**
      * @phpstan-impure
      */
-    private function parseValue(string $field, int $index = 0): bool|float|int|string
-    {
+    private function parseValue(
+        string $field,
+        null|AllowedField $allowed,
+        int $index = 0,
+    ): bool|float|int|string {
         $type = $this->tokens->types[$this->index] ?? null;
 
         if ($type === null) {
@@ -417,7 +479,7 @@ class Parser
 
             if (
                 ($this->tokens->types[$next] ?? null) !== TokenType::Word
-                || $this->tokens->offsets[$next] !== $this->tokens->offsets[$this->index] + 1
+                || $this->tokens->offsets[$next] !== $this->tokens->ends[$this->index]
             ) {
                 throw ParseException::expectedValue($this->position());
             }
@@ -434,8 +496,8 @@ class Parser
 
         $this->index++;
 
-        $this->segments = $this->wildcardSegments($value, $type);
-        $allowed = $this->searchParser->getAllowedField($field);
+        $this->segments = ($type !== TokenType::String && str_contains($value, '*'))
+            ? $this->wildcardSegments($value, $type) : null;
 
         return $allowed?->cast($value, $quoted, $index)
             ?? AllowedFieldItemRules::infer($value, $quoted);
@@ -443,11 +505,14 @@ class Parser
 
     private function position(null|int $index = null): int
     {
-        $offset = $this->tokens->offsets[$index ?? $this->index] ?? null;
+        return $this->tokens->offsets[$index ?? $this->index] ?? $this->tokens->length;
+    }
 
-        return $offset === null
-            ? mb_strlen($this->input)
-            : mb_strlen(mb_strcut($this->input, 0, $offset));
+    private function span(int $start): Span
+    {
+        $offset = $this->tokens->offsets[$start];
+
+        return new Span($offset, $this->tokens->ends[$this->index - 1] - $offset);
     }
 
     /**
@@ -464,16 +529,12 @@ class Parser
     }
 
     /**
-     * @return null|list<string>
+     * @return list<string>
      */
-    private function wildcardSegments(string $value, TokenType $type): null|array
+    private function wildcardSegments(string $value, TokenType $type): array
     {
         if ($type === TokenType::Wildcard) {
             return [mb_substr($value, 0, -1), ''];
-        }
-
-        if ($type === TokenType::String || ! str_contains($value, '*')) {
-            return null;
         }
 
         $segments = preg_split('/\*+/', $value);

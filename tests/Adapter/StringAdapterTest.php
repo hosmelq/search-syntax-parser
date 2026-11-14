@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use HosmelQ\SearchSyntaxParser\Adapter\StringAdapter;
 use HosmelQ\SearchSyntaxParser\AST\Node\ComparisonNode;
+use HosmelQ\SearchSyntaxParser\AST\Node\TermNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\WildcardNode;
 use HosmelQ\SearchSyntaxParser\SearchParser;
 use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
@@ -79,3 +80,9 @@ it('rejects wildcard segments that the grammar cannot express', function (array 
 })->throws(LogicException::class)->with([
     [['a', 'b c']], [['a b', 'c']], [['a*b', 'c']], [['a']], [[]], [['a', '', 'b']],
 ]);
+
+it('quotes programmatic terms whose text needs literal syntax', function (string $value): void {
+    $text = new StringAdapter()->build(new TermNode($value));
+
+    expect(SearchParser::query($text)->parse()->getValue())->toBe($value);
+})->with(['', 'a b', '*', 'co*fee', 'AND', '-coffee']);

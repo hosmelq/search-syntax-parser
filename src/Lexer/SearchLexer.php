@@ -41,20 +41,27 @@ final class SearchLexer
                 : ParseException::tokenizationFailed();
         }
 
-        // Capture whitespace and accumulate byte lengths instead of allocating offset tuples.
+        // ASCII byte offsets are already Unicode code point offsets.
+        $encoding = preg_match('/[\x80-\xff]/', $input) === 0 ? '8bit' : 'UTF-8';
         $types = [];
         $values = [];
         $offsets = [];
+        $ends = [];
         $offset = 0;
 
         foreach ($matches[0] as $index => $value) {
-            $offset += mb_strlen($matches[1][$index], '8bit');
+            $whitespace = $matches[1][$index];
+
+            if ($whitespace !== '') {
+                $offset += mb_strlen($whitespace, $encoding);
+            }
+
             $start = $offset;
-            $offset += mb_strlen($value, '8bit');
+            $offset += isset($value[1]) ? mb_strlen($value, $encoding) : 1;
             $kind = $matches['MARK'][$index] ?? '';
 
             if ($kind === 'e') {
-                throw ParseException::unterminatedQuote(mb_strlen(mb_strcut($input, 0, $start)));
+                throw ParseException::unterminatedQuote($start);
             }
 
             $type = match ($kind) {
@@ -95,8 +102,15 @@ final class SearchLexer
             $types[] = $type;
             $values[] = $value;
             $offsets[] = $start;
+            $ends[] = $offset;
         }
 
-        return new Tokens($types, $values, $offsets);
+        return new Tokens(
+            $types,
+            $values,
+            $offsets,
+            $ends,
+            mb_strlen($input, $encoding),
+        );
     }
 }

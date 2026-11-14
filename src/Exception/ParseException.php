@@ -8,7 +8,7 @@ class ParseException extends SearchSyntaxException
 {
     public static function emptyQuery(): self
     {
-        return new self('Empty search query.');
+        return new self('Empty search query.', ErrorReason::EmptyQuery, []);
     }
 
     public static function expectedToken(
@@ -18,24 +18,28 @@ class ParseException extends SearchSyntaxException
     ): self {
         return new self(
             sprintf('Unexpected token, expected %s but got %s.', $expected, $actual),
+            ErrorReason::ExpectedToken,
+            ['expected' => $expected, 'actual' => $actual],
             $position,
         );
     }
 
     public static function expectedValue(null|int $position = null): self
     {
-        return new self('Expected value.', $position);
+        return new self('Expected value.', ErrorReason::ExpectedValue, [], $position);
     }
 
     public static function invalidUtf8(): self
     {
-        return new self('Search query must be valid UTF-8.');
+        return new self('Search query must be valid UTF-8.', ErrorReason::InvalidUtf8, []);
     }
 
     public static function invalidWildcardPattern(null|int $position = null): self
     {
         return new self(
             "Wildcard patterns are only supported with '=' or '!=' and cannot be range bounds.",
+            ErrorReason::InvalidWildcardPattern,
+            [],
             $position,
         );
     }
@@ -45,13 +49,15 @@ class ParseException extends SearchSyntaxException
         return new self(sprintf(
             "Wildcard is only supported with ':' for exists queries; use NOT %s:* for negation.",
             $field,
-        ), $position);
+        ), ErrorReason::InvalidWildcardUsage, ['field' => $field], $position);
     }
 
     public static function maximumClauses(int $limit, int $position): self
     {
         return new self(
             sprintf('Search query exceeds the maximum of %d clauses.', $limit),
+            ErrorReason::MaximumClauses,
+            ['limit' => $limit],
             $position,
         );
     }
@@ -60,6 +66,8 @@ class ParseException extends SearchSyntaxException
     {
         return new self(
             sprintf('Search query exceeds the maximum depth of %d.', $limit),
+            ErrorReason::MaximumDepth,
+            ['limit' => $limit],
             $position,
         );
     }
@@ -68,27 +76,48 @@ class ParseException extends SearchSyntaxException
     {
         return new self(
             sprintf('Search query exceeds the maximum length of %d characters.', $limit),
+            ErrorReason::MaximumLength,
+            ['limit' => $limit],
             $limit,
         );
     }
 
     public static function tokenizationFailed(): self
     {
-        return new self('Search query is too complex to tokenize.');
+        return new self(
+            'Search query is too complex to tokenize.',
+            ErrorReason::TokenizationFailed,
+            [],
+        );
     }
 
     public static function unexpectedEndOfInput(null|int $position = null): self
     {
-        return new self('Unexpected end of input.', $position);
+        return new self(
+            'Unexpected end of input.',
+            ErrorReason::UnexpectedEndOfInput,
+            [],
+            $position,
+        );
     }
 
     public static function unexpectedToken(string $token, null|int $position = null): self
     {
-        return new self(sprintf('Unexpected token after query: %s.', $token), $position);
+        return new self(
+            sprintf('Unexpected token after query: %s.', $token),
+            ErrorReason::UnexpectedToken,
+            ['token' => $token],
+            $position,
+        );
     }
 
     public static function unterminatedQuote(int $position): self
     {
-        return new self('Unterminated quoted string.', $position);
+        return new self(
+            'Unterminated quoted string.',
+            ErrorReason::UnterminatedQuote,
+            [],
+            $position,
+        );
     }
 }

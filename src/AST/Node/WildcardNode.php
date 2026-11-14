@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace HosmelQ\SearchSyntaxParser\AST\Node;
 
+use HosmelQ\SearchSyntaxParser\AST\Span;
 use HosmelQ\SearchSyntaxParser\AST\Visitor\VisitorInterface;
 use Override;
 
@@ -16,6 +17,7 @@ final readonly class WildcardNode implements NodeInterface
         private null|string $field,
         private string $operator,
         private array $segments,
+        private null|Span $span = null,
     ) {}
 
     #[Override]
@@ -40,6 +42,12 @@ final readonly class WildcardNode implements NodeInterface
     public function getSegments(): array
     {
         return $this->segments;
+    }
+
+    #[Override]
+    public function getSpan(): null|Span
+    {
+        return $this->span;
     }
 
     #[Override]

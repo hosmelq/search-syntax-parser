@@ -81,14 +81,17 @@ final readonly class StringAdapter implements QueryAdapterInterface, VisitorInte
     public function visitRange(RangeNode $node): string
     {
         return $node->getField().':['
-            .($node->getFrom() === '*' ? '*' : $this->value($node->getFrom()))
-            .' TO '.($node->getTo() === '*' ? '*' : $this->value($node->getTo())).']';
+            .($node->getFrom() === null ? '*' : $this->value($node->getFrom()))
+            .' TO '.($node->getTo() === null ? '*' : $this->value($node->getTo())).']';
     }
 
     #[Override]
     public function visitTerm(TermNode $node): string
     {
-        return $this->value($node->getValue());
+        $value = $node->getValue();
+
+        return $node->isQuoted() || ! $this->canBeBare($value) || str_contains($value, '*')
+            ? $this->quote($value) : $value;
     }
 
     #[Override]

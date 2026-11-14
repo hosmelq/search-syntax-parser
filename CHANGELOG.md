@@ -11,6 +11,9 @@ This release includes breaking changes to operators, wildcard AST nodes, excepti
 
 ### Added
 
+- Expose optional Unicode source spans on every AST node; parsed clauses retain their exact source extent and default-generated nodes have null spans.
+- Add per-field comparison operator restrictions, clause restrictions, and scalar or deferred value aliases validated after resolution.
+- Add `InvalidFieldOperatorException` and machine-readable `ErrorReason` values and parameters on all query exceptions, including an extensible constructor for adapters.
 - Apply trusted field defaults to the AST when their external field is absent, including null defaults for missing fields, scalar comparisons, and non-empty lists. Empty queries can build defaults alone.
 - Add the built-in `string` adapter to serialize ASTs with explicit operators, quoting, external field names, wildcard patterns, and preserved grouping.
 - Add `SearchSyntaxException` as the common runtime exception base, Unicode character positions on query errors, and external field accessors on field exceptions.
@@ -19,6 +22,9 @@ This release includes breaking changes to operators, wildcard AST nodes, excepti
 
 ### Changed
 
+- Represent open range bounds as null in AST and array output; quoted asterisks are literal bounds that are cast and validated.
+- Preserve the quoted flag on terms through the AST, array output, and string round trips.
+- Store token starts and ends in Unicode code points with one ASCII check per query, keeping negative value adjacency in the same coordinates.
 - Recognize `AND`, `OR`, `NOT`, and the range separator `TO` only in uppercase; other casing is ordinary query text.
 - Represent unquoted wildcard terms and field patterns with `WildcardNode`, add `visitWildcard()` to visitors, collapse wildcard runs, and keep quoted asterisks literal. A quoted prefix followed by `*` is a pattern.
 - Expand lists containing patterns into OR for equality or AND for inequality, counting every expanded leaf toward the clause limit. Reject patterns in ordering comparisons and range bounds.

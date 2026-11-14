@@ -39,7 +39,7 @@ it('builds explicit wildcard patterns', function (
 it('keeps quoted wildcard text literal', function (string $query, array $expected): void {
     expect(SearchParser::query($query)->build())->toBe($expected);
 })->with([
-    ['"co*fee"', ['type' => 'term', 'value' => 'co*fee']],
+    ['"co*fee"', ['quoted' => true, 'type' => 'term', 'value' => 'co*fee']],
     ['name:"*"', ['field' => 'name', 'operator' => '=', 'type' => 'comparison', 'value' => '*']],
     [
         'name:"nike*"',
@@ -103,7 +103,6 @@ it('rejects wildcard comparison and range patterns', function (string $query): v
 })->throws(ParseException::class, 'Wildcard patterns are only supported')->with([
     'name:>jo*', 'name>=jo*', 'name:<"a b"*', 'name:<=*fee',
     'name:>a,jo*', 'name:>=jo*,a', 'name:[jo* TO z]', 'name:[a TO z*]',
-    'name:["jo*" TO z]', 'name:[a TO "*"]',
 ]);
 
 it('rejects an exact wildcard outside exists and open bounds', function (string $query): void {

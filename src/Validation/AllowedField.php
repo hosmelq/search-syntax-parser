@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace HosmelQ\SearchSyntaxParser\Validation;
 
 use BackedEnum;
+use Closure;
+use HosmelQ\SearchSyntaxParser\Exception\InvalidFieldOperatorException;
 use InvalidArgumentException;
 
 class AllowedField
@@ -53,6 +55,21 @@ class AllowedField
     protected bool $nullable = false;
 
     protected AllowedFieldItemRules $rules;
+
+    /**
+     * @var array<string, bool|Closure|float|int|string>
+     */
+    private array $aliases = [];
+
+    /**
+     * @var array<string, true>
+     */
+    private array $disabledClauses = [];
+
+    /**
+     * @var null|list<string>
+     */
+    private null|array $operators = null;
 
     /**
      * Create a new field with the specified name.
@@ -202,6 +219,44 @@ class AllowedField
     }
 
     /**
+     * Replace an exact unquoted value with a scalar, or with the result of a closure called at parse time.
+     */
+    public function alias(string $token, bool|Closure|float|int|string $value): self
+    {
+        $this->aliases[$token] = $value;
+
+        return $this;
+    }
+
+    /**
+     * Throw when the clause kind is disabled for this field.
+     *
+     * @internal
+     */
+    public function assertClauseAllowed(string $clause, int $position): void
+    {
+        if (isset($this->disabledClauses[$clause])) {
+            throw InvalidFieldOperatorException::clauseNotAllowed($this->name, $clause, $position);
+        }
+    }
+
+    /**
+     * Throw when the operator is not allowed for this field.
+     *
+     * @internal
+     */
+    public function assertOperatorAllowed(string $operator, int $position): void
+    {
+        if ($this->operators !== null && ! in_array($operator, $this->operators, true)) {
+            throw InvalidFieldOperatorException::operatorNotAllowed(
+                $this->name,
+                $operator,
+                $position,
+            );
+        }
+    }
+
+    /**
      * Configure validators that apply to a specific item index when the value is an array.
      *
      * @param callable(AllowedFieldItemRules $rules): (AllowedFieldItemRules|void) $callback
@@ -230,6 +285,19 @@ class AllowedField
      */
     public function cast(string $value, bool $quoted, int $index = 0): bool|float|int|string
     {
+        if (! $quoted && array_key_exists($value, $this->aliases)) {
+            $alias = $this->aliases[$value];
+            $resolved = $alias instanceof Closure ? $alias() : $alias;
+
+            if (! is_scalar($resolved)) {
+                throw new InvalidArgumentException(
+                    'A value alias must resolve to a bool, float, int, or string.',
+                );
+            }
+
+            return $resolved;
+        }
+
         if ($this->expectsArray) {
             return isset($this->indexItemRules[$index])
                 ? $this->indexItemRules[$index]->cast($value, $quoted, $this->itemRules)
@@ -370,6 +438,24 @@ class AllowedField
     }
 
     /**
+     * Restrict the comparison operators accepted by comparisons, lists and wildcard patterns.
+     */
+    public function operators(string ...$operators): self
+    {
+        foreach ($operators as $operator) {
+            if (! in_array($operator, ['=', '!=', '>', '>=', '<', '<='], true)) {
+                throw new InvalidArgumentException(
+                    sprintf("Unknown comparison operator '%s'.", $operator),
+                );
+            }
+        }
+
+        $this->operators = array_values($operators);
+
+        return $this;
+    }
+
+    /**
      * Add an exact size constraint.
      */
     public function size(float|int $value): self
@@ -411,6 +497,46 @@ class AllowedField
         }
 
         return true;
+    }
+
+    /**
+     * Reject exists queries such as field:* for this field.
+     */
+    public function withoutExists(): self
+    {
+        $this->disabledClauses['exists'] = true;
+
+        return $this;
+    }
+
+    /**
+     * Reject comma-separated lists for this field.
+     */
+    public function withoutLists(): self
+    {
+        $this->disabledClauses['lists'] = true;
+
+        return $this;
+    }
+
+    /**
+     * Reject range queries such as field:[a TO b] for this field.
+     */
+    public function withoutRanges(): self
+    {
+        $this->disabledClauses['ranges'] = true;
+
+        return $this;
+    }
+
+    /**
+     * Reject wildcard patterns such as field:abc* for this field.
+     */
+    public function withoutWildcards(): self
+    {
+        $this->disabledClauses['wildcards'] = true;
+
+        return $this;
     }
 
     /**

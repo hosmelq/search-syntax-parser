@@ -11,7 +11,12 @@ class InvalidFieldValueException extends SearchSyntaxException
         private readonly string $field,
         null|int $position = null,
     ) {
-        parent::__construct($message, $position);
+        parent::__construct(
+            $message,
+            ErrorReason::InvalidFieldValue,
+            ['field' => $field],
+            $position,
+        );
     }
 
     /**

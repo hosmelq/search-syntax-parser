@@ -4,7 +4,7 @@ description: "Catch parser and field errors through one exception base and locat
 weight: 5
 ---
 
-Catch `SearchSyntaxException` to handle all query errors. It extends `RuntimeException` and exposes `getPosition()`. `ParseException`, `InvalidFieldException`, and `InvalidFieldValueException` extend this common base; the field exceptions also expose `getField()` using the external query name.
+Catch `SearchSyntaxException` to handle all query errors. It extends `RuntimeException` and exposes `getPosition()`, `getReason()`, and `getParameters()`. `ParseException`, `InvalidFieldException`, `InvalidFieldValueException`, and `InvalidFieldOperatorException` extend this common base; the field exceptions also expose `getField()` using the external query name.
 
 ```php
 use HosmelQ\SearchSyntaxParser\Exception\SearchSyntaxException;
@@ -34,13 +34,49 @@ Positions are zero-based Unicode code point offsets in the exact original string
 | Maximum depth | The `(`, `NOT`, or `-` token that exceeds the limit. |
 | Too many clauses | First token of the clause that exceeds the limit; an expanded list uses the item's token. |
 | Field not allowed | Field token. |
+| Disallowed operator or clause | Explicit comparison operator token, or the value start when no explicit operator exists. |
 | Invalid field value | First value token; the first list item for lists, or `[` for ranges. |
 | Empty query, invalid UTF-8, or a PCRE failure | Null because no position applies. |
 
 Exception messages remain descriptive and can be displayed alongside a highlighted query location.
 
+## Error reasons and parameters
+
+`getReason()` returns the backed `ErrorReason` enum; its snake_case `value` is suitable for application error codes. `getParameters()` returns an array keyed by strings with null, scalar, or string-list values, so applications can translate messages without parsing their English text. Existing exception messages remain unchanged.
+
+| Reason value | Parameters |
+| --- | --- |
+| `empty_query` | None |
+| `unexpected_token` | `token` |
+| `expected_token` | `expected`, `actual` token names |
+| `expected_value` | None |
+| `unexpected_end_of_input` | None |
+| `unterminated_quote` | None |
+| `invalid_utf8` | None |
+| `tokenization_failed` | None |
+| `invalid_wildcard_usage` | `field` |
+| `invalid_wildcard_pattern` | None |
+| `maximum_length`, `maximum_depth`, `maximum_clauses` | `limit` |
+| `field_not_allowed` | `field`, `allowed` field-name list |
+| `invalid_field_value` | `field` |
+| `operator_not_allowed` | `field` and either `operator` or `clause` |
+| `unsupported` | Defined by a third-party adapter |
+
+```php
+use HosmelQ\SearchSyntaxParser\Exception\ErrorReason;
+use HosmelQ\SearchSyntaxParser\Exception\SearchSyntaxException;
+use HosmelQ\SearchSyntaxParser\SearchParser;
+
+try {
+    SearchParser::query('coffee )')->parse();
+} catch (SearchSyntaxException $exception) {
+    assert($exception->getReason() === ErrorReason::UnexpectedToken);
+    assert($exception->getParameters() === ['token' => ')']);
+}
+```
+
 ## Programmer errors
 
-Unknown adapters, non-positive limits, invalid defaults, and non-backed enum rules throw `InvalidArgumentException`. They indicate invalid application configuration rather than a user's query error. A string adapter asked to serialize an unrepresentable wildcard throws `LogicException`.
+Unknown adapters, non-positive limits, invalid defaults, unknown configured operators, nonscalar alias closure results, and non-backed enum rules throw `InvalidArgumentException`. They indicate invalid application configuration rather than a user's query error. A string adapter asked to serialize an unrepresentable wildcard throws `LogicException`.
 
 Read [query limits and untrusted input](../advanced-usage/query-limits-and-untrusted-input) for limits that bound parser work.

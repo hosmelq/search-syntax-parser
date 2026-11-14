@@ -127,3 +127,44 @@ assert($parser->build('string') === 'age:10');
 ```
 
 For collections and tuples, see [array fields](array-fields). Validation failures expose the field and its position as described in [error handling](error-handling).
+
+## Operators and clause restrictions
+
+All comparison operators and clause kinds are allowed by default. `operators()` restricts comparisons, lists, and wildcard patterns to a subset of `=`, `!=`, `>`, `>=`, `<`, and `<=`. Passing no operators permits none of those comparisons; an unknown operator throws `InvalidArgumentException`. Ranges and existence checks have their own controls. Use `withoutLists()`, `withoutRanges()`, `withoutWildcards()`, and `withoutExists()` to reject those forms. Literal asterisks inside quotes are allowed when wildcard patterns are disabled.
+
+Restrictions run before aliases, casting, and value validation. A violation throws `InvalidFieldOperatorException` with the external field name and the explicit comparison operator's position, or the value start when no explicit operator exists. A range starts at `[`. Trusted defaults bypass these restrictions.
+
+```php
+use HosmelQ\SearchSyntaxParser\SearchParser;
+use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
+
+$status = AllowedField::in('status', ['active', 'draft'])
+    ->operators('=', '!=')
+    ->withoutRanges()
+    ->withoutWildcards()
+    ->withoutExists();
+
+assert(SearchParser::query('status:active,draft')->allowedFields([$status])->parse()->getValues() === ['active', 'draft']);
+```
+
+## Value aliases
+
+`alias($token, $value)` resolves an exact, case-sensitive unquoted field value before casting. The alias may be a boolean, float, integer, string, or a closure called without arguments at parse time. The result bypasses casting and still passes through the field's validators, including per-item array rules. Closures must return one of those scalar types; other returns throw `InvalidArgumentException`.
+
+Aliases apply to comparisons, list items, and both range bounds. Quoted text never matches an alias, and a closure runs again each time the query is parsed. Open `*` bounds remain null and bypass aliases. Defaults are trusted values and do not resolve aliases.
+
+```php
+use HosmelQ\SearchSyntaxParser\SearchParser;
+use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
+
+$userId = 42;
+$owner = AllowedField::integer('owner')->alias('@me', fn (): int => $userId);
+$enabled = AllowedField::boolean('enabled')->alias('yes', true);
+
+assert(SearchParser::query('owner:@me')->allowedFields([$owner])->parse()->getValue() === 42);
+assert(SearchParser::query('enabled:yes')->allowedFields([$enabled])->parse()->getValue() === true);
+assert(SearchParser::query('owner:[@me TO *]')->allowedFields([$owner])->parse()->getFrom() === 42);
+assert(SearchParser::query('label:"yes"')->allowedFields([
+    AllowedField::string('label')->alias('yes', 'resolved'),
+])->parse()->getValue() === 'yes');
+```
