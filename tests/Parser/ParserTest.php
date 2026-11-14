@@ -13,7 +13,7 @@ use HosmelQ\SearchSyntaxParser\AST\Node\WildcardNode;
 use HosmelQ\SearchSyntaxParser\SearchParser;
 
 it('parses field comparisons', function (): void {
-    $ast = SearchParser::query('price:>10')->parse();
+    $ast = SearchParser::query('price:>10')->allowAnyField()->parse();
 
     expect($ast)->toBeInstanceOf(ComparisonNode::class)
         ->getField()->toBe('price')
@@ -22,13 +22,13 @@ it('parses field comparisons', function (): void {
 });
 
 it('parses exists queries', function (): void {
-    $ast = SearchParser::query('category:*')->parse();
+    $ast = SearchParser::query('category:*')->allowAnyField()->parse();
 
     expect($ast)->toBeInstanceOf(ExistsNode::class)->getField()->toBe('category');
 });
 
 it('parses in lists with comma-separated values', function (): void {
-    $ast = SearchParser::query('status:A,B')->parse();
+    $ast = SearchParser::query('status:A,B')->allowAnyField()->parse();
 
     expect($ast)->toBeInstanceOf(InNode::class)
         ->getField()->toBe('status')
@@ -37,8 +37,8 @@ it('parses in lists with comma-separated values', function (): void {
 });
 
 it('parses numeric and date ranges', function (): void {
-    $numeric = SearchParser::query('price:[10 TO 50]')->parse();
-    $date = SearchParser::query('date:[2025-01-01 TO 2025-12-31]')->parse();
+    $numeric = SearchParser::query('price:[10 TO 50]')->allowAnyField()->parse();
+    $date = SearchParser::query('date:[2025-01-01 TO 2025-12-31]')->allowAnyField()->parse();
 
     expect($numeric)->toBeInstanceOf(RangeNode::class)
         ->getField()->toBe('price')
@@ -51,8 +51,8 @@ it('parses numeric and date ranges', function (): void {
 });
 
 it('parses NOT modifier and minus as unary', function (): void {
-    $notAst = SearchParser::query('NOT title:Coffee')->parse();
-    $minusAst = SearchParser::query('-title:Coffee')->parse();
+    $notAst = SearchParser::query('NOT title:Coffee')->allowAnyField()->parse();
+    $minusAst = SearchParser::query('-title:Coffee')->allowAnyField()->parse();
 
     foreach ([$notAst, $minusAst] as $ast) {
         expect($ast)->toBeInstanceOf(UnaryOperatorNode::class)->getOperator()->toBe('NOT');
@@ -67,7 +67,7 @@ it('parses NOT modifier and minus as unary', function (): void {
 });
 
 it('parses wildcard suffix on values', function (): void {
-    $ast = SearchParser::query('brand:nike*')->parse();
+    $ast = SearchParser::query('brand:nike*')->allowAnyField()->parse();
 
     expect($ast)->toBeInstanceOf(WildcardNode::class)
         ->getField()->toBe('brand')
@@ -76,7 +76,7 @@ it('parses wildcard suffix on values', function (): void {
 });
 
 it('parses implicit AND at AST level', function (): void {
-    $ast = SearchParser::query('title:Coffee price:<10')->parse();
+    $ast = SearchParser::query('title:Coffee price:<10')->allowAnyField()->parse();
     $left = $ast->getLeft();
     $right = $ast->getRight();
 
@@ -116,7 +116,7 @@ it('parses standalone boolean terms as lowercase strings', function (): void {
 });
 
 it('parses field comparisons without colon', function (): void {
-    $ast = SearchParser::query('price>10')->parse();
+    $ast = SearchParser::query('price>10')->allowAnyField()->parse();
 
     expect($ast)->toBeInstanceOf(ComparisonNode::class)
         ->getField()->toBe('price')
@@ -125,8 +125,8 @@ it('parses field comparisons without colon', function (): void {
 });
 
 it('parses boolean identifier values into booleans', function (): void {
-    $astTrue = SearchParser::query('flag:true')->parse();
-    $astFalse = SearchParser::query('flag:false')->parse();
+    $astTrue = SearchParser::query('flag:true')->allowAnyField()->parse();
+    $astFalse = SearchParser::query('flag:false')->allowAnyField()->parse();
 
     expect($astTrue)->toBeInstanceOf(ComparisonNode::class)
         ->getField()->toBe('flag')
@@ -139,7 +139,7 @@ it('parses boolean identifier values into booleans', function (): void {
 });
 
 it('parses float numbers into floats', function (): void {
-    $ast = SearchParser::query('score:10.5')->parse();
+    $ast = SearchParser::query('score:10.5')->allowAnyField()->parse();
 
     expect($ast)->toBeInstanceOf(ComparisonNode::class)
         ->getField()->toBe('score')
@@ -148,7 +148,7 @@ it('parses float numbers into floats', function (): void {
 });
 
 it('parses string ranges', function (): void {
-    $parser = SearchParser::query('title:["A" TO "Z"]');
+    $parser = SearchParser::query('title:["A" TO "Z"]')->allowAnyField();
     $ast = $parser->parse();
 
     expect($ast)->toBeInstanceOf(RangeNode::class)
@@ -158,7 +158,7 @@ it('parses string ranges', function (): void {
 });
 
 it('parses in-list with not-equal operator', function (): void {
-    $ast = SearchParser::query('status:!=A,B')->parse();
+    $ast = SearchParser::query('status:!=A,B')->allowAnyField()->parse();
 
     expect($ast)->toBeInstanceOf(InNode::class)
         ->getField()->toBe('status')
@@ -167,7 +167,7 @@ it('parses in-list with not-equal operator', function (): void {
 });
 
 it('parses wildcard suffix on quoted strings', function (): void {
-    $ast = SearchParser::query('title:"Co"*')->parse();
+    $ast = SearchParser::query('title:"Co"*')->allowAnyField()->parse();
 
     expect($ast)->toBeInstanceOf(WildcardNode::class)
         ->getField()->toBe('title')

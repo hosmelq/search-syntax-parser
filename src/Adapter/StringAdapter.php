@@ -169,7 +169,7 @@ final readonly class StringAdapter implements QueryAdapterInterface, VisitorInte
         }
 
         // A name starting like an ISO datetime would absorb `:` and the value into one word.
-        return preg_match('/^\d{4}-\d{2}-\d{2}[Tt]\d{2}/', $name) === 0 ? $name.':' : $name.' :';
+        return preg_match('/^\d{4}-\d{2}-\d{2}[Tt]\d{2}/u', $name) === 0 ? $name.':' : $name.' :';
     }
 
     private function quote(string $value): string

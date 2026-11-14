@@ -7,10 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
-This release includes breaking changes to operators, wildcard AST nodes, exception inheritance, value typing, validation, query limits, and the lexer and parser APIs.
+This release includes breaking changes to field permissions, ignored values, operators, wildcard AST nodes, exception inheritance, value typing, validation, query limits, and the lexer and parser APIs.
 
 ### Added
 
+- Add `allowAnyField()` to explicitly accept unconfigured fields while retaining rules, aliases, casting, and defaults for configured fields.
 - Expose optional Unicode source spans on every AST node; parsed clauses retain their exact source extent and default-generated nodes have null spans.
 - Add per-field comparison operator restrictions, clause restrictions, and scalar or deferred value aliases validated after resolution.
 - Add `InvalidFieldOperatorException` and machine-readable `ErrorReason` values and parameters on all query exceptions, including an extensible constructor for adapters.
@@ -22,6 +23,8 @@ This release includes breaking changes to operators, wildcard AST nodes, excepti
 
 ### Changed
 
+- Reject field queries by default unless the field is configured with `allowedFields()` or `allowAnyField()` is enabled; bare terms remain available without configuration.
+- Remove constraints matching `ignore()` values after aliases and casting, filter list items, and open ignored range bounds. Removed field mentions suppress defaults; queries with no constraints or applicable defaults throw `empty_query`.
 - Represent open range bounds as null in AST and array output; quoted asterisks are literal bounds that are cast and validated.
 - Preserve the quoted flag on terms through the AST, array output, and string round trips.
 - Store token starts and ends in Unicode code points with one ASCII check per query, keeping negative value adjacency in the same coordinates.
@@ -42,6 +45,7 @@ This release includes breaking changes to operators, wildcard AST nodes, excepti
 
 ### Fixed
 
+- Preserve Unicode datetime-like field names when serializing query text so their colon cannot merge with the value during reparsing.
 - Preserve Unicode, hyphenated words, punctuation and embedded wildcards.
 - Support negative field values, list items and range bounds, including coordinate tuples.
 - Validate both range bounds using the field rules; an unquoted `*` bound stays open-ended and is not validated.

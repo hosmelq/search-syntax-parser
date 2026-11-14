@@ -29,6 +29,8 @@ A scalar produces a comparison with `=`. A list produces an `InNode` with `=`, i
 
 Any reference to the external field suppresses its default, including comparisons, lists, ranges, existence checks, wildcards, and references inside NOT or nested groups. A bare term matching the field's name does not count as a field reference.
 
+A clause removed by `ignore()` still counts as a reference. For example, `status:ALL` opts out of a status default when `ALL` is ignored.
+
 ```php
 use HosmelQ\SearchSyntaxParser\SearchParser;
 use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
@@ -42,9 +44,18 @@ assert(SearchParser::query('   ')->allowedFields([
 ])->build('string') === 'status:active');
 ```
 
-Empty and whitespace-only queries return just the defaults when any exist. Without defaults, they still throw `Empty search query.`
+```php
+use HosmelQ\SearchSyntaxParser\SearchParser;
+use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
 
-Defaults are trusted application configuration: they bypass field casting, aliases, validation, per-field operator and clause restrictions, and clause/depth limits. The raw input still obeys the query length limit. A default string containing `*` is literal text rather than a wildcard pattern. Defaults can be overridden by a query reference, so enforce mandatory access filters separately from defaults.
+assert(SearchParser::query('coffee status:ALL')->allowedFields([
+    AllowedField::string('status')->ignore('ALL')->default('active'),
+])->build('string') === 'coffee');
+```
+
+Empty and whitespace-only queries return just the defaults when any exist. Without applicable defaults, an empty query or a query whose clauses are all ignored has no constraints. Both `parse()` and `build()` throw `Empty search query.` with reason `empty_query`.
+
+Defaults are trusted application configuration: they bypass field casting, aliases, ignored values, validation, per-field operator and clause restrictions, and clause/depth limits. The raw input still obeys the query length limit. A default string containing `*` is literal text rather than a wildcard pattern. Defaults can be overridden by a query reference, so enforce mandatory access filters separately from defaults.
 
 ## Source spans
 

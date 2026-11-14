@@ -86,12 +86,12 @@ Every node constructor accepts an optional trailing `span: null|Span` argument; 
 ```php
 use HosmelQ\SearchSyntaxParser\SearchParser;
 
-$node = SearchParser::query('  title:"Café"')->parse();
+$node = SearchParser::query('  title:"Café"')->allowAnyField()->parse();
 
 assert($node->getSpan()->offset === 2);
 assert($node->getSpan()->length === 12);
 assert(SearchParser::query('"Cold Brew"')->parse()->isQuoted());
-assert(SearchParser::query('price:[* TO 10]')->parse()->getFrom() === null);
+assert(SearchParser::query('price:[* TO 10]')->allowAnyField()->parse()->getFrom() === null);
 ```
 
 Adapters can report unsupported operations with a subclass of `SearchSyntaxException`. Its public constructor accepts the message, an `ErrorReason`, an array of parameters, and an optional character position.

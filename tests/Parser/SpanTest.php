@@ -21,7 +21,7 @@ it('spans the exact source consumed by each parsed node kind', function (
     int $offset,
     int $length,
 ): void {
-    $node = SearchParser::query($query)->parse();
+    $node = SearchParser::query($query)->allowAnyField()->parse();
 
     expect($node->getType())->toBe($type)
         ->and($node->getSpan())->toEqual(new Span($offset, $length));
@@ -59,7 +59,7 @@ it('gives every expanded wildcard list node the whole clause span', function (
     string $operator,
 ): void {
     $query = '  name:'.$operator.'café*,bob,"🙂"*  ';
-    $node = SearchParser::query($query)->parse();
+    $node = SearchParser::query($query)->allowAnyField()->parse();
     $span = new Span(2, mb_strlen($query) - 4);
 
     expect($node->getSpan())->toEqual($span)

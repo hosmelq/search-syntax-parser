@@ -13,9 +13,7 @@ use HosmelQ\SearchSyntaxParser\AST\Node\ComparisonNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\ExistsNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\InNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\NodeInterface;
-use HosmelQ\SearchSyntaxParser\AST\Node\RangeNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\UnaryOperatorNode;
-use HosmelQ\SearchSyntaxParser\AST\Node\WildcardNode;
 use HosmelQ\SearchSyntaxParser\Exception\ParseException;
 use HosmelQ\SearchSyntaxParser\Parser\Parser;
 use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
@@ -32,6 +30,8 @@ class SearchParser
      * @var array<string, AllowedField>
      */
     private array $allowedFields = [];
+
+    private bool $allowsAnyField = false;
 
     private int $clauseLimit = 1_024;
 
@@ -65,6 +65,16 @@ class SearchParser
         $adapter ??= $this->getDefaultAdapter();
 
         return $this->adapters[$adapter] ??= $this->createAdapter($adapter);
+    }
+
+    /**
+     * Accept unconfigured fields in addition to any configured field rules.
+     */
+    public function allowAnyField(): self
+    {
+        $this->allowsAnyField = true;
+
+        return $this;
     }
 
     /**
@@ -142,7 +152,7 @@ class SearchParser
      */
     public function isFieldAllowed(string $field): bool
     {
-        return $this->allowedFields === [] || isset($this->allowedFields[$field]);
+        return $this->allowsAnyField || isset($this->allowedFields[$field]);
     }
 
     /**
@@ -198,15 +208,19 @@ class SearchParser
             throw ParseException::maximumLength($this->lengthLimit);
         }
 
-        $defaults = array_filter(
-            $this->allowedFields,
-            static fn (AllowedField $field): bool => $field->hasDefault(),
-        );
+        $defaults = [];
+
+        foreach ($this->allowedFields as $field) {
+            if ($field->hasDefault()) {
+                $defaults[] = $field;
+            }
+        }
+
         $parser = new Parser($this, $this->depthLimit, $this->clauseLimit);
         $ast = $parser->parse($this->query, $defaults !== []);
 
         if ($defaults !== []) {
-            $referenced = $ast instanceof NodeInterface ? $this->referencedFields($ast) : [];
+            $referenced = $parser->getReferencedFields();
 
             foreach ($defaults as $field) {
                 $name = $field->getName();
@@ -281,40 +295,6 @@ class SearchParser
         }
 
         throw new InvalidArgumentException(sprintf("Adapter '%s' not supported.", $adapter));
-    }
-
-    /**
-     * @return array<string, true>
-     */
-    private function referencedFields(NodeInterface $ast): array
-    {
-        $fields = [];
-        $pending = [$ast];
-
-        while ($pending !== []) {
-            $node = array_pop($pending);
-
-            if ($node instanceof BinaryOperatorNode) {
-                $pending[] = $node->getLeft();
-                $pending[] = $node->getRight();
-            } elseif ($node instanceof UnaryOperatorNode) {
-                $pending[] = $node->getOperand();
-            } elseif (
-                $node instanceof ComparisonNode
-                || $node instanceof InNode
-                || $node instanceof RangeNode
-                || $node instanceof ExistsNode
-                || $node instanceof WildcardNode
-            ) {
-                $name = $node->getField();
-
-                if ($name !== null) {
-                    $fields[$name] = true;
-                }
-            }
-        }
-
-        return $fields;
     }
 
     /**

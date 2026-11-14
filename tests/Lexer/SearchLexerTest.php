@@ -20,7 +20,9 @@ it('unescapes only supported characters in quoted values', function (
     string $input,
     string $expected,
 ): void {
-    expect(SearchParser::query('title:'.$input)->parse()->getValue())->toBe($expected);
+    expect(SearchParser::query('title:'.$input)->allowAnyField()->parse()->getValue())->toBe(
+        $expected,
+    );
 })->with([
     ['"hello\\"world"', 'hello"world'],
     ['"back\\\\slash"', 'back\slash'],

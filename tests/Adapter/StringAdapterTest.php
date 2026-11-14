@@ -10,7 +10,7 @@ use HosmelQ\SearchSyntaxParser\SearchParser;
 use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
 
 it('normalizes queries into explicit syntax', function (string $query, string $expected): void {
-    expect(SearchParser::query($query)->build('string'))->toBe($expected);
+    expect(SearchParser::query($query)->allowAnyField()->build('string'))->toBe($expected);
 })->with([
     ['  a b ', 'a AND b'],
     ['-name:coffee', 'NOT name:coffee'],
@@ -38,9 +38,11 @@ it('normalizes queries into explicit syntax', function (string $query, string $e
 ]);
 
 it('round trips observable array output', function (string $query): void {
-    $parser = SearchParser::query($query);
+    $parser = SearchParser::query($query)->allowAnyField();
 
-    expect(SearchParser::query($parser->build('string'))->build())->toBe($parser->build());
+    expect(SearchParser::query($parser->build('string'))->allowAnyField()->build())->toBe(
+        $parser->build(),
+    );
 })->with([
     'a AND b OR NOT c', 'a AND (b AND c)', 'a OR (b OR c)',
     '(a OR b) AND (c OR d)', 'a OR b AND (c OR d)',
@@ -72,7 +74,7 @@ it('serializes floats without changing their inferred type or value', function (
     $adapter = new StringAdapter();
     $text = $adapter->build(new ComparisonNode('value', '=', $value));
 
-    expect(SearchParser::query($text)->build()['value'])->toBe($value);
+    expect(SearchParser::query($text)->allowAnyField()->build()['value'])->toBe($value);
 })->with([0.0, -0.0, 1.0, 1.5, 1e-20, -1e-20, 1e20, PHP_FLOAT_MAX, PHP_FLOAT_MIN, 5e-324]);
 
 it('rejects wildcard segments that the grammar cannot express', function (array $segments): void {
@@ -91,11 +93,11 @@ it('quotes values that would merge with a comparison operator', function (
     string $query,
     string $expected,
 ): void {
-    $parser = SearchParser::query($query);
+    $parser = SearchParser::query($query)->allowAnyField();
     $text = $parser->build('string');
 
     expect($text)->toBe($expected)
-        ->and(SearchParser::query($text)->build())->toBe($parser->build());
+        ->and(SearchParser::query($text)->allowAnyField()->build())->toBe($parser->build());
 })->with([
     ['x:< =5', 'x:<"=5"'],
     ['x:> =a', 'x:>"=a"'],
@@ -113,13 +115,14 @@ it('keeps datetime-like field names apart from their colon', function (
     string $query,
     string $expected,
 ): void {
-    $parser = SearchParser::query($query);
+    $parser = SearchParser::query($query)->allowAnyField();
     $text = $parser->build('string');
 
     expect($text)->toBe($expected)
-        ->and(SearchParser::query($text)->build())->toBe($parser->build());
+        ->and(SearchParser::query($text)->allowAnyField()->build())->toBe($parser->build());
 })->with([
     ['2026-01-01T12 :12', '2026-01-01T12 :12'],
+    ['2026-01-01T١٢ :12', '2026-01-01T١٢ :12'],
     ['2026-01-01T12:30+05 :30', '2026-01-01T12:30+05 :30'],
     ['2026-01-01T12:30 :*', '2026-01-01T12:30 :*'],
 ]);

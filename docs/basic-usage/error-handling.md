@@ -42,7 +42,9 @@ Exception messages remain descriptive and can be displayed alongside a highlight
 
 ## Error reasons and parameters
 
-`getReason()` returns the backed `ErrorReason` enum; its snake_case `value` is suitable for application error codes. `getParameters()` returns an array keyed by strings with null, scalar, or string-list values, so applications can translate messages without parsing their English text. Existing exception messages remain unchanged.
+`getReason()` returns the backed `ErrorReason` enum; its snake_case `value` is suitable for application error codes. `getParameters()` returns an array keyed by strings with null, scalar, or string-list values, so applications can translate messages without parsing their English text.
+
+`empty_query` also means no constraints remain after ignoring values when no default applies. `field_not_allowed` includes an empty `allowed` list when no fields are configured; its message then says "No fields are allowed."
 
 | Reason value | Parameters |
 | --- | --- |

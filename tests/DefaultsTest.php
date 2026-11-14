@@ -66,7 +66,7 @@ it('omits defaults for fields referenced anywhere in the AST', function (string 
         new AllowedField('status')->default('fallback'),
     ]);
 
-    expect($parser->build())->toBe(SearchParser::query($query)->build());
+    expect($parser->build())->toBe(SearchParser::query($query)->allowAnyField()->build());
 })->with([
     'status:active', 'NOT status:active', 'status:active,draft', 'status:[a TO z]',
     'status:*', 'NOT status:*', 'status:act*', 'status:act*,draft',

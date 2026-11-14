@@ -37,13 +37,16 @@ it('configures nullability explicitly', function (): void {
         ->and($field->nullable(false))->isNullable()->toBeFalse();
 });
 
-it('validates ignored and nullable values', function (): void {
+it('matches ignored values strictly and validates nullability separately', function (): void {
     $fieldWithIgnoredValues = AllowedField::integer('count')->ignore('N/A', null);
     $nullableField = AllowedField::integer('count')->nullable();
 
     expect($fieldWithIgnoredValues)
-        ->validate('N/A')->toBeTrue()
-        ->validate(null)->toBeTrue()
+        ->isIgnored('N/A')->toBeTrue()
+        ->isIgnored(null)->toBeTrue()
+        ->isIgnored(0)->toBeFalse()
+        ->validate('N/A')->toBeFalse()
+        ->validate(null)->toBeFalse()
         ->and($nullableField)
         ->validate(null)->toBeTrue();
 });

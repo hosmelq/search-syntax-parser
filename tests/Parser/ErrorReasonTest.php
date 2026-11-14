@@ -23,7 +23,7 @@ it('exposes a machine-readable reason and parameters for query failures', functi
         ErrorReason::OperatorNotAllowed => $parser->allowedFields([
             AllowedField::integer('age')->operators('='),
         ]),
-        default => null,
+        default => $parser->allowAnyField(),
     };
 
     try {
@@ -66,7 +66,7 @@ it('reports a tokenization failure reason without a source position', function (
     ini_set('pcre.backtrack_limit', '1');
 
     try {
-        SearchParser::query('title:Coffee')->parse();
+        SearchParser::query('title:Coffee')->allowAnyField()->parse();
 
         test()->fail('Expected a tokenization failure.');
     } catch (SearchSyntaxException $searchSyntaxException) {

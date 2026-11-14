@@ -11,7 +11,7 @@ use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
 use HosmelQ\SearchSyntaxParser\Validation\AllowedFieldItemRules;
 
 it('accepts whitespace surrounding the query', function (): void {
-    $result = SearchParser::query('  title:Coffee  ')->build();
+    $result = SearchParser::query('  title:Coffee  ')->allowAnyField()->build();
 
     expect($result)->toEqual([
         'field' => 'title',
@@ -22,7 +22,7 @@ it('accepts whitespace surrounding the query', function (): void {
 });
 
 it('returns default adapter and memoizes instance', function (): void {
-    $parser = SearchParser::query('title:Coffee');
+    $parser = SearchParser::query('title:Coffee')->allowAnyField();
     $adapterA = $parser->adapter();
     $adapterB = $parser->adapter();
 
@@ -30,7 +30,7 @@ it('returns default adapter and memoizes instance', function (): void {
 });
 
 it('resolves custom adapter via extend', function (): void {
-    $parser = SearchParser::query('title:Coffee');
+    $parser = SearchParser::query('title:Coffee')->allowAnyField();
 
     $parser->extend('custom', function (): QueryAdapterInterface {
         return new class () implements QueryAdapterInterface {
@@ -47,7 +47,7 @@ it('resolves custom adapter via extend', function (): void {
 });
 
 it('throws on unknown adapter', function (): void {
-    $parser = SearchParser::query('title:Coffee');
+    $parser = SearchParser::query('title:Coffee')->allowAnyField();
 
     $parser->adapter('unknown');
 })->throws(InvalidArgumentException::class, "Adapter 'unknown' not supported.");

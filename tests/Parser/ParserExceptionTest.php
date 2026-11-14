@@ -13,33 +13,33 @@ it('throws on empty query', function (): void {
 })->throws(ParseException::class, 'Empty search query.');
 
 it('throws on unexpected token after complete parse', function (): void {
-    SearchParser::query('title:Coffee )')->build();
+    SearchParser::query('title:Coffee )')->allowAnyField()->build();
 })->throws(ParseException::class, 'Unexpected token after query: ).');
 
 it('throws on expected token mismatch', function (): void {
-    SearchParser::query('price:[10 50]')->build();
+    SearchParser::query('price:[10 50]')->allowAnyField()->build();
 })->throws(ParseException::class, 'Unexpected token, expected TO but got Word.');
 
 it('throws on invalid wildcard usage', function (): void {
-    SearchParser::query('price>*')->build();
+    SearchParser::query('price>*')->allowAnyField()->build();
 })->throws(
     ParseException::class,
     "Wildcard is only supported with ':' for exists queries; use NOT price:* for negation.",
 );
 
 it('throws on invalid wildcard usage with colon and operator', function (): void {
-    SearchParser::query('price:>*')->build();
+    SearchParser::query('price:>*')->allowAnyField()->build();
 })->throws(
     ParseException::class,
     "Wildcard is only supported with ':' for exists queries; use NOT price:* for negation.",
 );
 
 it('throws on unexpected end of input', function (): void {
-    SearchParser::query('title:Coffee AND')->build();
+    SearchParser::query('title:Coffee AND')->allowAnyField()->build();
 })->throws(ParseException::class, 'Unexpected end of input.');
 
 it('throws on missing value', function (string $input): void {
-    SearchParser::query($input)->build();
+    SearchParser::query($input)->allowAnyField()->build();
 })->throws(ParseException::class, 'Expected value.')->with([
     'colon only' => 'price:',
     'operator only' => 'price:>',

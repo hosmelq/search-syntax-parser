@@ -33,6 +33,13 @@ class InvalidFieldException extends SearchSyntaxException
         array $allowedFields,
         null|int $position = null,
     ): self {
+        if ($allowedFields === []) {
+            return new self(sprintf(
+                "Field '%s' is not allowed. No fields are allowed.",
+                $field,
+            ), $field, $position);
+        }
+
         return new self(sprintf(
             "Field '%s' is not allowed. Allowed fields are: %s.",
             $field,

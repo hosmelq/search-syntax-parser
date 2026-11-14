@@ -4,7 +4,7 @@ description: "Restrict searchable fields and control scalar casting with string,
 weight: 2
 ---
 
-Pass field names or `AllowedField` objects to `allowedFields()`. With no configured fields, every field is allowed; otherwise unknown fields throw `InvalidFieldException`.
+No fields are allowed by default. Pass field names or `AllowedField` objects to `allowedFields()` to permit field queries. Unknown fields throw `InvalidFieldException` with reason `field_not_allowed`; without an allowlist, the message says "No fields are allowed." Bare terms remain available without configuration.
 
 ```php
 use HosmelQ\SearchSyntaxParser\SearchParser;
@@ -17,6 +17,23 @@ $result = SearchParser::query('age:25 status:ACTIVE')->allowedFields([
 ])->build();
 
 assert($result['left']['value'] === 25);
+```
+
+Call `allowAnyField()` explicitly to accept every field. You can combine it with `allowedFields()` to keep casting, aliases, validation, restrictions, and defaults for configured fields while accepting other fields with value inference.
+
+```php
+use HosmelQ\SearchSyntaxParser\SearchParser;
+use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
+
+assert(SearchParser::query('score:4.5')->allowAnyField()->build()['value'] === 4.5);
+
+$result = SearchParser::query('code:123 score:4.5')
+    ->allowAnyField()
+    ->allowedFields([AllowedField::string('code')])
+    ->build();
+
+assert($result['left']['value'] === '123');
+assert($result['right']['value'] === 4.5);
 ```
 
 ## Value inference
@@ -97,7 +114,7 @@ assert(SearchParser::query('status:draft')->allowedFields([
 
 Chain `min()`, `max()`, `between()`, and `size()`. Numbers and numeric strings are compared by value, other strings by character length, and arrays by item count. String fields always measure character length, including numeric-looking text. Booleans fail size validation because they have no size.
 
-Use `callback()` for additional validation. `ignore(...$values)` skips validation for exact matching values; `nullable()` permits null when validating programmatic values. The query language itself has no null literal; use a missing-field expression or a [null default](defaults).
+Use `callback()` for additional validation. `nullable()` permits null when validating programmatic values. The query language itself has no null literal; use a missing-field expression or a [null default](defaults).
 
 ```php
 use HosmelQ\SearchSyntaxParser\SearchParser;
@@ -109,6 +126,29 @@ $result = SearchParser::query('rating:4')->allowedFields([
 
 assert($result['value'] === 4);
 ```
+
+## Ignored values
+
+`ignore(...$values)` removes constraints whose values strictly match an ignored value after alias resolution and casting. Removed values never reach validation. Operator and clause restrictions still run first.
+
+A matching comparison disappears. Lists drop matching literal items and keep an `InNode`, even when only one item remains; an empty list disappears. Wildcard-expanded lists drop matching literal items but retain their patterns. Ignored range bounds become open bounds (`null`); a range disappears when both bounds are ignored values. Existing open `*` bounds are not ignored values. Wildcard patterns, existence checks, and bare terms are unaffected by `ignore()`.
+
+AND and OR expressions with a removed side become their surviving side. NOT over a removed clause disappears, as does a group whose content is entirely removed. Remaining nodes keep their original source spans.
+
+```php
+use HosmelQ\SearchSyntaxParser\SearchParser;
+use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
+
+$fields = ['title', AllowedField::in('status', ['active', 'draft'])->ignore('ALL')];
+
+assert(SearchParser::query('title:x AND status:ALL')->allowedFields($fields)->build('string') === 'title:x');
+assert(SearchParser::query('title:x OR status:ALL')->allowedFields($fields)->build('string') === 'title:x');
+assert(SearchParser::query('title:x NOT status:ALL')->allowedFields($fields)->build('string') === 'title:x');
+assert(SearchParser::query('status:ALL,active')->allowedFields($fields)->parse()->getValues() === ['active']);
+assert(SearchParser::query('status:[ALL TO draft]')->allowedFields($fields)->parse()->getFrom() === null);
+```
+
+A removed clause still mentions its field and suppresses that field's [default](defaults). If nothing remains and no default applies, there are **no constraints**: `parse()` and `build()` throw the same `ParseException` as an empty query, with reason `empty_query`.
 
 ## Internal field names
 

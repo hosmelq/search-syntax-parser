@@ -11,7 +11,7 @@ it('distinguishes open bounds from quoted literal asterisks', function (
     null|string $from,
     null|string $to,
 ): void {
-    $parser = SearchParser::query($query);
+    $parser = SearchParser::query($query)->allowAnyField();
     $range = $parser->parse();
 
     expect($range->getFrom())->toBe($from)
@@ -22,7 +22,9 @@ it('distinguishes open bounds from quoted literal asterisks', function (
             'to' => $to,
             'type' => 'range',
         ])
-        ->and(SearchParser::query($parser->build('string'))->build())->toBe($parser->build());
+        ->and(SearchParser::query($parser->build('string'))->allowAnyField()->build())->toBe(
+            $parser->build(),
+        );
 })->with([
     ['x:[* TO *]', null, null],
     ['x:["*" TO *]', '*', null],

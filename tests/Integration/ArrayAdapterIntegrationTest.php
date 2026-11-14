@@ -8,7 +8,7 @@ use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
 it('builds complex query with precedence and grouping', function (): void {
     $result = SearchParser::query(
         'status:ACTIVE,DRAFT AND price:>100 OR (category:* AND -discount:*)',
-    )->build();
+    )->allowAnyField()->build();
 
     expect($result)->toEqual([
         'left' => [

@@ -13,7 +13,10 @@ it('reports character positions in the exact original input', function (
     string $query,
     int $position,
 ): void {
-    foreach ([SearchParser::query($query), new SearchParser($query)] as $parser) {
+    foreach ([
+        SearchParser::query($query)->allowAnyField(),
+        new SearchParser($query)->allowAnyField(),
+    ] as $parser) {
         try {
             $parser->build();
 
@@ -46,7 +49,7 @@ it('reports the token that exceeds query limits', function (
     string $limit,
     int $position,
 ): void {
-    $parser = SearchParser::query($query);
+    $parser = SearchParser::query($query)->allowAnyField();
 
     match ($limit) {
         'length' => $parser->maxLength(3),
@@ -124,7 +127,7 @@ it('leaves PCRE failure positions unset', function (): void {
     ini_set('pcre.backtrack_limit', '1');
 
     try {
-        SearchParser::query('name:Coffee')->build();
+        SearchParser::query('name:Coffee')->allowAnyField()->build();
 
         test()->fail('Expected a tokenizer error.');
     } catch (ParseException $parseException) {
@@ -138,7 +141,7 @@ it('treats lowercase and mixed-case connectives as ordinary terms', function (
     string $query,
     string $normalized,
 ): void {
-    expect(SearchParser::query($query)->build('string'))->toBe($normalized);
+    expect(SearchParser::query($query)->allowAnyField()->build('string'))->toBe($normalized);
 })->with([
     ['rock and roll', 'rock AND and AND roll'],
     ['this is not good', 'this AND is AND not AND good'],

@@ -34,6 +34,13 @@ class Parser
     private int $index = 0;
 
     /**
+     * Field mentions are tracked only when defaults need them.
+     *
+     * @var null|array<string, true>
+     */
+    private null|array $referencedFields = null;
+
+    /**
      * Literal segments of the most recently parsed value, or null for a literal value.
      *
      * @var null|list<string>
@@ -49,6 +56,16 @@ class Parser
     ) {}
 
     /**
+     * Return field mentions, including clauses removed by ignored values.
+     *
+     * @return array<string, true>
+     */
+    public function getReferencedFields(): array
+    {
+        return $this->referencedFields ?? [];
+    }
+
+    /**
      * Parse input into an AST, bounding recursion and tree size.
      *
      * @throws ParseException
@@ -58,6 +75,7 @@ class Parser
         $this->tokens = new SearchLexer()->tokenize($input);
         $this->index = 0;
         $this->clauses = 0;
+        $this->referencedFields = $allowEmpty ? [] : null;
 
         if ($this->tokens->types === []) {
             if ($allowEmpty) {
@@ -98,7 +116,7 @@ class Parser
     /**
      * @phpstan-impure
      */
-    private function parseExpression(int $depth): NodeInterface
+    private function parseExpression(int $depth): null|NodeInterface
     {
         $start = $this->index;
         $left = $this->parseTerm($depth);
@@ -106,12 +124,12 @@ class Parser
         while (($this->tokens->types[$this->index] ?? null) === TokenType::Or) {
             $this->index++;
 
-            $left = new BinaryOperatorNode(
-                'OR',
-                $left,
-                $this->parseTerm($depth),
-                $this->span($start),
-            );
+            $right = $this->parseTerm($depth);
+            $left = match (true) {
+                ! $left instanceof NodeInterface => $right,
+                ! $right instanceof NodeInterface => $left,
+                default => new BinaryOperatorNode('OR', $left, $right, $this->span($start)),
+            };
         }
 
         return $left;
@@ -120,7 +138,7 @@ class Parser
     /**
      * @phpstan-impure
      */
-    private function parseFactor(int $depth): NodeInterface
+    private function parseFactor(int $depth): null|NodeInterface
     {
         $start = $this->index;
         $type = $this->tokens->types[$this->index] ?? null;
@@ -140,11 +158,11 @@ class Parser
             $this->index++;
 
             if ($type !== TokenType::OpenParenthesis) {
-                return new UnaryOperatorNode(
-                    'NOT',
-                    $this->parseFactor($depth + 1),
-                    $this->span($start),
-                );
+                $operand = $this->parseFactor($depth + 1);
+
+                return $operand instanceof NodeInterface
+                    ? new UnaryOperatorNode('NOT', $operand, $this->span($start))
+                    : null;
             }
 
             $expression = $this->parseExpression($depth + 1);
@@ -157,9 +175,10 @@ class Parser
         $value = $this->tokens->values[$this->index] ?? '';
 
         if (
-            (
-                ! in_array($type, [TokenType::Word, TokenType::String, TokenType::Wildcard], true)
-            )
+            ! match ($type) {
+                TokenType::Word, TokenType::String, TokenType::Wildcard => true,
+                default => false,
+            }
             || ($type === TokenType::Word && $value === '*')
         ) {
             throw ParseException::expectedValue($this->position());
@@ -191,7 +210,7 @@ class Parser
     /**
      * @phpstan-impure
      */
-    private function parseFieldQuery(string $field, int $start): NodeInterface
+    private function parseFieldQuery(string $field, int $start): null|NodeInterface
     {
         if (! $this->searchParser->isFieldAllowed($field)) {
             throw InvalidFieldException::fieldNotAllowed(
@@ -199,6 +218,10 @@ class Parser
                 $this->searchParser->getAllowedFieldNames(),
                 $this->position($this->index - 1),
             );
+        }
+
+        if ($this->referencedFields !== null) {
+            $this->referencedFields[$field] = true;
         }
 
         $allowed = $this->searchParser->getAllowedField($field);
@@ -319,16 +342,28 @@ class Parser
                 );
             }
 
-            $this->validateValue($field, $values, $valueIndex);
+            if ($allowed instanceof AllowedField) {
+                foreach ($values as $index => $item) {
+                    if ($patterns[$index] === null && $allowed->isIgnored($item)) {
+                        unset($values[$index]);
+                    }
+                }
+            }
+
+            if ($values === []) {
+                return null;
+            }
+
+            $this->validateValue($field, array_values($values), $valueIndex);
 
             if (! $hasPattern) {
-                return new InNode($field, $operator, $values, $this->span($start));
+                return new InNode($field, $operator, array_values($values), $this->span($start));
             }
 
             $left = null;
             $span = $this->span($start);
 
-            foreach ($values as $index => $item) {
+            foreach ($patterns as $index => $pattern) {
                 if ($index > 0) {
                     if (++$this->clauses > $this->maxClauses) {
                         throw ParseException::maximumClauses(
@@ -338,9 +373,12 @@ class Parser
                     }
                 }
 
-                $pattern = $patterns[$index];
+                if (! array_key_exists($index, $values)) {
+                    continue;
+                }
+
                 $node = $pattern === null
-                    ? new ComparisonNode($field, $operator, $item, $span)
+                    ? new ComparisonNode($field, $operator, $values[$index], $span)
                     : new WildcardNode($field, $operator, $pattern, $span);
                 $left = $left === null
                     ? $node
@@ -354,6 +392,10 @@ class Parser
             throw ParseException::invalidWildcardPattern($this->position($valueIndex));
         }
 
+        if ($segments === null && $allowed?->isIgnored($value) === true) {
+            return null;
+        }
+
         $this->validateValue($field, $value, $valueIndex);
 
         return $segments === null
@@ -364,8 +406,11 @@ class Parser
     /**
      * @phpstan-impure
      */
-    private function parseRange(string $field, int $start, null|AllowedField $allowed): RangeNode
-    {
+    private function parseRange(
+        string $field,
+        int $start,
+        null|AllowedField $allowed,
+    ): null|RangeNode {
         $valueIndex = $this->index;
 
         $this->index++;
@@ -389,6 +434,16 @@ class Parser
         $to = $this->parseRangeBound($field, $allowed);
 
         $this->match(TokenType::CloseBracket);
+
+        $ignoreFrom = $from !== null && $allowed?->isIgnored($from) === true;
+        $ignoreTo = $to !== null && $allowed?->isIgnored($to) === true;
+
+        if ($ignoreFrom && $ignoreTo) {
+            return null;
+        }
+
+        $from = $ignoreFrom ? null : $from;
+        $to = $ignoreTo ? null : $to;
 
         foreach ([$from, $to] as $bound) {
             if ($bound !== null) {
@@ -430,7 +485,7 @@ class Parser
     /**
      * @phpstan-impure
      */
-    private function parseTerm(int $depth): NodeInterface
+    private function parseTerm(int $depth): null|NodeInterface
     {
         $start = $this->index;
         $left = $this->parseFactor($depth);
@@ -447,12 +502,12 @@ class Parser
                 break;
             }
 
-            $left = new BinaryOperatorNode(
-                'AND',
-                $left,
-                $this->parseFactor($depth),
-                $this->span($start),
-            );
+            $right = $this->parseFactor($depth);
+            $left = match (true) {
+                ! $left instanceof NodeInterface => $right,
+                ! $right instanceof NodeInterface => $left,
+                default => new BinaryOperatorNode('AND', $left, $right, $this->span($start)),
+            };
         }
 
         return $left;

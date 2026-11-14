@@ -14,7 +14,7 @@ it('builds explicit wildcard patterns', function (
     string $operator,
     array $segments,
 ): void {
-    expect(SearchParser::query($query)->build())->toBe([
+    expect(SearchParser::query($query)->allowAnyField()->build())->toBe([
         'field' => $field,
         'operator' => $operator,
         'segments' => $segments,
@@ -37,7 +37,7 @@ it('builds explicit wildcard patterns', function (
 ]);
 
 it('keeps quoted wildcard text literal', function (string $query, array $expected): void {
-    expect(SearchParser::query($query)->build())->toBe($expected);
+    expect(SearchParser::query($query)->allowAnyField()->build())->toBe($expected);
 })->with([
     ['"co*fee"', ['quoted' => true, 'type' => 'term', 'value' => 'co*fee']],
     ['name:"*"', ['field' => 'name', 'operator' => '=', 'type' => 'comparison', 'value' => '*']],
@@ -60,7 +60,7 @@ it('expands mixed lists with the correct connective', function (
     string $operator,
     string $connective,
 ): void {
-    $result = SearchParser::query('name:'.$operator.'jo*,"literal*",42')->build();
+    $result = SearchParser::query('name:'.$operator.'jo*,"literal*",42')->allowAnyField()->build();
     $leafOperator = $operator === '' ? '=' : $operator;
 
     expect($result)->toBe([
@@ -92,21 +92,32 @@ it('expands mixed lists with the correct connective', function (
 })->with([['', 'OR'], ['!=', 'AND']]);
 
 it('counts every expanded leaf but keeps literal lists as one clause', function (): void {
-    expect(SearchParser::query('name:a,b,c')->maxClauses(1)->build()['type'])->toBe('in')
-        ->and(SearchParser::query('name:a,b*,c')->maxClauses(3)->build()['type'])->toBe('binary')
-        ->and(fn (): mixed => SearchParser::query('name:a,b*,c')->maxClauses(2)->build())
+    expect(
+        SearchParser::query('name:a,b,c')->allowAnyField()->maxClauses(1)->build()['type'],
+    )->toBe(
+        'in',
+    )
+        ->and(
+            SearchParser::query('name:a,b*,c')->allowAnyField()->maxClauses(3)->build()['type'],
+        )->toBe(
+            'binary',
+        )
+        ->and(
+            fn (): mixed
+                => SearchParser::query('name:a,b*,c')->allowAnyField()->maxClauses(2)->build(),
+        )
         ->toThrow(ParseException::class, 'maximum of 2 clauses');
 });
 
 it('rejects wildcard comparison and range patterns', function (string $query): void {
-    SearchParser::query($query)->build();
+    SearchParser::query($query)->allowAnyField()->build();
 })->throws(ParseException::class, 'Wildcard patterns are only supported')->with([
     'name:>jo*', 'name>=jo*', 'name:<"a b"*', 'name:<=*fee',
     'name:>a,jo*', 'name:>=jo*,a', 'name:[jo* TO z]', 'name:[a TO z*]',
 ]);
 
 it('rejects an exact wildcard outside exists and open bounds', function (string $query): void {
-    SearchParser::query($query)->build();
+    SearchParser::query($query)->allowAnyField()->build();
 })->throws(ParseException::class)->with(['*', 'name:!=*', 'name!=*', 'name:>*', 'name:a,*']);
 
 it('validates field patterns using the original pattern text', function (): void {

@@ -10,7 +10,7 @@ weight: 1
 use HosmelQ\SearchSyntaxParser\Adapter\ArrayAdapter;
 use HosmelQ\SearchSyntaxParser\SearchParser;
 
-$parser = SearchParser::query('title:Coffee');
+$parser = SearchParser::query('title:Coffee')->allowAnyField();
 
 assert(new ArrayAdapter()->build($parser->parse()) === $parser->build());
 ```
@@ -35,14 +35,14 @@ Each node has a lowercase `type`. Field nodes use the configured internal field 
 ```php
 use HosmelQ\SearchSyntaxParser\SearchParser;
 
-assert(SearchParser::query('title:Coffee')->build() === [
+assert(SearchParser::query('title:Coffee')->allowAnyField()->build() === [
     'field' => 'title',
     'operator' => '=',
     'type' => 'comparison',
     'value' => 'Coffee',
 ]);
 
-assert(SearchParser::query('title:co*fee')->build() === [
+assert(SearchParser::query('title:co*fee')->allowAnyField()->build() === [
     'field' => 'title',
     'operator' => '=',
     'segments' => ['co', 'fee'],

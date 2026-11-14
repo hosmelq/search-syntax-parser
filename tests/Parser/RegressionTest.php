@@ -11,7 +11,7 @@ it('keeps punctuation and unicode values intact', function (
     string $input,
     string $value,
 ): void {
-    expect(SearchParser::query($input)->build())->toBe([
+    expect(SearchParser::query($input)->allowAnyField()->build())->toBe([
         'field' => mb_strstr($input, ':', true),
         'operator' => '=',
         'type' => 'comparison',
@@ -33,7 +33,9 @@ it('infers untyped values conservatively', function (
     string $input,
     bool|float|int|string $value,
 ): void {
-    expect(SearchParser::query('value:'.$input)->parse()->getValue())->toBe($value);
+    expect(SearchParser::query('value:'.$input)->allowAnyField()->parse()->getValue())->toBe(
+        $value,
+    );
 })->with([
     ['01234', '01234'],
     ['99999999999999999999', '99999999999999999999'],
@@ -52,10 +54,13 @@ it('infers untyped values conservatively', function (
 ]);
 
 it('accepts negative comparisons, lists and ranges', function (): void {
-    expect(SearchParser::query('temp:>-5')->parse()->getValue())->toBe(-5)
-        ->and(SearchParser::query('temp>-5')->parse()->getValue())->toBe(-5)
-        ->and(SearchParser::query('temp:-5,-1')->parse()->getValues())->toBe([-5, -1])
-        ->and(SearchParser::query('temp:[-5 TO 5]')->build())->toBe([
+    expect(SearchParser::query('temp:>-5')->allowAnyField()->parse()->getValue())->toBe(-5)
+        ->and(SearchParser::query('temp>-5')->allowAnyField()->parse()->getValue())->toBe(-5)
+        ->and(SearchParser::query('temp:-5,-1')->allowAnyField()->parse()->getValues())->toBe([
+            -5,
+            -1,
+        ])
+        ->and(SearchParser::query('temp:[-5 TO 5]')->allowAnyField()->build())->toBe([
             'field' => 'temp',
             'from' => -5,
             'to' => 5,
@@ -67,16 +72,16 @@ it('reserves TO only as the separator inside a range', function (): void {
     $ast = SearchParser::query('go to market')->parse();
 
     expect($ast->getLeft()->getRight()->getValue())->toBe('to')
-        ->and(SearchParser::query('title:TO')->parse()->getValue())->toBe('TO');
+        ->and(SearchParser::query('title:TO')->allowAnyField()->parse()->getValue())->toBe('TO');
 });
 
 it('accepts keyword tokens in lists and range bounds', function (): void {
-    expect(SearchParser::query('title:and,or,not')->parse()->getValues())->toBe([
+    expect(SearchParser::query('title:and,or,not')->allowAnyField()->parse()->getValues())->toBe([
         'and',
         'or',
         'not',
     ])
-        ->and(SearchParser::query('title:[AND TO OR]')->build())->toBe([
+        ->and(SearchParser::query('title:[AND TO OR]')->allowAnyField()->build())->toBe([
             'field' => 'title',
             'from' => 'AND',
             'to' => 'OR',
@@ -85,22 +90,28 @@ it('accepts keyword tokens in lists and range bounds', function (): void {
 });
 
 it('accepts ISO datetimes as complete values', function (string $datetime): void {
-    expect(SearchParser::query('created_at:>'.$datetime)->parse()->getValue())->toBe($datetime);
+    expect(
+        SearchParser::query('created_at:>'.$datetime)->allowAnyField()->parse()->getValue(),
+    )->toBe(
+        $datetime,
+    );
 })->with([
     '2025-01-01T12:30', '2025-01-01T12:30:45', '2025-01-01T12:30:45.123Z',
     '2025-01-01T12:30:45Z', '2025-01-01T12:30:45+05:30', '2025-01-01t12:30:45.123-0530',
 ]);
 
 it('keeps text attached to a datetime in the same value', function (string $value): void {
-    expect(SearchParser::query('file:'.$value)->parse()->getValue())->toBe($value);
+    expect(SearchParser::query('file:'.$value)->allowAnyField()->parse()->getValue())->toBe($value);
 })->with(['2025-01-01T12:30:00-backup', '2025-01-01T12:30Zfoo', '2025-01-01T12:30:45+05:30abc']);
 
 it('accepts quoted URLs and times', function (string $value): void {
-    expect(SearchParser::query('value:"'.$value.'"')->parse()->getValue())->toBe($value);
+    expect(SearchParser::query('value:"'.$value.'"')->allowAnyField()->parse()->getValue())->toBe(
+        $value,
+    );
 })->with(['https://example.com', '12:30']);
 
 it('rejects unterminated quoted values', function (string $input): void {
-    SearchParser::query($input)->build();
+    SearchParser::query($input)->allowAnyField()->build();
 })->throws(ParseException::class, 'Unterminated quoted string.')->with([
     'title:"Coffee',
     "title:'Coffee",
@@ -109,7 +120,7 @@ it('rejects unterminated quoted values', function (string $input): void {
 ]);
 
 it('rejects invalid UTF-8', function (string $input): void {
-    SearchParser::query($input)->parse();
+    SearchParser::query($input)->allowAnyField()->parse();
 })->throws(ParseException::class, 'Search query must be valid UTF-8.')->with([
     "title:Coffee price:<10 \xff",
     "\xff",
@@ -118,6 +129,7 @@ it('rejects invalid UTF-8', function (string $input): void {
 it('tokenizes very long words', function (): void {
     expect(
         SearchParser::query('title:'.str_repeat('a', 1_000_000))
+            ->allowAnyField()
             ->maxLength(2_000_000)
             ->parse()
             ->getValue(),
@@ -132,7 +144,7 @@ it('reports tokenizer limits separately from invalid UTF-8', function (): void {
     ini_set('pcre.backtrack_limit', '1');
 
     try {
-        expect(fn (): mixed => SearchParser::query('title:Coffee')->parse())
+        expect(fn (): mixed => SearchParser::query('title:Coffee')->allowAnyField()->parse())
             ->toThrow(ParseException::class, 'Search query is too complex to tokenize.');
     } finally {
         ini_set('pcre.backtrack_limit', (string) $limit);
@@ -140,7 +152,7 @@ it('reports tokenizer limits separately from invalid UTF-8', function (): void {
 });
 
 it('rejects syntax that cannot be a value', function (string $input): void {
-    SearchParser::query($input)->parse();
+    SearchParser::query($input)->allowAnyField()->parse();
 })->throws(ParseException::class, 'Expected value.')->with([
     'title:(a OR b)', 'title:[1 TO (b)]', 'title:a,(b)', 'title:- 5',
     'title:-AND', "title:-\u{00A0}5", 'title:>', 'title:]', '*',
@@ -157,7 +169,7 @@ it('keeps negation above AND and AND above OR', function (): void {
 });
 
 it('rejects nesting above the default limit', function (string $input): void {
-    SearchParser::query($input)->build();
+    SearchParser::query($input)->allowAnyField()->build();
 })->throws(ParseException::class, 'maximum depth of 32')->with([
     str_repeat('(', 33).'a'.str_repeat(')', 33),
     str_repeat('NOT ', 33).'a',
@@ -166,7 +178,7 @@ it('rejects nesting above the default limit', function (string $input): void {
 ]);
 
 it('rejects leaf clauses above the default limit', function (string $input): void {
-    SearchParser::query($input)->parse();
+    SearchParser::query($input)->allowAnyField()->parse();
 })->throws(ParseException::class, 'maximum of 1024 clauses')->with([
     str_repeat('a ', 1_025),
     implode(' OR ', array_fill(0, 1_025, 'f:*')),
@@ -183,7 +195,7 @@ it('allows the depth and clause boundaries', function (): void {
 });
 
 it('counts lists, ranges, comparisons and exists queries once each', function (): void {
-    $parser = SearchParser::query('a:1,2,3 b:[1 TO 3] c:1 d:*')->maxClauses(4);
+    $parser = SearchParser::query('a:1,2,3 b:[1 TO 3] c:1 d:*')->allowAnyField()->maxClauses(4);
 
     expect($parser->parse()->getOperator())->toBe('AND')
         ->and(fn (): mixed => $parser->maxClauses(3)->build())->toThrow(
@@ -253,11 +265,17 @@ it('validates quoted asterisk range bounds as literal values', function (): void
 })->throws(InvalidFieldValueException::class);
 
 it('accepts escaped line breaks inside quotes', function (): void {
-    expect(SearchParser::query("title:\"a\\\nb\"")->parse()->getValue())->toBe("a\\\nb");
+    expect(SearchParser::query("title:\"a\\\nb\"")->allowAnyField()->parse()->getValue())->toBe(
+        "a\\\nb",
+    );
 });
 
 it('preserves adjacency for negative values after unicode and escaped quotes', function (
     string $prefix,
 ): void {
-    expect(SearchParser::query($prefix.' temp:>-5')->parse()->getRight()->getValue())->toBe(-5);
+    expect(
+        SearchParser::query($prefix.' temp:>-5')->allowAnyField()->parse()->getRight()->getValue(),
+    )->toBe(
+        -5,
+    );
 })->with(['nombre:José', 'title:"a\\\"b"']);

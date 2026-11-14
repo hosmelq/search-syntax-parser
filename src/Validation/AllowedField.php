@@ -29,7 +29,7 @@ class AllowedField
     protected bool $hasDefault = false;
 
     /**
-     * Values that should be ignored during validation.
+     * Values that remove query constraints after casting.
      *
      * @var array<int|string, mixed>
      */
@@ -404,13 +404,21 @@ class AllowedField
     }
 
     /**
-     * Add values that should be ignored during validation.
+     * Remove query constraints whose cast values strictly match these values.
      */
     public function ignore(mixed ...$values): self
     {
         $this->ignored = array_merge($this->ignored, $values);
 
         return $this;
+    }
+
+    /**
+     * Check whether a resolved and cast query value should be removed.
+     */
+    public function isIgnored(mixed $value): bool
+    {
+        return in_array($value, $this->ignored, true);
     }
 
     /**
@@ -484,7 +492,7 @@ class AllowedField
      */
     public function validate(mixed $value): bool
     {
-        if ($this->shouldSkipValidation($value)) {
+        if ($this->nullable && is_null($value)) {
             return true;
         }
 
@@ -551,17 +559,5 @@ class AllowedField
         $this->disabledClauses['wildcards'] = true;
 
         return $this;
-    }
-
-    /**
-     * Determine if validation should be skipped for the given value.
-     */
-    private function shouldSkipValidation(mixed $value): bool
-    {
-        if (in_array($value, $this->ignored, true)) {
-            return true;
-        }
-
-        return $this->nullable && is_null($value);
     }
 }

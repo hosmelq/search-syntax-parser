@@ -6,6 +6,8 @@ weight: 1
 
 Create a parser with `SearchParser::query($text)` or `new SearchParser($text)`. Call `parse()` for the AST or `build()` for the default array output.
 
+Field queries require `allowedFields()` or an explicit `allowAnyField()`. The examples below use `allowAnyField()` to focus on syntax; use an [allowlist](field-validation-and-value-types) for untrusted input. Bare terms need no configuration.
+
 ## Terms and boolean operators
 
 `AND`, `OR`, and `NOT` are operators only in uppercase. Other casing is ordinary text: `rock and roll` contains three terms joined by implicit AND. `NOT` and a leading `-` bind first, then explicit or implicit `AND`, then `OR`. Parentheses change grouping.
@@ -29,11 +31,11 @@ Comma-separated values require the colon form. An equal list means OR across its
 ```php
 use HosmelQ\SearchSyntaxParser\SearchParser;
 
-assert(SearchParser::query('price:>=10')->build()['operator'] === '>=');
-assert(SearchParser::query('status:ACTIVE,DRAFT')->build()['values'] === ['ACTIVE', 'DRAFT']);
-assert(SearchParser::query('status:!=SOLD,EXPIRED')->build()['operator'] === '!=');
-assert(SearchParser::query('title:AND')->build()['value'] === 'AND');
-assert(SearchParser::query('location:37.7749,-122.4194')->build()['values'] === [37.7749, -122.4194]);
+assert(SearchParser::query('price:>=10')->allowAnyField()->build()['operator'] === '>=');
+assert(SearchParser::query('status:ACTIVE,DRAFT')->allowAnyField()->build()['values'] === ['ACTIVE', 'DRAFT']);
+assert(SearchParser::query('status:!=SOLD,EXPIRED')->allowAnyField()->build()['operator'] === '!=');
+assert(SearchParser::query('title:AND')->allowAnyField()->build()['value'] === 'AND');
+assert(SearchParser::query('location:37.7749,-122.4194')->allowAnyField()->build()['values'] === [37.7749, -122.4194]);
 ```
 
 A leading `-` after a field comparator joins an adjacent word as a negative value. `temp:>-5`, `temp:-5,-1`, and `temp:[-5 TO 5]` are supported; `temp:- 5` is invalid.
@@ -47,11 +49,11 @@ Ranges include both endpoints. `TO` must be uppercase and is a separator only in
 ```php
 use HosmelQ\SearchSyntaxParser\SearchParser;
 
-assert(SearchParser::query('price:[10 TO 50]')->build()['from'] === 10);
-assert(SearchParser::query('price:[* TO 50]')->build()['from'] === null);
-assert(SearchParser::query('title:["*" TO "z*"]')->build()['from'] === '*');
-assert(SearchParser::query('category:*')->build()['type'] === 'exists');
-assert(SearchParser::query('NOT discount:*')->build()['operator'] === 'NOT');
+assert(SearchParser::query('price:[10 TO 50]')->allowAnyField()->build()['from'] === 10);
+assert(SearchParser::query('price:[* TO 50]')->allowAnyField()->build()['from'] === null);
+assert(SearchParser::query('title:["*" TO "z*"]')->allowAnyField()->build()['from'] === '*');
+assert(SearchParser::query('category:*')->allowAnyField()->build()['type'] === 'exists');
+assert(SearchParser::query('NOT discount:*')->allowAnyField()->build()['operator'] === 'NOT');
 ```
 
 ## Quoted text
@@ -63,9 +65,9 @@ Inside quotes, only `\\`, `\"`, and `\'` are unescaped. Other backslashes remain
 ```php
 use HosmelQ\SearchSyntaxParser\SearchParser;
 
-assert(SearchParser::query('url:"https://example.com"')->build()['value'] === 'https://example.com');
-assert(SearchParser::query('time:"12:30"')->build()['value'] === '12:30');
-assert(SearchParser::query('title:"co*fee"')->build()['value'] === 'co*fee');
+assert(SearchParser::query('url:"https://example.com"')->allowAnyField()->build()['value'] === 'https://example.com');
+assert(SearchParser::query('time:"12:30"')->allowAnyField()->build()['value'] === '12:30');
+assert(SearchParser::query('title:"co*fee"')->allowAnyField()->build()['value'] === 'co*fee');
 ```
 
 ## Wildcards
@@ -78,9 +80,9 @@ Field patterns support `:` and `:!=`/`!=`, and reject ordering comparisons. A li
 use HosmelQ\SearchSyntaxParser\SearchParser;
 
 assert(SearchParser::query('co*fee')->build()['segments'] === ['co', 'fee']);
-assert(SearchParser::query('name:"a b"*')->build()['segments'] === ['a b', '']);
-assert(SearchParser::query('name:jo*,ann')->build()['operator'] === 'OR');
-assert(SearchParser::query('name:!=jo*,ann')->build()['operator'] === 'AND');
+assert(SearchParser::query('name:"a b"*')->allowAnyField()->build()['segments'] === ['a b', '']);
+assert(SearchParser::query('name:jo*,ann')->allowAnyField()->build()['operator'] === 'OR');
+assert(SearchParser::query('name:!=jo*,ann')->allowAnyField()->build()['operator'] === 'AND');
 ```
 
 See the [array reference](../advanced-usage/adapters) for output shapes and the [string adapter](../advanced-usage/string-adapter) for normalized query text.
