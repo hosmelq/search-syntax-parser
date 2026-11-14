@@ -4,7 +4,11 @@ declare(strict_types=1);
 
 use HosmelQ\SearchSyntaxParser\Validation\Validators\MinValidator;
 
-it('validates numbers against minimum', function (float|int $min, float|int $value, bool $expected): void {
+it('validates numbers against minimum', function (
+    float|int $min,
+    float|int $value,
+    bool $expected,
+): void {
     $validator = new MinValidator($min);
 
     expect($validator($value, 'field'))->toBe($expected);
@@ -16,7 +20,11 @@ it('validates numbers against minimum', function (float|int $min, float|int $val
     'negative threshold ok' => [-5, -5, true],
 ]);
 
-it('validates string length against minimum', function (int $min, string $value, bool $expected): void {
+it('validates string length against minimum', function (
+    int $min,
+    string $value,
+    bool $expected,
+): void {
     $validator = new MinValidator($min);
 
     expect($validator($value, 'name'))->toBe($expected);

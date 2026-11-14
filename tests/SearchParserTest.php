@@ -23,12 +23,10 @@ it('creates from query and trims input', function (): void {
 
 it('returns default adapter and memoizes instance', function (): void {
     $parser = SearchParser::query('title:Coffee');
-
     $adapterA = $parser->adapter();
     $adapterB = $parser->adapter();
 
-    expect($adapterA)->toBeInstanceOf(ArrayAdapter::class)
-        ->and($adapterA)->toBe($adapterB);
+    expect($adapterA)->toBeInstanceOf(ArrayAdapter::class)->and($adapterA)->toBe($adapterB);
 });
 
 it('resolves custom adapter via extend', function (): void {
@@ -83,7 +81,6 @@ it('accepts single value for array field', function (): void {
             ->max(20)
             ->each(fn ($keyword): AllowedFieldItemRules => $keyword->string()->min(1)),
     ]);
-
     $ast = $parser->parse();
 
     expect($ast)->toBeInstanceOf(ComparisonNode::class)

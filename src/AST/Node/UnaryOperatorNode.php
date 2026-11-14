@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace HosmelQ\SearchSyntaxParser\AST\Node;
 
 use HosmelQ\SearchSyntaxParser\AST\Visitor\VisitorInterface;
+use Override;
 
 readonly class UnaryOperatorNode implements NodeInterface
 {
@@ -14,12 +15,12 @@ readonly class UnaryOperatorNode implements NodeInterface
     public function __construct(
         private string $operator,
         private NodeInterface $operand,
-    ) {
-    }
+    ) {}
 
     /**
      * {@inheritDoc}
      */
+    #[Override]
     public function accept(VisitorInterface $visitor): mixed
     {
         return $visitor->visitUnaryOperator($this);
@@ -44,6 +45,7 @@ readonly class UnaryOperatorNode implements NodeInterface
     /**
      * {@inheritDoc}
      */
+    #[Override]
     public function getType(): string
     {
         return 'UnaryOperator';

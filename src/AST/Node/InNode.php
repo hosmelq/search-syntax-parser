@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace HosmelQ\SearchSyntaxParser\AST\Node;
 
 use HosmelQ\SearchSyntaxParser\AST\Visitor\VisitorInterface;
+use Override;
 
 readonly class InNode implements NodeInterface
 {
@@ -17,12 +18,12 @@ readonly class InNode implements NodeInterface
         private string $field,
         private string $operator,
         private array $values,
-    ) {
-    }
+    ) {}
 
     /**
      * {@inheritDoc}
      */
+    #[Override]
     public function accept(VisitorInterface $visitor): mixed
     {
         return $visitor->visitIn($this);
@@ -47,6 +48,7 @@ readonly class InNode implements NodeInterface
     /**
      * {@inheritDoc}
      */
+    #[Override]
     public function getType(): string
     {
         return 'In';

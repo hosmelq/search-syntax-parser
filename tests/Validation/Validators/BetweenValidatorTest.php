@@ -4,7 +4,12 @@ declare(strict_types=1);
 
 use HosmelQ\SearchSyntaxParser\Validation\Validators\BetweenValidator;
 
-it('validates numbers between min and max', function (float|int $min, float|int $max, float|int $value, bool $expected): void {
+it('validates numbers between min and max', function (
+    float|int $min,
+    float|int $max,
+    float|int $value,
+    bool $expected,
+): void {
     $validator = new BetweenValidator($min, $max);
 
     expect($validator($value, 'field'))->toBe($expected);
@@ -20,7 +25,12 @@ it('validates numbers between min and max', function (float|int $min, float|int 
     'inside decimal range' => [2.5, 3.5, 3.0, true],
 ]);
 
-it('validates string length between min and max', function (int $min, int $max, string $value, bool $expected): void {
+it('validates string length between min and max', function (
+    int $min,
+    int $max,
+    string $value,
+    bool $expected,
+): void {
     $validator = new BetweenValidator($min, $max);
 
     expect($validator($value, 'name'))->toBe($expected);
@@ -32,7 +42,12 @@ it('validates string length between min and max', function (int $min, int $max, 
     'length ok' => [3, 5, 'abc', true],
 ]);
 
-it('validates array size between min and max', function (int $min, int $max, array $value, bool $expected): void {
+it('validates array size between min and max', function (
+    int $min,
+    int $max,
+    array $value,
+    bool $expected,
+): void {
     $validator = new BetweenValidator($min, $max);
 
     expect($validator($value, 'items'))->toBe($expected);

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace HosmelQ\SearchSyntaxParser\AST\Node;
 
 use HosmelQ\SearchSyntaxParser\AST\Visitor\VisitorInterface;
+use Override;
 
 readonly class RangeNode implements NodeInterface
 {
@@ -15,12 +16,12 @@ readonly class RangeNode implements NodeInterface
         private string $field,
         private bool|float|int|string $from,
         private bool|float|int|string $to,
-    ) {
-    }
+    ) {}
 
     /**
      * {@inheritDoc}
      */
+    #[Override]
     public function accept(VisitorInterface $visitor): mixed
     {
         return $visitor->visitRange($this);
@@ -53,6 +54,7 @@ readonly class RangeNode implements NodeInterface
     /**
      * {@inheritDoc}
      */
+    #[Override]
     public function getType(): string
     {
         return 'Range';

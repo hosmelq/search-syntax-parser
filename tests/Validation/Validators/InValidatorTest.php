@@ -4,7 +4,11 @@ declare(strict_types=1);
 
 use HosmelQ\SearchSyntaxParser\Validation\Validators\InValidator;
 
-it('validates scalar values against allowed list', function (array $allowed, mixed $value, bool $expected): void {
+it('validates scalar values against allowed list', function (
+    array $allowed,
+    mixed $value,
+    bool $expected,
+): void {
     $validator = new InValidator($allowed);
 
     expect($validator($value, 'status'))->toBe($expected);
@@ -22,7 +26,11 @@ it('validates scalar values against allowed list', function (array $allowed, mix
     'unsupported allowed array' => [[['A']], 'A', false],
 ]);
 
-it('validates arrays against allowed list', function (array $allowed, array $value, bool $expected): void {
+it('validates arrays against allowed list', function (
+    array $allowed,
+    array $value,
+    bool $expected,
+): void {
     $validator = new InValidator($allowed);
 
     expect($validator($value, 'tags'))->toBe($expected);

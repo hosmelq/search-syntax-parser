@@ -43,7 +43,9 @@ trait ValidatesAttributes
     protected function requireParameterCount(int $count, array $parameters, string $rule): void
     {
         if (count($parameters) < $count) {
-            throw new InvalidArgumentException(sprintf('Validation rule %s requires at least %d parameters.', $rule, $count));
+            throw new InvalidArgumentException(
+                sprintf('Validation rule %s requires at least %d parameters.', $rule, $count),
+            );
         }
     }
 
@@ -130,7 +132,12 @@ trait ValidatesAttributes
         $allowed = [];
 
         foreach ($parameters as $parameter) {
-            if ($parameter !== null && ! is_scalar($parameter) && ! is_resource($parameter) && ! $parameter instanceof Stringable) {
+            if (
+                $parameter !== null
+                && ! is_scalar($parameter)
+                && ! is_resource($parameter)
+                && ! $parameter instanceof Stringable
+            ) {
                 return false;
             }
 
@@ -141,7 +148,12 @@ trait ValidatesAttributes
             $values = [];
 
             foreach ($value as $element) {
-                if ($element !== null && ! is_scalar($element) && ! is_resource($element) && ! $element instanceof Stringable) {
+                if (
+                    $element !== null
+                    && ! is_scalar($element)
+                    && ! is_resource($element)
+                    && ! $element instanceof Stringable
+                ) {
                     return false;
                 }
 
@@ -151,7 +163,12 @@ trait ValidatesAttributes
             return array_diff($values, $allowed) === [];
         }
 
-        if ($value !== null && ! is_scalar($value) && ! is_resource($value) && ! $value instanceof Stringable) {
+        if (
+            $value !== null
+            && ! is_scalar($value)
+            && ! is_resource($value)
+            && ! $value instanceof Stringable
+        ) {
             return false;
         }
 
@@ -176,7 +193,8 @@ trait ValidatesAttributes
         $this->requireParameterCount(1, $parameters, 'max');
 
         try {
-            return BigNumber::of((string) $this->getSize($attribute, $value))->isLessThanOrEqualTo((string) $this->trim($parameters[0]));
+            return BigNumber::of((string) $this->getSize($attribute, $value))
+                ->isLessThanOrEqualTo((string) $this->trim($parameters[0]));
         } catch (MathException) {
             return false;
         }
@@ -192,7 +210,8 @@ trait ValidatesAttributes
         $this->requireParameterCount(1, $parameters, 'min');
 
         try {
-            return BigNumber::of((string) $this->getSize($attribute, $value))->isGreaterThanOrEqualTo((string) $this->trim($parameters[0]));
+            return BigNumber::of((string) $this->getSize($attribute, $value))
+                ->isGreaterThanOrEqualTo((string) $this->trim($parameters[0]));
         } catch (MathException) {
             return false;
         }
@@ -218,7 +237,8 @@ trait ValidatesAttributes
         $this->requireParameterCount(1, $parameters, 'size');
 
         try {
-            return BigNumber::of((string) $this->getSize($attribute, $value))->isEqualTo((string) $this->trim($parameters[0]));
+            return BigNumber::of((string) $this->getSize($attribute, $value))
+                ->isEqualTo((string) $this->trim($parameters[0]));
         } catch (MathException) {
             return false;
         }

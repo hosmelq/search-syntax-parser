@@ -6,6 +6,7 @@ namespace HosmelQ\SearchSyntaxParser\Validation\Validators;
 
 use HosmelQ\SearchSyntaxParser\Validation\Concerns\ValidatesAttributes;
 use HosmelQ\SearchSyntaxParser\Validation\ValidatorInterface;
+use Override;
 
 class NumericValidator implements ValidatorInterface
 {
@@ -14,6 +15,7 @@ class NumericValidator implements ValidatorInterface
     /**
      * Validate that the value is numeric.
      */
+    #[Override]
     public function __invoke(mixed $value, string $attribute): bool
     {
         return $this->validateNumeric($attribute, $value);

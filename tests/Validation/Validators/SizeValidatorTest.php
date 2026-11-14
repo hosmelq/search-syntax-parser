@@ -4,7 +4,11 @@ declare(strict_types=1);
 
 use HosmelQ\SearchSyntaxParser\Validation\Validators\SizeValidator;
 
-it('validates numbers match size', function (float|int $expectedSize, float|int $value, bool $expected): void {
+it('validates numbers match size', function (
+    float|int $expectedSize,
+    float|int $value,
+    bool $expected,
+): void {
     $validator = new SizeValidator($expectedSize);
 
     expect($validator($value, 'field'))->toBe($expected);
@@ -15,7 +19,11 @@ it('validates numbers match size', function (float|int $expectedSize, float|int 
     'equal float' => [3.5, 3.5, true],
 ]);
 
-it('validates string length matches size', function (int $size, string $value, bool $expected): void {
+it('validates string length matches size', function (
+    int $size,
+    string $value,
+    bool $expected,
+): void {
     $validator = new SizeValidator($size);
 
     expect($validator($value, 'name'))->toBe($expected);

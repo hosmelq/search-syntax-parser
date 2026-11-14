@@ -6,6 +6,7 @@ namespace HosmelQ\SearchSyntaxParser\Validation\Validators;
 
 use HosmelQ\SearchSyntaxParser\Validation\Concerns\ValidatesAttributes;
 use HosmelQ\SearchSyntaxParser\Validation\ValidatorInterface;
+use Override;
 
 readonly class InValidator implements ValidatorInterface
 {
@@ -16,13 +17,12 @@ readonly class InValidator implements ValidatorInterface
      *
      * @param list<mixed> $values
      */
-    public function __construct(private array $values)
-    {
-    }
+    public function __construct(private array $values) {}
 
     /**
      * Validate that the value is one of the allowed values.
      */
+    #[Override]
     public function __invoke(mixed $value, string $attribute): bool
     {
         return $this->validateIn($attribute, $value, $this->values);

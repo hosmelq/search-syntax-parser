@@ -51,7 +51,6 @@ it('maps comparison node with internal field name', function (): void {
     $searchParser = new SearchParser()->allowedFields([
         new AllowedField('price', 'unit_price'),
     ]);
-
     $adapter = new ArrayAdapter($searchParser);
     $node = new ComparisonNode('price', '=', 5);
 

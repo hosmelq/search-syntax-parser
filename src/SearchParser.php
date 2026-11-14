@@ -33,9 +33,7 @@ class SearchParser
     /**
      * Create a new SearchParser instance.
      */
-    public function __construct(private readonly string $query = '')
-    {
-    }
+    public function __construct(private readonly string $query = '') {}
 
     /**
      * Create a new SearchParser instance for the given query.

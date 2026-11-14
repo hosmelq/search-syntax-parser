@@ -6,6 +6,7 @@ namespace HosmelQ\SearchSyntaxParser\Validation\Validators;
 
 use HosmelQ\SearchSyntaxParser\Validation\Concerns\ValidatesAttributes;
 use HosmelQ\SearchSyntaxParser\Validation\ValidatorInterface;
+use Override;
 
 readonly class BetweenValidator implements ValidatorInterface
 {
@@ -14,13 +15,12 @@ readonly class BetweenValidator implements ValidatorInterface
     /**
      * Create a between validator with min and max constraints.
      */
-    public function __construct(private float|int $min, private float|int $max)
-    {
-    }
+    public function __construct(private float|int $min, private float|int $max) {}
 
     /**
      * Validate that the value is between min and max (inclusive).
      */
+    #[Override]
     public function __invoke(mixed $value, string $attribute): bool
     {
         return $this->validateBetween($attribute, $value, [$this->min, $this->max]);

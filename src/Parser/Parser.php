@@ -287,7 +287,10 @@ class Parser
     private function parseFieldQuery(string $field): NodeInterface
     {
         if (! $this->searchParser->isFieldAllowed($field)) {
-            throw InvalidFieldException::fieldNotAllowed($field, $this->searchParser->getAllowedFieldNames());
+            throw InvalidFieldException::fieldNotAllowed(
+                $field,
+                $this->searchParser->getAllowedFieldNames(),
+            );
         }
 
         $type = $this->lexer->getLookaheadType();
@@ -343,7 +346,6 @@ class Parser
     private function parseOperator(): string
     {
         $type = $this->lexer->getLookaheadType();
-
         $operator = match ($type) {
             TokenType::Greater => '>',
             TokenType::GreaterEqual => '>=',

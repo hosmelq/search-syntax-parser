@@ -8,6 +8,7 @@ use function Safe\preg_match;
 
 use Doctrine\Common\Lexer\AbstractLexer;
 use Doctrine\Common\Lexer\Token;
+use Override;
 use Safe\Exceptions\PcreException;
 
 /**
@@ -32,6 +33,7 @@ class SearchLexer extends AbstractLexer
     /**
      * Lexical patterns that should be captured.
      */
+    #[Override]
     protected function getCatchablePatterns(): array
     {
         return [
@@ -67,6 +69,7 @@ class SearchLexer extends AbstractLexer
     /**
      * Patterns that should be skipped.
      */
+    #[Override]
     protected function getNonCatchablePatterns(): array
     {
         return [
@@ -82,6 +85,7 @@ class SearchLexer extends AbstractLexer
      *
      * @throws PcreException
      */
+    #[Override]
     protected function getType(string &$value): TokenType
     {
         $type = $this->determineTokenType($value);

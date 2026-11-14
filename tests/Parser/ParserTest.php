@@ -23,8 +23,7 @@ it('parses field comparisons', function (): void {
 it('parses exists queries', function (): void {
     $ast = SearchParser::query('category:*')->parse();
 
-    expect($ast)->toBeInstanceOf(ExistsNode::class)
-        ->getField()->toBe('category');
+    expect($ast)->toBeInstanceOf(ExistsNode::class)->getField()->toBe('category');
 });
 
 it('parses in lists with comma-separated values', function (): void {
@@ -55,10 +54,10 @@ it('parses NOT modifier and minus as unary', function (): void {
     $minusAst = SearchParser::query('-title:Coffee')->parse();
 
     foreach ([$notAst, $minusAst] as $ast) {
-        expect($ast)->toBeInstanceOf(UnaryOperatorNode::class)
-            ->getOperator()->toBe('NOT');
+        expect($ast)->toBeInstanceOf(UnaryOperatorNode::class)->getOperator()->toBe('NOT');
 
         $operand = $ast->getOperand();
+
         expect($operand)->toBeInstanceOf(ComparisonNode::class)
             ->getField()->toBe('title')
             ->getOperator()->toBe('=')
@@ -77,7 +76,6 @@ it('parses wildcard suffix on values', function (): void {
 
 it('parses implicit AND at AST level', function (): void {
     $ast = SearchParser::query('title:Coffee price:<10')->parse();
-
     $left = $ast->getLeft();
     $right = $ast->getRight();
 
@@ -132,11 +130,11 @@ it('parses boolean identifier values into booleans', function (): void {
     expect($astTrue)->toBeInstanceOf(ComparisonNode::class)
         ->getField()->toBe('flag')
         ->getOperator()->toBe('=')
-        ->getValue()->toBe(true)
+        ->getValue()->toBeTrue()
         ->and($astFalse)->toBeInstanceOf(ComparisonNode::class)
         ->getField()->toBe('flag')
         ->getOperator()->toBe('=')
-        ->getValue()->toBe(false);
+        ->getValue()->toBeFalse();
 });
 
 it('parses float numbers into floats', function (): void {

@@ -45,7 +45,12 @@ class ParseException extends Exception
      */
     public static function invalidWildcardUsage(string $field): self
     {
-        return new self(sprintf("Wildcard is only supported with ':' for exists queries; use NOT %s:* for negation.", $field));
+        return new self(
+            sprintf(
+                "Wildcard is only supported with ':' for exists queries; use NOT %s:* for negation.",
+                $field,
+            ),
+        );
     }
 
     /**

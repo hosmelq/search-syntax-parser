@@ -71,7 +71,6 @@ it('tokenizes strings and unescapes quotes', function (): void {
 
 it('tokenizes operators and punctuation', function (): void {
     $tokens = lexTokens('>= <= != > < : * , - ( ) [ ]');
-
     $types = array_map(fn (array $token) => $token[0], $tokens);
 
     expect($types)->toBe([
@@ -93,7 +92,6 @@ it('tokenizes operators and punctuation', function (): void {
 
 it('tokenizes logical keywords and range operator', function (): void {
     $tokens = lexTokens('AND Or not TO');
-
     $types = array_map(fn (array $token) => $token[0], $tokens);
 
     expect($types)->toBe([

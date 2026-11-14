@@ -12,6 +12,7 @@ use HosmelQ\SearchSyntaxParser\AST\Node\NodeInterface;
 use HosmelQ\SearchSyntaxParser\AST\Node\RangeNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\TermNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\UnaryOperatorNode;
+use Override;
 
 readonly class ArrayAdapter extends AbstractAdapter
 {
@@ -20,6 +21,7 @@ readonly class ArrayAdapter extends AbstractAdapter
      *
      * @return array<string, mixed>
      */
+    #[Override]
     public function build(NodeInterface $ast): array
     {
         /** @var array<string, mixed> */
@@ -31,6 +33,7 @@ readonly class ArrayAdapter extends AbstractAdapter
      *
      * @return array<string, mixed>
      */
+    #[Override]
     public function visitBinaryOperator(BinaryOperatorNode $node): array
     {
         return [
@@ -46,6 +49,7 @@ readonly class ArrayAdapter extends AbstractAdapter
      *
      * @return array<string, mixed>
      */
+    #[Override]
     public function visitComparison(ComparisonNode $node): array
     {
         return [
@@ -61,6 +65,7 @@ readonly class ArrayAdapter extends AbstractAdapter
      *
      * @return array<string, mixed>
      */
+    #[Override]
     public function visitExists(ExistsNode $node): array
     {
         return [
@@ -74,6 +79,7 @@ readonly class ArrayAdapter extends AbstractAdapter
      *
      * @return array<string, mixed>
      */
+    #[Override]
     public function visitIn(InNode $node): array
     {
         return [
@@ -89,6 +95,7 @@ readonly class ArrayAdapter extends AbstractAdapter
      *
      * @return array<string, mixed>
      */
+    #[Override]
     public function visitRange(RangeNode $node): array
     {
         return [
@@ -104,6 +111,7 @@ readonly class ArrayAdapter extends AbstractAdapter
      *
      * @return array<string, mixed>
      */
+    #[Override]
     public function visitTerm(TermNode $node): array
     {
         return [
@@ -117,6 +125,7 @@ readonly class ArrayAdapter extends AbstractAdapter
      *
      * @return array<string, mixed>
      */
+    #[Override]
     public function visitUnaryOperator(UnaryOperatorNode $node): array
     {
         return [

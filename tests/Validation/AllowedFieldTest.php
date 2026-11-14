@@ -71,9 +71,7 @@ it('validates numeric values', function (): void {
 it('validates string values', function (): void {
     $stringField = AllowedField::string('name');
 
-    expect($stringField)
-        ->validate(123)->toBeFalse()
-        ->validate('abc')->toBeTrue();
+    expect($stringField)->validate(123)->toBeFalse()->validate('abc')->toBeTrue();
 });
 
 it('validates decimal values (exact and ranged)', function (): void {
@@ -151,7 +149,10 @@ it('validates per-item rules on arrays', function (): void {
         ->and($booleanRulesField->validate([1, '0', true]))->toBeTrue();
 
     $callbackRulesField = AllowedField::array('values')
-        ->each(fn ($rules): AllowedFieldItemRules => $rules->callback(fn ($value): bool => is_int($value)));
+        ->each(
+            fn ($rules): AllowedFieldItemRules
+                => $rules->callback(fn ($value): bool => is_int($value)),
+        );
 
     expect($callbackRulesField->validate(['x']))->toBeFalse()
         ->and($callbackRulesField->validate([1, 2]))->toBeTrue();

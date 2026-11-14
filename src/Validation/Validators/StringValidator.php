@@ -6,6 +6,7 @@ namespace HosmelQ\SearchSyntaxParser\Validation\Validators;
 
 use HosmelQ\SearchSyntaxParser\Validation\Concerns\ValidatesAttributes;
 use HosmelQ\SearchSyntaxParser\Validation\ValidatorInterface;
+use Override;
 
 class StringValidator implements ValidatorInterface
 {
@@ -14,6 +15,7 @@ class StringValidator implements ValidatorInterface
     /**
      * Validate that the value is a string.
      */
+    #[Override]
     public function __invoke(mixed $value, string $attribute): bool
     {
         return $this->validateString($attribute, $value);

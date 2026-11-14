@@ -18,7 +18,7 @@ class InvalidFieldException extends InvalidArgumentException
         return new self(sprintf(
             "Field '%s' is not allowed. Allowed fields are: %s.",
             $field,
-            implode(', ', $allowedFields)
+            implode(', ', $allowedFields),
         ));
     }
 }

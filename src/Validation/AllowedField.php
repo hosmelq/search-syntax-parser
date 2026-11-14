@@ -77,7 +77,7 @@ class AllowedField
      */
     public function __construct(
         protected string $name,
-        null|string $internalName = null
+        null|string $internalName = null,
     ) {
         $this->internalName = $internalName ?? $name;
     }
@@ -88,7 +88,6 @@ class AllowedField
     public static function array(string $name, null|string $internalName = null): self
     {
         $field = new self($name, $internalName);
-
         $field->expectsArray = true;
 
         return $field;
@@ -100,7 +99,6 @@ class AllowedField
     public static function boolean(string $name, null|string $internalName = null): self
     {
         $field = new self($name, $internalName);
-
         $field->validators[] = new BooleanValidator();
 
         return $field;
@@ -111,10 +109,12 @@ class AllowedField
      *
      * @param callable(mixed $value, string $attribute): bool $callback
      */
-    public static function callback(string $name, callable $callback, null|string $internalName = null): self
-    {
+    public static function callback(
+        string $name,
+        callable $callback,
+        null|string $internalName = null,
+    ): self {
         $field = new self($name, $internalName);
-
         $field->validators[] = new CallbackValidator(Closure::fromCallable($callback));
 
         return $field;
@@ -123,10 +123,13 @@ class AllowedField
     /**
      * Create a decimal field with precision constraints.
      */
-    public static function decimal(string $name, int $min, null|int $max = null, null|string $internalName = null): self
-    {
+    public static function decimal(
+        string $name,
+        int $min,
+        null|int $max = null,
+        null|string $internalName = null,
+    ): self {
         $field = new self($name, $internalName);
-
         $field->validators[] = new DecimalValidator($min, $max);
 
         return $field;
@@ -140,7 +143,6 @@ class AllowedField
     public static function in(string $name, array $values, null|string $internalName = null): self
     {
         $field = new self($name, $internalName);
-
         $field->validators[] = new InValidator($values);
 
         return $field;
@@ -152,7 +154,6 @@ class AllowedField
     public static function integer(string $name, null|string $internalName = null): self
     {
         $field = new self($name, $internalName);
-
         $field->validators[] = new IntegerValidator();
 
         return $field;
@@ -164,7 +165,6 @@ class AllowedField
     public static function numeric(string $name, null|string $internalName = null): self
     {
         $field = new self($name, $internalName);
-
         $field->validators[] = new NumericValidator();
 
         return $field;
@@ -176,7 +176,6 @@ class AllowedField
     public static function string(string $name, null|string $internalName = null): self
     {
         $field = new self($name, $internalName);
-
         $field->validators[] = new StringValidator();
 
         return $field;
@@ -195,7 +194,7 @@ class AllowedField
 
         $this->indexItemValidators[$index] = array_merge(
             $this->indexItemValidators[$index] ?? [],
-            $rules->getValidators()
+            $rules->getValidators(),
         );
 
         return $this;
@@ -387,7 +386,10 @@ class AllowedField
             return true;
         }
 
-        return array_all($this->validators, fn (ValidatorInterface $validator): bool => $validator($value, $this->internalName));
+        return array_all(
+            $this->validators,
+            fn (ValidatorInterface $validator): bool => $validator($value, $this->internalName),
+        );
     }
 
     /**

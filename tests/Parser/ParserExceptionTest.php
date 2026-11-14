@@ -22,11 +22,17 @@ it('throws on expected token mismatch', function (): void {
 
 it('throws on invalid wildcard usage', function (): void {
     SearchParser::query('price>*')->build();
-})->throws(ParseException::class, "Wildcard is only supported with ':' for exists queries; use NOT price:* for negation.");
+})->throws(
+    ParseException::class,
+    "Wildcard is only supported with ':' for exists queries; use NOT price:* for negation.",
+);
 
 it('throws on invalid wildcard usage with colon and operator', function (): void {
     SearchParser::query('price:>*')->build();
-})->throws(ParseException::class, "Wildcard is only supported with ':' for exists queries; use NOT price:* for negation.");
+})->throws(
+    ParseException::class,
+    "Wildcard is only supported with ':' for exists queries; use NOT price:* for negation.",
+);
 
 it('throws on unexpected end of input', function (): void {
     SearchParser::query('title:Coffee AND')->build();

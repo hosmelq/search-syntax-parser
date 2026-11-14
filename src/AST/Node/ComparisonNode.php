@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace HosmelQ\SearchSyntaxParser\AST\Node;
 
 use HosmelQ\SearchSyntaxParser\AST\Visitor\VisitorInterface;
+use Override;
 
 readonly class ComparisonNode implements NodeInterface
 {
@@ -15,12 +16,12 @@ readonly class ComparisonNode implements NodeInterface
         private string $field,
         private string $operator,
         private bool|float|int|string $value,
-    ) {
-    }
+    ) {}
 
     /**
      * {@inheritDoc}
      */
+    #[Override]
     public function accept(VisitorInterface $visitor): mixed
     {
         return $visitor->visitComparison($this);
@@ -45,6 +46,7 @@ readonly class ComparisonNode implements NodeInterface
     /**
      * {@inheritDoc}
      */
+    #[Override]
     public function getType(): string
     {
         return 'Comparison';

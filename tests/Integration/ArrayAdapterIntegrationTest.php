@@ -6,7 +6,9 @@ use HosmelQ\SearchSyntaxParser\SearchParser;
 use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
 
 it('builds complex query with precedence and grouping', function (): void {
-    $result = SearchParser::query('status:ACTIVE,DRAFT AND price:>100 OR (category:* AND -discount:*)')->build();
+    $result = SearchParser::query(
+        'status:ACTIVE,DRAFT AND price:>100 OR (category:* AND -discount:*)',
+    )->build();
 
     expect($result)->toEqual([
         'left' => [
@@ -47,14 +49,15 @@ it('builds complex query with precedence and grouping', function (): void {
 });
 
 it('maps internal field names in complex output', function (): void {
-    $parser = SearchParser::query('status:ACTIVE,DRAFT AND price:>100 OR (category:* AND -discount:*)')
+    $parser = SearchParser::query(
+        'status:ACTIVE,DRAFT AND price:>100 OR (category:* AND -discount:*)',
+    )
         ->allowedFields([
             new AllowedField('status', 'state'),
             new AllowedField('price', 'unit_price'),
             new AllowedField('category', 'cat'),
             new AllowedField('discount', 'disc'),
         ]);
-
     $result = $parser->build();
 
     expect($result)->toEqual([

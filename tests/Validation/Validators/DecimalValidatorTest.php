@@ -4,7 +4,11 @@ declare(strict_types=1);
 
 use HosmelQ\SearchSyntaxParser\Validation\Validators\DecimalValidator;
 
-it('validates decimal places equal to count when only min is provided', function (int $min, mixed $value, bool $expected): void {
+it('validates decimal places equal to count when only min is provided', function (
+    int $min,
+    mixed $value,
+    bool $expected,
+): void {
     $validator = new DecimalValidator($min);
 
     expect($validator($value, 'price'))->toBe($expected);
@@ -18,7 +22,12 @@ it('validates decimal places equal to count when only min is provided', function
     'two decimals number' => [2, 10.12, true],
 ]);
 
-it('validates decimal places within range when min and max are provided', function (int $min, int $max, mixed $value, bool $expected): void {
+it('validates decimal places within range when min and max are provided', function (
+    int $min,
+    int $max,
+    mixed $value,
+    bool $expected,
+): void {
     $validator = new DecimalValidator($min, $max);
 
     expect($validator($value, 'amount'))->toBe($expected);
