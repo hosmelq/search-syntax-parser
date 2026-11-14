@@ -7,9 +7,19 @@ namespace HosmelQ\SearchSyntaxParser\Validation;
 class AllowedField
 {
     /**
+     * Default value for this field.
+     */
+    protected mixed $default = null;
+
+    /**
      * Whether this field expects an array value.
      */
     protected bool $expectsArray = false;
+
+    /**
+     * Whether this field has a default value.
+     */
+    protected bool $hasDefault = false;
 
     /**
      * Values that should be ignored during validation.
@@ -196,6 +206,21 @@ class AllowedField
     }
 
     /**
+     * Set a default value for the field.
+     */
+    public function default(mixed $value): self
+    {
+        $this->default = $value;
+        $this->hasDefault = true;
+
+        if (is_null($value)) {
+            $this->nullable();
+        }
+
+        return $this;
+    }
+
+    /**
      * Configure validators that apply to each item when the value is an array.
      *
      * @param callable(AllowedFieldItemRules $rules): (AllowedFieldItemRules|void) $callback
@@ -216,6 +241,14 @@ class AllowedField
     }
 
     /**
+     * Get the default value for this field.
+     */
+    public function getDefault(): mixed
+    {
+        return $this->default;
+    }
+
+    /**
      * Get the internal field name used for mapping.
      */
     public function getInternalName(): string
@@ -229,6 +262,14 @@ class AllowedField
     public function getName(): string
     {
         return $this->name;
+    }
+
+    /**
+     * Check if this field has a default value.
+     */
+    public function hasDefault(): bool
+    {
+        return $this->hasDefault;
     }
 
     /**

@@ -34,9 +34,8 @@ This release includes breaking changes to value typing, validation, query limits
 
 ### Removed
 
-- Remove the unused `AllowedField::default()`, `getDefault()`, and `hasDefault()` methods. Use `nullable()` explicitly when needed.
 - Remove unused token cases and `ParseException::expectedIdentifier()`.
-- Remove the doctrine/lexer and archtechx/enums runtime dependencies.
+- Remove the doctrine/lexer, archtechx/enums and thecodingmachine/safe runtime dependencies.
 
 ## v2.0.0 - 2026-09-23
 
