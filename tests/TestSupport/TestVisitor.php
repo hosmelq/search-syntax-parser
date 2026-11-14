@@ -11,6 +11,7 @@ use HosmelQ\SearchSyntaxParser\AST\Node\InNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\RangeNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\TermNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\UnaryOperatorNode;
+use HosmelQ\SearchSyntaxParser\AST\Node\WildcardNode;
 use HosmelQ\SearchSyntaxParser\AST\Visitor\VisitorInterface;
 
 class TestVisitor implements VisitorInterface
@@ -48,5 +49,10 @@ class TestVisitor implements VisitorInterface
     public function visitUnaryOperator(UnaryOperatorNode $node): mixed
     {
         return 'unary';
+    }
+
+    public function visitWildcard(WildcardNode $node): mixed
+    {
+        return 'wildcard';
     }
 }

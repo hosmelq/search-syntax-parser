@@ -9,6 +9,7 @@ use HosmelQ\SearchSyntaxParser\AST\Node\InNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\RangeNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\TermNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\UnaryOperatorNode;
+use HosmelQ\SearchSyntaxParser\AST\Node\WildcardNode;
 use HosmelQ\SearchSyntaxParser\SearchParser;
 
 it('parses field comparisons', function (): void {
@@ -68,10 +69,10 @@ it('parses NOT modifier and minus as unary', function (): void {
 it('parses wildcard suffix on values', function (): void {
     $ast = SearchParser::query('brand:nike*')->parse();
 
-    expect($ast)->toBeInstanceOf(ComparisonNode::class)
+    expect($ast)->toBeInstanceOf(WildcardNode::class)
         ->getField()->toBe('brand')
         ->getOperator()->toBe('=')
-        ->getValue()->toBe('nike*');
+        ->getSegments()->toBe(['nike', '']);
 });
 
 it('parses implicit AND at AST level', function (): void {
@@ -168,8 +169,8 @@ it('parses in-list with not-equal operator', function (): void {
 it('parses wildcard suffix on quoted strings', function (): void {
     $ast = SearchParser::query('title:"Co"*')->parse();
 
-    expect($ast)->toBeInstanceOf(ComparisonNode::class)
+    expect($ast)->toBeInstanceOf(WildcardNode::class)
         ->getField()->toBe('title')
         ->getOperator()->toBe('=')
-        ->getValue()->toBe('Co*');
+        ->getSegments()->toBe(['Co', '']);
 });

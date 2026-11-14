@@ -10,7 +10,7 @@ use HosmelQ\SearchSyntaxParser\SearchParser;
 use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
 use HosmelQ\SearchSyntaxParser\Validation\AllowedFieldItemRules;
 
-it('creates from query and trims input', function (): void {
+it('accepts whitespace surrounding the query', function (): void {
     $result = SearchParser::query('  title:Coffee  ')->build();
 
     expect($result)->toEqual([

@@ -1,0 +1,50 @@
+---
+title: "String adapter"
+description: "Serialize syntax trees into normalized query text with explicit operators, safe quoting, and preserved external field names."
+weight: 2
+---
+
+Call `build('string')` to serialize the AST into normalized query text. The string adapter is built in and keeps external field names, even when the array adapter maps them to internal names.
+
+```php
+use HosmelQ\SearchSyntaxParser\SearchParser;
+
+$text = SearchParser::query('(coffee OR tea) -status:draft')->build('string');
+
+assert($text === '(coffee OR tea) AND NOT status:draft');
+assert(SearchParser::query($text)->build() === SearchParser::query('(coffee OR tea) -status:draft')->build());
+```
+
+## Normalization
+
+Output uses explicit `AND` and `OR`, and `NOT` instead of `-`. Parentheses preserve precedence and the tree's grouping, including right-nested expressions such as `a AND (b AND c)`.
+
+Comparisons use `field:value` or `field:>value`, `field:>=value`, `field:<value`, `field:<=value`, and `field:!=value`. Lists use `field:a,b` or `field:!=a,b`. Ranges use `field:[a TO b]` with `*` for open bounds. Exists queries use `field:*`.
+
+Booleans become `true` or `false`. Integers use digits, and floats retain a decimal point so reparsing infers a float. Exponent notation is expanded to a decimal literal. Strings are quoted when needed to preserve their type or syntax, including numeric-looking strings, logical keywords, empty strings, leading hyphens, whitespace, and literal asterisks. Double quotes and backslashes are escaped.
+
+```php
+use HosmelQ\SearchSyntaxParser\SearchParser;
+
+assert(SearchParser::query('value:1.00')->build('string') === 'value:1.0');
+assert(SearchParser::query('value:"123"')->build('string') === 'value:"123"');
+assert(SearchParser::query('title:"a b"*')->build('string') === 'title:"a b"*');
+assert(SearchParser::query('name:a**b')->build('string') === 'name:a*b');
+```
+
+## Wildcards and programmatic trees
+
+Wildcard segments join with `*`. When the leading literal segment needs quotes, a prefix pattern uses the `"text"*` form. Patterns whose segment lists cannot be represented by the grammar throw `LogicException`. Non-finite floats also cannot be represented as query values and throw `LogicException`.
+
+You can serialize a programmatic tree directly.
+
+```php
+use HosmelQ\SearchSyntaxParser\Adapter\StringAdapter;
+use HosmelQ\SearchSyntaxParser\AST\Node\ComparisonNode;
+
+assert(new StringAdapter()->build(new ComparisonNode('price', '>=', 10.0)) === 'price:>=10.0');
+```
+
+Reapply the same field schema when reparsing typed queries: schemas can cast quoted numeric text, decimal strings, and enum values. Trusted defaults bypass those schemas on their initial application. A singleton default list serializes as one value; reparsing that text creates a comparison because the query grammar has no singleton-list notation.
+
+Serialization preserves the parsed tree rather than its original validation context. Reparsing an expanded wildcard list validates separate field clauses, so collection size constraints may reject that text. Collapsing wildcard runs can also change size checks on the original pattern text.

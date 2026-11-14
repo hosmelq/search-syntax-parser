@@ -2,12 +2,11 @@
 
 declare(strict_types=1);
 
-use HosmelQ\SearchSyntaxParser\Exception\InvalidFieldValueException;
 use HosmelQ\SearchSyntaxParser\Exception\ParseException;
 use HosmelQ\SearchSyntaxParser\SearchParser;
 use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
 
-it('keeps punctuation, unicode and wildcard values intact', function (
+it('keeps punctuation and unicode values intact', function (
     string $input,
     string $value,
 ): void {
@@ -23,10 +22,6 @@ it('keeps punctuation, unicode and wildcard values intact', function (
     ['title:t-shirt', 't-shirt'],
     ['sku:ABC-123', 'ABC-123'],
     ['email:john@example.com', 'john@example.com'],
-    ['title:*fee', '*fee'],
-    ['title:co*fee', 'co*fee'],
-    ['title:nike*', 'nike*'],
-    ['sku:12*', '12*'],
     ['title:-foo', '-foo'],
     ['title:and', 'and'],
     ['title:OR', 'OR'],
@@ -59,7 +54,7 @@ it('accepts negative comparisons, lists and ranges', function (): void {
     expect(SearchParser::query('temp:>-5')->parse()->getValue())->toBe(-5)
         ->and(SearchParser::query('temp>-5')->parse()->getValue())->toBe(-5)
         ->and(SearchParser::query('temp:-5,-1')->parse()->getValues())->toBe([-5, -1])
-        ->and(SearchParser::query('temp:[-5 to 5]')->build())->toBe([
+        ->and(SearchParser::query('temp:[-5 TO 5]')->build())->toBe([
             'field' => 'temp',
             'from' => -5,
             'to' => 5,
@@ -252,9 +247,9 @@ it('keeps unquoted * range bounds open without casting or validating them', func
     ['x:[* TO *]', '*', '*'],
 ]);
 
-it('validates quoted * range bounds', function (): void {
+it('rejects quoted wildcard range bounds', function (): void {
     SearchParser::query('x:["*" TO 5]')->allowedFields([AllowedField::integer('x')])->parse();
-})->throws(InvalidFieldValueException::class);
+})->throws(ParseException::class);
 
 it('accepts escaped line breaks inside quotes', function (): void {
     expect(SearchParser::query("title:\"a\\\nb\"")->parse()->getValue())->toBe("a\\\nb");

@@ -9,7 +9,7 @@ it('preserves complete words as terms', function (string $input): void {
 })->with([
     'title', 'category_1', '1field', 'nested.path', 'niño', '東京', '🙂',
     't-shirt', 'ABC-123', 'john@example.com', 'price=10', 'hello!world', '!',
-    "O'Brien", '007', '12.50', 'TRUE', '12*', '*fee', 'co*fee', 'TO',
+    "O'Brien", '007', '12.50', 'TRUE', 'TO',
 ]);
 
 it('unescapes only supported characters in quoted values', function (
@@ -23,14 +23,12 @@ it('unescapes only supported characters in quoted values', function (
     ["'single\\'quote'", "single'quote"],
     ['"back\\nslash"', 'back\nslash'],
     ['"a\\\\\'b"', 'a\\\'b'],
-    ['"Co"*', 'Co*'],
-    ["'Co'*", 'Co*'],
     ['"*"', '*'],
     ['""', ''],
 ]);
 
-it('recognizes case insensitive boolean operators', function (): void {
-    $result = SearchParser::query('a AND b Or not c')->build();
+it('recognizes uppercase boolean operators', function (): void {
+    $result = SearchParser::query('a AND b OR NOT c')->build();
 
     expect($result['operator'])->toBe('OR')
         ->and($result['left']['operator'])->toBe('AND')

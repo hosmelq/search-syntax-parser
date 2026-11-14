@@ -36,9 +36,9 @@ final class SearchLexer
     public function tokenize(string $input): Tokens
     {
         if (preg_match_all(self::PATTERN, $input, $matches, PREG_PATTERN_ORDER) === false) {
-            throw new ParseException(preg_last_error() === PREG_BAD_UTF8_ERROR
-                ? 'Search query must be valid UTF-8.'
-                : 'Search query is too complex to tokenize.');
+            throw preg_last_error() === PREG_BAD_UTF8_ERROR
+                ? ParseException::invalidUtf8()
+                : ParseException::tokenizationFailed();
         }
 
         // Capture whitespace and accumulate byte lengths instead of allocating offset tuples.
@@ -54,12 +54,13 @@ final class SearchLexer
             $kind = $matches['MARK'][$index] ?? '';
 
             if ($kind === 'e') {
-                throw new ParseException('Unterminated quoted string.');
+                throw ParseException::unterminatedQuote(mb_strlen(mb_strcut($input, 0, $start)));
             }
 
             $type = match ($kind) {
-                'q', 'qs' => TokenType::String,
-                'w' => isset($value[3]) ? TokenType::Word : match (mb_strtoupper($value)) {
+                'q' => TokenType::String,
+                'qs' => TokenType::Wildcard,
+                'w' => isset($value[3]) ? TokenType::Word : match ($value) {
                     'AND' => TokenType::And,
                     'OR' => TokenType::Or,
                     'NOT' => TokenType::Not,
@@ -82,7 +83,7 @@ final class SearchLexer
                 },
             };
 
-            if ($type === TokenType::String) {
+            if ($type === TokenType::String || $type === TokenType::Wildcard) {
                 $value = mb_substr($value, 1, $kind === 'qs' ? -2 : -1);
                 $value = strtr($value, ['\\\\' => '\\', '\\"' => '"', "\\'" => "'"]);
 

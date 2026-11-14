@@ -4,12 +4,17 @@ declare(strict_types=1);
 
 namespace HosmelQ\SearchSyntaxParser\Validation;
 
+use BackedEnum;
+use InvalidArgumentException;
+
 class AllowedField
 {
     /**
      * Default value for this field.
+     *
+     * @var null|bool|float|int|non-empty-list<bool|float|int|string>|string
      */
-    protected mixed $default = null;
+    protected null|array|bool|float|int|string $default = null;
 
     /**
      * Whether this field expects an array value.
@@ -102,6 +107,21 @@ class AllowedField
     }
 
     /**
+     * Create a date field, preserving its original text.
+     */
+    public static function date(
+        string $name,
+        null|string $format = null,
+        null|string $internalName = null,
+    ): self {
+        $field = new self($name, $internalName);
+
+        $field->rules->date($format);
+
+        return $field;
+    }
+
+    /**
      * Create a decimal field with precision constraints.
      */
     public static function decimal(
@@ -113,6 +133,20 @@ class AllowedField
         $field = new self($name, $internalName);
 
         $field->rules->decimal($min, $max);
+
+        return $field;
+    }
+
+    /**
+     * Create a field accepting the backing values of an enum.
+     *
+     * @param class-string<BackedEnum> $enum
+     */
+    public static function enum(string $name, string $enum, null|string $internalName = null): self
+    {
+        $field = new self($name, $internalName);
+
+        $field->rules->enum($enum);
 
         return $field;
     }
@@ -210,7 +244,20 @@ class AllowedField
      */
     public function default(mixed $value): self
     {
-        $this->default = $value;
+        $message = 'A default must be null, a scalar, or a non-empty list of scalars.';
+
+        if ($value === null || is_scalar($value)) {
+            $this->default = $value;
+        } elseif (is_array($value) && $value !== [] && array_is_list($value)) {
+            $this->default = array_map(
+                static fn (mixed $item): bool|float|int|string => is_scalar($item)
+                    ? $item : throw new InvalidArgumentException($message),
+                $value,
+            );
+        } else {
+            throw new InvalidArgumentException($message);
+        }
+
         $this->hasDefault = true;
 
         if (is_null($value)) {
@@ -242,8 +289,10 @@ class AllowedField
 
     /**
      * Get the default value for this field.
+     *
+     * @return null|bool|float|int|non-empty-list<bool|float|int|string>|string
      */
-    public function getDefault(): mixed
+    public function getDefault(): null|array|bool|float|int|string
     {
         return $this->default;
     }

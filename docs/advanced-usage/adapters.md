@@ -1,0 +1,59 @@
+---
+title: "Adapters and array output"
+description: "Build structured arrays from every AST node and map external field names to internal names for your search backend."
+weight: 1
+---
+
+`build()` uses the built-in array adapter. `build('array')` selects it explicitly, while `parse()` returns a `NodeInterface` tree that can be passed directly to an adapter.
+
+```php
+use HosmelQ\SearchSyntaxParser\Adapter\ArrayAdapter;
+use HosmelQ\SearchSyntaxParser\SearchParser;
+
+$parser = SearchParser::query('title:Coffee');
+
+assert(new ArrayAdapter()->build($parser->parse()) === $parser->build());
+```
+
+## Array output reference
+
+Each node has a lowercase `type`. Field nodes use the configured internal field name. Bare wildcard terms have a null field. Typed scalars retain their PHP types; decimal and date fields retain text.
+
+| Node | Array keys |
+| --- | --- |
+| Comparison | `field`, `operator`, `type: comparison`, `value` |
+| Term | `type: term`, `value` |
+| Binary operator | `left`, `operator: AND/OR`, `right`, `type: binary` |
+| Unary operator | `operand`, `operator: NOT`, `type: unary` |
+| List | `field`, `operator: =/!=`, `type: in`, `values` |
+| Range | `field`, `from`, `to`, `type: range` |
+| Exists | `field`, `type: exists` |
+| Wildcard | `field`, `operator: =/!=`, `segments`, `type: wildcard` |
+
+`left`, `right`, and `operand` contain nested node arrays. Range bounds are inclusive, and an open bound is the string `*`. Wildcard segments contain literal text between wildcard operators, including empty leading or trailing segments.
+
+```php
+use HosmelQ\SearchSyntaxParser\SearchParser;
+
+assert(SearchParser::query('title:Coffee')->build() === [
+    'field' => 'title',
+    'operator' => '=',
+    'type' => 'comparison',
+    'value' => 'Coffee',
+]);
+
+assert(SearchParser::query('title:co*fee')->build() === [
+    'field' => 'title',
+    'operator' => '=',
+    'segments' => ['co', 'fee'],
+    'type' => 'wildcard',
+]);
+```
+
+Literal lists stay one node. Lists containing any pattern expand into binary trees: equality joins leaves with OR and inequality joins them with AND. Defaults appear in the same tree as explicit query filters.
+
+## Adapter selection
+
+`adapter()` returns an adapter instance, memoized per parser and name. `getDefaultAdapter()` returns `array`. Register custom creators with `extend($name, $callback)`.
+
+See the [string adapter](string-adapter) for query text or [custom adapters and visitors](custom-adapters-and-visitors) for other output formats.

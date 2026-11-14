@@ -12,6 +12,7 @@ use HosmelQ\SearchSyntaxParser\AST\Node\NodeInterface;
 use HosmelQ\SearchSyntaxParser\AST\Node\RangeNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\TermNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\UnaryOperatorNode;
+use HosmelQ\SearchSyntaxParser\AST\Node\WildcardNode;
 use Override;
 
 readonly class ArrayAdapter extends AbstractAdapter
@@ -132,6 +133,22 @@ readonly class ArrayAdapter extends AbstractAdapter
             'operand' => $node->getOperand()->accept($this),
             'operator' => $node->getOperator(),
             'type' => 'unary',
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    #[Override]
+    public function visitWildcard(WildcardNode $node): array
+    {
+        $field = $node->getField();
+
+        return [
+            'field' => $field === null ? null : $this->getInternalFieldName($field),
+            'operator' => $node->getOperator(),
+            'segments' => $node->getSegments(),
+            'type' => 'wildcard',
         ];
     }
 }

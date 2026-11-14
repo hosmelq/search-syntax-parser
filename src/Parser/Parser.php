@@ -12,6 +12,7 @@ use HosmelQ\SearchSyntaxParser\AST\Node\NodeInterface;
 use HosmelQ\SearchSyntaxParser\AST\Node\RangeNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\TermNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\UnaryOperatorNode;
+use HosmelQ\SearchSyntaxParser\AST\Node\WildcardNode;
 use HosmelQ\SearchSyntaxParser\Exception\InvalidFieldException;
 use HosmelQ\SearchSyntaxParser\Exception\InvalidFieldValueException;
 use HosmelQ\SearchSyntaxParser\Exception\ParseException;
@@ -30,6 +31,15 @@ class Parser
 
     private int $index = 0;
 
+    private string $input = '';
+
+    /**
+     * Literal segments of the most recently parsed value, or null for a literal value.
+     *
+     * @var null|list<string>
+     */
+    private null|array $segments = null;
+
     private Tokens $tokens;
 
     public function __construct(
@@ -43,13 +53,18 @@ class Parser
      *
      * @throws ParseException
      */
-    public function parse(string $input): NodeInterface
+    public function parse(string $input, bool $allowEmpty = false): null|NodeInterface
     {
+        $this->input = $input;
         $this->tokens = new SearchLexer()->tokenize($input);
         $this->index = 0;
         $this->clauses = 0;
 
         if ($this->tokens->types === []) {
+            if ($allowEmpty) {
+                return null;
+            }
+
             throw ParseException::emptyQuery();
         }
 
@@ -57,10 +72,17 @@ class Parser
         $remaining = $this->tokens->values[$this->index] ?? null;
 
         if ($remaining !== null) {
-            throw ParseException::unexpectedToken($remaining);
+            throw ParseException::unexpectedToken($remaining, $this->position());
         }
 
         return $ast;
+    }
+
+    private function countClause(int $start): void
+    {
+        if (++$this->clauses > $this->maxClauses) {
+            throw ParseException::maximumClauses($this->maxClauses, $this->position($start));
+        }
     }
 
     /**
@@ -71,7 +93,11 @@ class Parser
         $actual = $this->tokens->types[$this->index] ?? null;
 
         if ($actual !== $expected) {
-            throw ParseException::expectedToken($expected->name, $actual->name ?? 'NULL');
+            throw ParseException::expectedToken(
+                $expected->name,
+                $actual->name ?? 'NULL',
+                $this->position(),
+            );
         }
 
         $this->index++;
@@ -86,17 +112,15 @@ class Parser
         $value = $this->tokens->values[$this->index] ?? '';
 
         if (
-            ($type !== TokenType::Word && $type !== TokenType::String)
+            (
+                ! in_array($type, [TokenType::Word, TokenType::String, TokenType::Wildcard], true)
+            )
             || ($type === TokenType::Word && $value === '*')
         ) {
-            throw ParseException::expectedValue();
+            throw ParseException::expectedValue($this->position());
         }
 
-        if (++$this->clauses > $this->maxClauses) {
-            throw new ParseException(
-                sprintf('Search query exceeds the maximum of %d clauses.', $this->maxClauses),
-            );
-        }
+        $this->countClause($this->index);
 
         $this->index++;
 
@@ -109,7 +133,9 @@ class Parser
             return $this->parseFieldQuery($value);
         }
 
-        return new TermNode($value);
+        $segments = $this->wildcardSegments($value, $type);
+
+        return $segments === null ? new TermNode($value) : new WildcardNode(null, '=', $segments);
     }
 
     /**
@@ -136,7 +162,7 @@ class Parser
         $type = $this->tokens->types[$this->index] ?? null;
 
         if ($type === null) {
-            throw ParseException::unexpectedEndOfInput();
+            throw ParseException::unexpectedEndOfInput($this->position());
         }
 
         if (match ($type) {
@@ -144,9 +170,7 @@ class Parser
             default => false,
         }) {
             if ($depth >= $this->maxDepth) {
-                throw new ParseException(
-                    sprintf('Search query exceeds the maximum depth of %d.', $this->maxDepth),
-                );
+                throw ParseException::maximumDepth($this->maxDepth, $this->position());
             }
 
             $this->index++;
@@ -174,6 +198,7 @@ class Parser
             throw InvalidFieldException::fieldNotAllowed(
                 $field,
                 $this->searchParser->getAllowedFieldNames(),
+                $this->position($this->index - 1),
             );
         }
 
@@ -205,7 +230,7 @@ class Parser
             && $this->tokens->values[$this->index] === '*'
         ) {
             if (! $hasColon || $operator !== '=') {
-                throw ParseException::invalidWildcardUsage($field);
+                throw ParseException::invalidWildcardUsage($field, $this->position());
             }
 
             $this->index++;
@@ -213,25 +238,70 @@ class Parser
             return new ExistsNode($field);
         }
 
+        $valueIndex = $this->index;
         $value = $this->parseValue($field);
+        $segments = $this->segments;
 
         if ($hasColon && ($this->tokens->types[$this->index] ?? null) === TokenType::Comma) {
             $values = [$value];
+            $patterns = [$segments];
+            $starts = [$valueIndex];
+            $hasPattern = $segments !== null;
 
             do {
                 $this->index++;
 
+                $starts[] = $this->index;
                 $values[] = $this->parseValue($field, count($values));
+                $patterns[] = $this->segments;
+                $hasPattern = $hasPattern || $this->segments !== null;
             } while (($this->tokens->types[$this->index] ?? null) === TokenType::Comma);
 
-            $this->validateValue($field, $values);
+            if ($hasPattern && $operator !== '=' && $operator !== '!=') {
+                $patternIndex = array_find_key(
+                    $patterns,
+                    static fn (null|array $pattern): bool => $pattern !== null,
+                );
 
-            return new InNode($field, $operator, $values);
+                throw ParseException::invalidWildcardPattern(
+                    $this->position($starts[$patternIndex ?? 0]),
+                );
+            }
+
+            $this->validateValue($field, $values, $valueIndex);
+
+            if (! $hasPattern) {
+                return new InNode($field, $operator, $values);
+            }
+
+            $left = null;
+
+            foreach ($values as $index => $item) {
+                if ($index > 0) {
+                    $this->countClause($starts[$index]);
+                }
+
+                $pattern = $patterns[$index];
+                $node = $pattern === null
+                    ? new ComparisonNode($field, $operator, $item)
+                    : new WildcardNode($field, $operator, $pattern);
+                $left = $left === null
+                    ? $node
+                    : new BinaryOperatorNode($operator === '=' ? 'OR' : 'AND', $left, $node);
+            }
+
+            return $left;
         }
 
-        $this->validateValue($field, $value);
+        if ($segments !== null && $operator !== '=' && $operator !== '!=') {
+            throw ParseException::invalidWildcardPattern($this->position($valueIndex));
+        }
 
-        return new ComparisonNode($field, $operator, $value);
+        $this->validateValue($field, $value, $valueIndex);
+
+        return $segments === null
+            ? new ComparisonNode($field, $operator, $value)
+            : new WildcardNode($field, $operator, $segments);
     }
 
     /**
@@ -239,6 +309,8 @@ class Parser
      */
     private function parseRange(string $field): RangeNode
     {
+        $valueIndex = $this->index;
+
         $this->index++;
 
         $from = $this->parseRangeBound($field);
@@ -246,9 +318,13 @@ class Parser
 
         if (
             $separator !== TokenType::Word
-            || mb_strtoupper($this->tokens->values[$this->index]) !== 'TO'
+            || $this->tokens->values[$this->index] !== 'TO'
         ) {
-            throw ParseException::expectedToken('TO', $separator->name ?? 'NULL');
+            throw ParseException::expectedToken(
+                'TO',
+                $separator->name ?? 'NULL',
+                $this->position(),
+            );
         }
 
         $this->index++;
@@ -259,7 +335,7 @@ class Parser
 
         foreach ([$from, $to] as $bound) {
             if ($bound !== null) {
-                $this->validateValue($field, $bound);
+                $this->validateValue($field, $bound, $valueIndex);
             }
         }
 
@@ -282,7 +358,14 @@ class Parser
             return null;
         }
 
-        return $this->parseValue($field);
+        $start = $this->index;
+        $value = $this->parseValue($field);
+
+        if ($this->segments !== null || (is_string($value) && str_contains($value, '*'))) {
+            throw ParseException::invalidWildcardPattern($this->position($start));
+        }
+
+        return $value;
     }
 
     /**
@@ -298,7 +381,7 @@ class Parser
             if ($type === TokenType::And) {
                 $this->index++;
             } elseif (! match ($type) {
-                TokenType::Word, TokenType::String, TokenType::Not, TokenType::Minus, TokenType::OpenParenthesis => true,
+                TokenType::Word, TokenType::String, TokenType::Wildcard, TokenType::Not, TokenType::Minus, TokenType::OpenParenthesis => true,
                 default => false,
             }) {
                 break;
@@ -318,10 +401,15 @@ class Parser
         $type = $this->tokens->types[$this->index] ?? null;
 
         if ($type === null) {
-            throw ParseException::expectedValue();
+            throw ParseException::expectedValue($this->position());
         }
 
         $value = $this->tokens->values[$this->index];
+
+        if ($type === TokenType::Word && $value === '*') {
+            throw ParseException::invalidWildcardUsage($field, $this->position());
+        }
+
         $quoted = $type === TokenType::String;
 
         if ($type === TokenType::Minus) {
@@ -331,34 +419,69 @@ class Parser
                 ($this->tokens->types[$next] ?? null) !== TokenType::Word
                 || $this->tokens->offsets[$next] !== $this->tokens->offsets[$this->index] + 1
             ) {
-                throw ParseException::expectedValue();
+                throw ParseException::expectedValue($this->position());
             }
 
             $value .= $this->tokens->values[$next];
 
             $this->index++;
         } elseif (! match ($type) {
-            TokenType::Word, TokenType::String, TokenType::And, TokenType::Or, TokenType::Not => true,
+            TokenType::Word, TokenType::String, TokenType::Wildcard, TokenType::And, TokenType::Or, TokenType::Not => true,
             default => false,
         }) {
-            throw ParseException::expectedValue();
+            throw ParseException::expectedValue($this->position());
         }
 
         $this->index++;
 
+        $this->segments = $this->wildcardSegments($value, $type);
         $allowed = $this->searchParser->getAllowedField($field);
 
         return $allowed?->cast($value, $quoted, $index)
             ?? AllowedFieldItemRules::infer($value, $quoted);
     }
 
+    private function position(null|int $index = null): int
+    {
+        $offset = $this->tokens->offsets[$index ?? $this->index] ?? null;
+
+        return $offset === null
+            ? mb_strlen($this->input)
+            : mb_strlen(mb_strcut($this->input, 0, $offset));
+    }
+
     /**
      * @param bool|float|int|list<bool|float|int|string>|string $value
      */
-    private function validateValue(string $field, array|bool|float|int|string $value): void
-    {
+    private function validateValue(
+        string $field,
+        array|bool|float|int|string $value,
+        int $start,
+    ): void {
         if (! $this->searchParser->validateField($field, $value)) {
-            throw InvalidFieldValueException::invalidValue($field);
+            throw InvalidFieldValueException::invalidValue($field, $this->position($start));
         }
+    }
+
+    /**
+     * @return null|list<string>
+     */
+    private function wildcardSegments(string $value, TokenType $type): null|array
+    {
+        if ($type === TokenType::Wildcard) {
+            return [mb_substr($value, 0, -1), ''];
+        }
+
+        if ($type === TokenType::String || ! str_contains($value, '*')) {
+            return null;
+        }
+
+        $segments = preg_split('/\*+/', $value);
+
+        if ($segments === false) {
+            throw ParseException::tokenizationFailed();
+        }
+
+        return $segments;
     }
 }

@@ -7,7 +7,15 @@ namespace HosmelQ\SearchSyntaxParser;
 use Closure;
 use HosmelQ\SearchSyntaxParser\Adapter\ArrayAdapter;
 use HosmelQ\SearchSyntaxParser\Adapter\QueryAdapterInterface;
+use HosmelQ\SearchSyntaxParser\Adapter\StringAdapter;
+use HosmelQ\SearchSyntaxParser\AST\Node\BinaryOperatorNode;
+use HosmelQ\SearchSyntaxParser\AST\Node\ComparisonNode;
+use HosmelQ\SearchSyntaxParser\AST\Node\ExistsNode;
+use HosmelQ\SearchSyntaxParser\AST\Node\InNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\NodeInterface;
+use HosmelQ\SearchSyntaxParser\AST\Node\RangeNode;
+use HosmelQ\SearchSyntaxParser\AST\Node\UnaryOperatorNode;
+use HosmelQ\SearchSyntaxParser\AST\Node\WildcardNode;
 use HosmelQ\SearchSyntaxParser\Exception\ParseException;
 use HosmelQ\SearchSyntaxParser\Parser\Parser;
 use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
@@ -46,7 +54,7 @@ class SearchParser
      */
     public static function query(string $query): self
     {
-        return new self(mb_trim($query));
+        return new self($query);
     }
 
     /**
@@ -186,22 +194,40 @@ class SearchParser
      */
     public function parse(): NodeInterface
     {
-        if ($this->query === '') {
-            throw ParseException::emptyQuery();
-        }
-
         if (mb_strlen($this->query) > $this->lengthLimit) {
-            throw new ParseException(
-                sprintf(
-                    'Search query exceeds the maximum length of %d characters.',
-                    $this->lengthLimit,
-                ),
-            );
+            throw ParseException::maximumLength($this->lengthLimit);
         }
 
+        $defaults = array_filter(
+            $this->allowedFields,
+            static fn (AllowedField $field): bool => $field->hasDefault(),
+        );
         $parser = new Parser($this, $this->depthLimit, $this->clauseLimit);
+        $ast = $parser->parse($this->query, $defaults !== []);
 
-        return $parser->parse($this->query);
+        if ($defaults !== []) {
+            $referenced = $ast instanceof NodeInterface ? $this->referencedFields($ast) : [];
+
+            foreach ($defaults as $field) {
+                $name = $field->getName();
+
+                if (isset($referenced[$name])) {
+                    continue;
+                }
+
+                $value = $field->getDefault();
+                $node = match (true) {
+                    $value === null => new UnaryOperatorNode('NOT', new ExistsNode($name)),
+                    is_array($value) => new InNode($name, '=', $value),
+                    default => new ComparisonNode($name, '=', $value),
+                };
+                $ast = $ast instanceof NodeInterface
+                    ? new BinaryOperatorNode('AND', $ast, $node)
+                    : $node;
+            }
+        }
+
+        return $ast ?? throw ParseException::emptyQuery();
     }
 
     /**
@@ -234,6 +260,11 @@ class SearchParser
         return new ArrayAdapter($this);
     }
 
+    protected function createStringAdapter(): StringAdapter
+    {
+        return new StringAdapter();
+    }
+
     /**
      * Create an adapter instance.
      */
@@ -250,6 +281,40 @@ class SearchParser
         }
 
         throw new InvalidArgumentException(sprintf("Adapter '%s' not supported.", $adapter));
+    }
+
+    /**
+     * @return array<string, true>
+     */
+    private function referencedFields(NodeInterface $ast): array
+    {
+        $fields = [];
+        $pending = [$ast];
+
+        while ($pending !== []) {
+            $node = array_pop($pending);
+
+            if ($node instanceof BinaryOperatorNode) {
+                $pending[] = $node->getLeft();
+                $pending[] = $node->getRight();
+            } elseif ($node instanceof UnaryOperatorNode) {
+                $pending[] = $node->getOperand();
+            } elseif (
+                $node instanceof ComparisonNode
+                || $node instanceof InNode
+                || $node instanceof RangeNode
+                || $node instanceof ExistsNode
+                || $node instanceof WildcardNode
+            ) {
+                $name = $node->getField();
+
+                if ($name !== null) {
+                    $fields[$name] = true;
+                }
+            }
+        }
+
+        return $fields;
     }
 
     /**

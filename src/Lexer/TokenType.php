@@ -25,5 +25,6 @@ enum TokenType: string
     case OpenParenthesis = 'open_parenthesis';
     case Or = 'or';
     case String = 'string';
+    case Wildcard = 'wildcard';
     case Word = 'word';
 }

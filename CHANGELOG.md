@@ -7,9 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
-This release includes breaking changes to value typing, validation, query limits and the lexer and parser APIs.
+This release includes breaking changes to operators, wildcard AST nodes, exception inheritance, value typing, validation, query limits, and the lexer and parser APIs.
+
+### Added
+
+- Apply trusted field defaults to the AST when their external field is absent, including null defaults for missing fields, scalar comparisons, and non-empty lists. Empty queries can build defaults alone.
+- Add the built-in `string` adapter to serialize ASTs with explicit operators, quoting, external field names, wildcard patterns, and preserved grouping.
+- Add `SearchSyntaxException` as the common runtime exception base, Unicode character positions on query errors, and external field accessors on field exceptions.
+- Add `date()` field and array-item rules with strict calendar/time validation and optional exact formats, and `enum()` rules using backed enum values and types.
+- Publish complete usage documentation under `docs/`, including adapter output, visitors, wildcard-to-LIKE conversion, defaults, errors, and query limits.
 
 ### Changed
+
+- Recognize `AND`, `OR`, `NOT`, and the range separator `TO` only in uppercase; other casing is ordinary query text.
+- Represent unquoted wildcard terms and field patterns with `WildcardNode`, add `visitWildcard()` to visitors, collapse wildcard runs, and keep quoted asterisks literal. A quoted prefix followed by `*` is a pattern.
+- Expand lists containing patterns into OR for equality or AND for inequality, counting every expanded leaf toward the clause limit. Reject patterns in ordering comparisons and range bounds.
+- Make `ParseException`, `InvalidFieldException`, and `InvalidFieldValueException` extend `SearchSyntaxException`; field exceptions no longer extend `InvalidArgumentException`.
+- Preserve the raw query in `query()` and count its whitespace toward `maxLength()`, so error positions refer to the caller's exact input.
+- Validate `default()` arguments immediately and reject anything other than null, a scalar, or a non-empty scalar list.
+- Reduce the README to installation and project links, and exclude `docs/` from distribution archives.
 
 - Replace the lexer with a single-pass tokenizer. `SearchLexer`, `Tokens`, `TokenType` and `Parser` are now internal, and `Parser::__construct()` takes the depth and clause limits.
 - Preserve standalone term text and infer field values without converting leading-zero identifiers, overflowing integers, exponent notation, or wildcard text to numbers.

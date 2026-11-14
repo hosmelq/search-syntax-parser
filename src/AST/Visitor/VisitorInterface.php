@@ -11,6 +11,7 @@ use HosmelQ\SearchSyntaxParser\AST\Node\InNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\RangeNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\TermNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\UnaryOperatorNode;
+use HosmelQ\SearchSyntaxParser\AST\Node\WildcardNode;
 
 interface VisitorInterface
 {
@@ -48,4 +49,9 @@ interface VisitorInterface
      * Visit a unary operator node (NOT title:Coffee, NOT price:>10).
      */
     public function visitUnaryOperator(UnaryOperatorNode $node): mixed;
+
+    /**
+     * Visit an explicit wildcard pattern (title:co*fee, nike*).
+     */
+    public function visitWildcard(WildcardNode $node): mixed;
 }

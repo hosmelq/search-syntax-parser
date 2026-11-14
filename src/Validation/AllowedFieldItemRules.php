@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace HosmelQ\SearchSyntaxParser\Validation;
 
+use BackedEnum;
 use Closure;
 use HosmelQ\SearchSyntaxParser\Validation\Validators\BetweenValidator;
 use HosmelQ\SearchSyntaxParser\Validation\Validators\BooleanValidator;
 use HosmelQ\SearchSyntaxParser\Validation\Validators\CallbackValidator;
+use HosmelQ\SearchSyntaxParser\Validation\Validators\DateValidator;
 use HosmelQ\SearchSyntaxParser\Validation\Validators\DecimalValidator;
 use HosmelQ\SearchSyntaxParser\Validation\Validators\IntegerValidator;
 use HosmelQ\SearchSyntaxParser\Validation\Validators\InValidator;
@@ -16,6 +18,7 @@ use HosmelQ\SearchSyntaxParser\Validation\Validators\MinValidator;
 use HosmelQ\SearchSyntaxParser\Validation\Validators\NumericValidator;
 use HosmelQ\SearchSyntaxParser\Validation\Validators\SizeValidator;
 use HosmelQ\SearchSyntaxParser\Validation\Validators\StringValidator;
+use InvalidArgumentException;
 
 /**
  * Builder for per-item validation rules on array fields.
@@ -25,7 +28,7 @@ use HosmelQ\SearchSyntaxParser\Validation\Validators\StringValidator;
 final class AllowedFieldItemRules
 {
     /**
-     * @var null|'boolean'|'decimal'|'in'|'integer'|'numeric'|'string'
+     * @var null|'boolean'|'date'|'decimal'|'in'|'integer'|'numeric'|'string'
      */
     private null|string $type = null;
 
@@ -117,7 +120,7 @@ final class AllowedFieldItemRules
         }
 
         return match ($this->type) {
-            'string', 'decimal' => $value,
+            'string', 'decimal', 'date' => $value,
             'integer' => filter_var($value, FILTER_VALIDATE_INT) !== false ? (int) $value : $value,
             'numeric' => filter_var($value, FILTER_VALIDATE_INT) !== false
                 ? (int) $value
@@ -125,6 +128,17 @@ final class AllowedFieldItemRules
             'boolean' => $this->toBoolean($value) ?? $value,
             'in' => $this->castMember($value, $quoted),
         };
+    }
+
+    /**
+     * Require a valid date or datetime, preserving its raw text.
+     */
+    public function date(null|string $format = null): self
+    {
+        $this->type = 'date';
+        $this->validators[] = new DateValidator($format);
+
+        return $this;
     }
 
     /**
@@ -136,6 +150,22 @@ final class AllowedFieldItemRules
         $this->validators[] = new DecimalValidator($min, $max);
 
         return $this;
+    }
+
+    /**
+     * Require a backing value from a backed enum.
+     *
+     * @param class-string<BackedEnum> $enum
+     */
+    public function enum(string $enum): self
+    {
+        if (! is_subclass_of($enum, BackedEnum::class)) {
+            throw new InvalidArgumentException('An enum rule requires a backed enum.');
+        }
+
+        return $this->in(
+            array_map(static fn (BackedEnum $case): int|string => $case->value, $enum::cases()),
+        );
     }
 
     /**
