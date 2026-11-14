@@ -70,15 +70,15 @@ class Parser
      *
      * @throws ParseException
      */
-    public function parse(string $input, bool $allowEmpty = false): null|NodeInterface
+    public function parse(string $input, bool $hasDefaults = false): null|NodeInterface
     {
         $this->tokens = new SearchLexer()->tokenize($input);
         $this->index = 0;
         $this->clauses = 0;
-        $this->referencedFields = $allowEmpty ? [] : null;
+        $this->referencedFields = $hasDefaults ? [] : null;
 
         if ($this->tokens->types === []) {
-            if ($allowEmpty) {
+            if ($hasDefaults) {
                 return null;
             }
 
@@ -93,6 +93,29 @@ class Parser
         }
 
         return $ast;
+    }
+
+    /**
+     * Join operands, skipping removed ones and starting the span at the first surviving operand.
+     */
+    private function combine(
+        string $operator,
+        null|NodeInterface $left,
+        null|NodeInterface $right,
+        int &$start,
+        int $rightStart,
+    ): null|NodeInterface {
+        if (! $left instanceof NodeInterface) {
+            $start = $rightStart;
+
+            return $right;
+        }
+
+        if (! $right instanceof NodeInterface) {
+            return $left;
+        }
+
+        return new BinaryOperatorNode($operator, $left, $right, $this->span($start));
     }
 
     /**
@@ -124,12 +147,8 @@ class Parser
         while (($this->tokens->types[$this->index] ?? null) === TokenType::Or) {
             $this->index++;
 
-            $right = $this->parseTerm($depth);
-            $left = match (true) {
-                ! $left instanceof NodeInterface => $right,
-                ! $right instanceof NodeInterface => $left,
-                default => new BinaryOperatorNode('OR', $left, $right, $this->span($start)),
-            };
+            $operandStart = $this->index;
+            $left = $this->combine('OR', $left, $this->parseTerm($depth), $start, $operandStart);
         }
 
         return $left;
@@ -354,7 +373,8 @@ class Parser
                 return null;
             }
 
-            $this->validateValue($field, array_values($values), $valueIndex);
+            // Keep written positions so index rules still apply to the right items.
+            $this->validateValue($field, $values, $valueIndex);
 
             if (! $hasPattern) {
                 return new InNode($field, $operator, array_values($values), $this->span($start));
@@ -502,12 +522,8 @@ class Parser
                 break;
             }
 
-            $right = $this->parseFactor($depth);
-            $left = match (true) {
-                ! $left instanceof NodeInterface => $right,
-                ! $right instanceof NodeInterface => $left,
-                default => new BinaryOperatorNode('AND', $left, $right, $this->span($start)),
-            };
+            $operandStart = $this->index;
+            $left = $this->combine('AND', $left, $this->parseFactor($depth), $start, $operandStart);
         }
 
         return $left;
@@ -577,7 +593,7 @@ class Parser
     }
 
     /**
-     * @param bool|float|int|list<bool|float|int|string>|string $value
+     * @param array<int, bool|float|int|string>|bool|float|int|string $value
      */
     private function validateValue(
         string $field,

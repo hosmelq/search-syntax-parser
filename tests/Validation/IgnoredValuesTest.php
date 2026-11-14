@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use HosmelQ\SearchSyntaxParser\AST\Node\ComparisonNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\InNode;
+use HosmelQ\SearchSyntaxParser\AST\Node\UnaryOperatorNode;
 use HosmelQ\SearchSyntaxParser\AST\Span;
 use HosmelQ\SearchSyntaxParser\Exception\ErrorReason;
 use HosmelQ\SearchSyntaxParser\Exception\InvalidFieldOperatorException;
@@ -290,3 +291,36 @@ it('reports no constraints exactly like an empty query when everything is ignore
     'status:ALL AND status:ALL',
     'status:ALL OR NOT (status:ALL)',
 ])->with(['parse', 'build'])->with([false, true]);
+
+it('validates remaining list items with the index rules of their written positions', function (): void {
+    $field = AllowedField::array('pair')
+        ->ignore(0)
+        ->at(
+            0,
+            fn (AllowedFieldItemRules $rules): AllowedFieldItemRules => $rules->integer()->max(10),
+        )
+        ->at(
+            1,
+            fn (AllowedFieldItemRules $rules): AllowedFieldItemRules => $rules->integer()->min(100),
+        );
+
+    expect(SearchParser::query('pair:0,200')->allowedFields([$field])->parse()->getValues())->toBe([
+        200,
+    ]);
+});
+
+it('starts surviving AND and OR spans at the first remaining operand', function (
+    string $query,
+    int $offset,
+    int $length,
+): void {
+    $fields = [AllowedField::string('status')->ignore('ALL'), AllowedField::string('title')];
+    $ast = SearchParser::query($query)->allowedFields($fields)->parse();
+    $node = $ast instanceof UnaryOperatorNode ? $ast->getOperand() : $ast;
+
+    expect($node->getSpan()?->offset)->toBe($offset)->and($node->getSpan()?->length)->toBe($length);
+})->with([
+    'implicit AND' => ['status:ALL title:x title:y', 11, 15],
+    'explicit AND' => ['status:ALL AND title:x AND title:y', 15, 19],
+    'OR inside NOT' => ['NOT (status:ALL OR title:x OR title:y)', 19, 18],
+]);
