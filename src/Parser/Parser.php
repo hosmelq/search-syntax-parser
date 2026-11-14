@@ -231,12 +231,14 @@ class Parser
             $operatorIndex = $this->index;
         }
 
-        if ($allowed instanceof AllowedField) {
+        if ($allowed instanceof AllowedField && $allowed->hasUsageRules()) {
             $rulePosition = $this->position($operatorIndex);
 
             // Inspect the whole clause before any alias, cast, or value validator runs.
             $scan = $this->index;
-            $exists = ($this->tokens->types[$scan] ?? null) === TokenType::Word
+            $exists = $hasColon
+                && $operator === '='
+                && ($this->tokens->types[$scan] ?? null) === TokenType::Word
                 && $this->tokens->values[$scan] === '*';
 
             if ($exists) {
@@ -252,6 +254,7 @@ class Parser
                     if ($patternType === TokenType::Wildcard
                         || (
                             $patternType === TokenType::Word
+                            && $this->tokens->values[$patternIndex] !== '*'
                             && str_contains($this->tokens->values[$patternIndex], '*')
                         )) {
                         $allowed->assertClauseAllowed('wildcards', $rulePosition);

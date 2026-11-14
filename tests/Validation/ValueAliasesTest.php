@@ -121,3 +121,7 @@ it('rejects a closure returned by an alias closure', function (): void {
         new AllowedField('x')->alias('token', static fn (): Closure => static fn (): int => 1),
     ])->parse();
 })->throws(InvalidArgumentException::class);
+
+it('rejects alias tokens that contain wildcards', function (): void {
+    AllowedField::integer('owner')->alias('a*', 5);
+})->throws(InvalidArgumentException::class, 'A value alias token cannot contain a wildcard.');

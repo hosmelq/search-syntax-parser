@@ -6,6 +6,7 @@ namespace HosmelQ\SearchSyntaxParser\Validation;
 
 use BackedEnum;
 use Closure;
+use HosmelQ\SearchSyntaxParser\Exception\ParseException;
 use HosmelQ\SearchSyntaxParser\Validation\Validators\BetweenValidator;
 use HosmelQ\SearchSyntaxParser\Validation\Validators\BooleanValidator;
 use HosmelQ\SearchSyntaxParser\Validation\Validators\CallbackValidator;
@@ -71,7 +72,13 @@ final class AllowedFieldItemRules
             return $integer;
         }
 
-        return preg_match('/^-?(0|[1-9]\d*)\.\d+$/D', $value) === 1 ? (float) $value : $value;
+        $decimal = preg_match('/^-?(0|[1-9]\d*)\.\d+$/D', $value);
+
+        if ($decimal === false) {
+            throw ParseException::tokenizationFailed();
+        }
+
+        return $decimal === 1 ? (float) $value : $value;
     }
 
     /**

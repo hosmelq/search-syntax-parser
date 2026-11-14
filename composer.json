@@ -20,7 +20,7 @@
     ],
     "homepage": "https://github.com/hosmelq/search-syntax-parser",
     "support": {
-        "docs": "https://github.com/hosmelq/search-syntax-parser#readme"
+        "docs": "https://hosmelq.com/docs/search-syntax-parser"
     },
     "require": {
         "php": "^8.4",

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use HosmelQ\SearchSyntaxParser\Exception\InvalidFieldValueException;
+use HosmelQ\SearchSyntaxParser\Exception\ParseException;
 use HosmelQ\SearchSyntaxParser\SearchParser;
 use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
 use HosmelQ\SearchSyntaxParser\Validation\AllowedFieldItemRules;
@@ -385,3 +386,16 @@ it('compares numeric-looking strings by value on untyped fields', function (stri
     '1e5',
     '99999999999999999999',
 ]);
+
+it('does not mistake a regex failure for a non-decimal value', function (): void {
+    $limit = ini_get('pcre.backtrack_limit');
+
+    ini_set('pcre.backtrack_limit', '2');
+
+    try {
+        expect(fn (): bool|float|int|string => AllowedFieldItemRules::infer('1.25', false))
+            ->toThrow(ParseException::class, 'Search query is too complex to tokenize.');
+    } finally {
+        ini_set('pcre.backtrack_limit', (string) $limit);
+    }
+});

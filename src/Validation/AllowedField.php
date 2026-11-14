@@ -223,6 +223,10 @@ class AllowedField
      */
     public function alias(string $token, bool|Closure|float|int|string $value): self
     {
+        if (str_contains($token, '*')) {
+            throw new InvalidArgumentException('A value alias token cannot contain a wildcard.');
+        }
+
         $this->aliases[$token] = $value;
 
         return $this;
@@ -387,6 +391,16 @@ class AllowedField
     public function hasDefault(): bool
     {
         return $this->hasDefault;
+    }
+
+    /**
+     * Check whether operators are restricted or clause kinds are disabled.
+     *
+     * @internal
+     */
+    public function hasUsageRules(): bool
+    {
+        return $this->operators !== null || $this->disabledClauses !== [];
     }
 
     /**

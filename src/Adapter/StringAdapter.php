@@ -60,27 +60,31 @@ final readonly class StringAdapter implements QueryAdapterInterface, VisitorInte
     #[Override]
     public function visitComparison(ComparisonNode $node): string
     {
-        return $node->getField().':'.($node->getOperator() === '=' ? '' : $node->getOperator())
+        return $this->field($node->getField())
+            .':'
+            .($node->getOperator() === '=' ? '' : $node->getOperator())
             .$this->value($node->getValue());
     }
 
     #[Override]
     public function visitExists(ExistsNode $node): string
     {
-        return $node->getField().':*';
+        return $this->field($node->getField()).':*';
     }
 
     #[Override]
     public function visitIn(InNode $node): string
     {
-        return $node->getField().':'.($node->getOperator() === '=' ? '' : $node->getOperator())
+        return $this->field($node->getField())
+            .':'
+            .($node->getOperator() === '=' ? '' : $node->getOperator())
             .implode(',', array_map($this->value(...), $node->getValues()));
     }
 
     #[Override]
     public function visitRange(RangeNode $node): string
     {
-        return $node->getField().':['
+        return $this->field($node->getField()).':['
             .($node->getFrom() === null ? '*' : $this->value($node->getFrom()))
             .' TO '.($node->getTo() === null ? '*' : $this->value($node->getTo())).']';
     }
@@ -141,7 +145,7 @@ final readonly class StringAdapter implements QueryAdapterInterface, VisitorInte
         return (
             $field === null
             ? ''
-            : $field.':'.($node->getOperator() === '=' ? '' : $node->getOperator())
+            : $this->field($field).':'.($node->getOperator() === '=' ? '' : $node->getOperator())
         )
             .$pattern;
     }
@@ -155,6 +159,15 @@ final readonly class StringAdapter implements QueryAdapterInterface, VisitorInte
         }
 
         return $tokens->types === [TokenType::Word] && $tokens->values === [$value];
+    }
+
+    private function field(string $name): string
+    {
+        if ($name === '*' || ! $this->canBeBare($name)) {
+            throw new LogicException('This field name cannot be expressed by the query syntax.');
+        }
+
+        return $name;
     }
 
     private function quote(string $value): string
@@ -206,8 +219,12 @@ final readonly class StringAdapter implements QueryAdapterInterface, VisitorInte
             return str_contains($text, '.') ? $text : $text.'.0';
         }
 
-        return $this->canBeBare($value) && ! str_contains($value, '*')
-            && AllowedFieldItemRules::infer($value, false) === $value
-            ? $value : $this->quote($value);
+        // A leading `=` would merge with a preceding `<` or `>` into another operator.
+        $bare = $this->canBeBare($value)
+            && ! str_contains($value, '*')
+            && ! str_starts_with($value, '=')
+            && AllowedFieldItemRules::infer($value, false) === $value;
+
+        return $bare ? $value : $this->quote($value);
     }
 }

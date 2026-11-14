@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use HosmelQ\SearchSyntaxParser\Exception\ErrorReason;
 use HosmelQ\SearchSyntaxParser\Exception\InvalidFieldOperatorException;
+use HosmelQ\SearchSyntaxParser\Exception\ParseException;
 use HosmelQ\SearchSyntaxParser\SearchParser;
 use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
 
@@ -186,3 +187,25 @@ it('disables every comparison operator when the configured subset is empty', fun
         AllowedField::string('status')->operators(),
     ])->parse();
 })->throws(InvalidFieldOperatorException::class, "Operator '=' is not allowed for field 'status'.");
+
+it('reports invalid wildcard usage instead of a disabled clause', function (
+    AllowedField $field,
+    string $query,
+): void {
+    try {
+        SearchParser::query($query)->allowedFields([$field])->parse();
+    } catch (ParseException $parseException) {
+        expect($parseException->getReason())->toBe(ErrorReason::InvalidWildcardUsage);
+
+        return;
+    }
+
+    throw new RuntimeException('Expected a parse exception.');
+})->with([
+    'not equal with exists disabled' => [AllowedField::integer('age')->withoutExists(), 'age:!=*'],
+    'ordering with exists disabled' => [AllowedField::integer('age')->withoutExists(), 'age:>*'],
+    'bare list item with wildcards disabled' => [
+        AllowedField::string('n')->withoutWildcards(),
+        'n:a,*',
+    ],
+]);

@@ -32,7 +32,6 @@ This release includes breaking changes to operators, wildcard AST nodes, excepti
 - Preserve the raw query in `query()` and count its whitespace toward `maxLength()`, so error positions refer to the caller's exact input.
 - Validate `default()` arguments immediately and reject anything other than null, a scalar, or a non-empty scalar list.
 - Reduce the README to installation and project links, and exclude `docs/` from distribution archives.
-
 - Replace the lexer with a single-pass tokenizer. `SearchLexer`, `Tokens`, `TokenType` and `Parser` are now internal, and `Parser::__construct()` takes the depth and clause limits.
 - Preserve standalone term text and infer field values without converting leading-zero identifiers, overflowing integers, exponent notation, or wildcard text to numbers.
 - Cast typed fields and array items from raw text, regardless of quotes. Decimal fields now output strings with their decimal places preserved, and `in()` fields return the matching allowed value.

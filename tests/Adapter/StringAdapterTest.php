@@ -86,3 +86,25 @@ it('quotes programmatic terms whose text needs literal syntax', function (string
 
     expect(SearchParser::query($text)->parse()->getValue())->toBe($value);
 })->with(['', 'a b', '*', 'co*fee', 'AND', '-coffee']);
+
+it('quotes values that would merge with a comparison operator', function (
+    string $query,
+    string $expected,
+): void {
+    $parser = SearchParser::query($query);
+    $text = $parser->build('string');
+
+    expect($text)->toBe($expected)
+        ->and(SearchParser::query($text)->build())->toBe($parser->build());
+})->with([
+    ['x:< =5', 'x:<"=5"'],
+    ['x:> =a', 'x:>"=a"'],
+    ['x:=5', 'x:"=5"'],
+]);
+
+it('refuses field names the query syntax cannot express', function (string $name): void {
+    SearchParser::query('')
+        ->allowedFields([AllowedField::string($name)->default('x')])
+        ->build('string');
+})->throws(LogicException::class, 'This field name cannot be expressed by the query syntax.')
+    ->with(['my field', 'AND', '-x', '*', 'a:b']);
