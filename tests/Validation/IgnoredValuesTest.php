@@ -324,3 +324,20 @@ it('starts surviving AND and OR spans at the first remaining operand', function 
     'explicit AND' => ['status:ALL AND title:x AND title:y', 15, 19],
     'OR inside NOT' => ['NOT (status:ALL OR title:x OR title:y)', 19, 18],
 ]);
+
+it('bounds AND and OR spans by the surviving operands at both edges', function (
+    string $query,
+    int $offset,
+    int $length,
+): void {
+    $fields = [AllowedField::string('status')->ignore('ALL'), AllowedField::string('title')];
+    $span = SearchParser::query($query)->allowedFields($fields)->parse()->getSpan();
+
+    expect($span?->offset)->toBe($offset)->and($span?->length)->toBe($length);
+})->with([
+    'removed before an OR' => ['status:ALL title:x OR title:y', 11, 18],
+    'removed after an OR' => ['title:x OR title:y status:ALL', 0, 18],
+    'removed in the middle' => ['title:x status:ALL title:y', 0, 26],
+    'group keeps its parentheses on the left' => ['(status:ALL title:x) OR title:y', 0, 31],
+    'group keeps its parentheses on the right' => ['title:x OR (title:y status:ALL)', 0, 31],
+]);

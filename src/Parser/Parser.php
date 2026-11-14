@@ -31,6 +31,13 @@ class Parser
 {
     private int $clauses = 0;
 
+    /**
+     * Token index extent of the node last returned by parseTerm() or parseExpression().
+     */
+    private int $extentEnd = 0;
+
+    private int $extentStart = 0;
+
     private int $index = 0;
 
     /**
@@ -96,17 +103,21 @@ class Parser
     }
 
     /**
-     * Join operands, skipping removed ones and starting the span at the first surviving operand.
+     * Join operands, skipping removed ones. Extents are token indexes of the surviving operands,
+     * so a binary node's span never covers removed clauses at its edges.
      */
     private function combine(
         string $operator,
         null|NodeInterface $left,
+        int &$leftStart,
+        int &$leftEnd,
         null|NodeInterface $right,
-        int &$start,
         int $rightStart,
+        int $rightEnd,
     ): null|NodeInterface {
         if (! $left instanceof NodeInterface) {
-            $start = $rightStart;
+            $leftStart = $rightStart;
+            $leftEnd = $rightEnd;
 
             return $right;
         }
@@ -115,7 +126,15 @@ class Parser
             return $left;
         }
 
-        return new BinaryOperatorNode($operator, $left, $right, $this->span($start));
+        $leftEnd = $rightEnd;
+        $offset = $this->tokens->offsets[$leftStart];
+
+        return new BinaryOperatorNode(
+            $operator,
+            $left,
+            $right,
+            new Span($offset, $this->tokens->ends[$rightEnd] - $offset),
+        );
     }
 
     /**
@@ -141,15 +160,27 @@ class Parser
      */
     private function parseExpression(int $depth): null|NodeInterface
     {
-        $start = $this->index;
         $left = $this->parseTerm($depth);
+        $leftStart = $this->extentStart;
+        $leftEnd = $this->extentEnd;
 
         while (($this->tokens->types[$this->index] ?? null) === TokenType::Or) {
             $this->index++;
 
-            $operandStart = $this->index;
-            $left = $this->combine('OR', $left, $this->parseTerm($depth), $start, $operandStart);
+            $right = $this->parseTerm($depth);
+            $left = $this->combine(
+                'OR',
+                $left,
+                $leftStart,
+                $leftEnd,
+                $right,
+                $this->extentStart,
+                $this->extentEnd,
+            );
         }
+
+        $this->extentStart = $leftStart;
+        $this->extentEnd = $leftEnd;
 
         return $left;
     }
@@ -507,8 +538,10 @@ class Parser
      */
     private function parseTerm(int $depth): null|NodeInterface
     {
-        $start = $this->index;
+        // A factor is contiguous: a clause, a NOT over a factor, or a group including its parentheses.
+        $leftStart = $this->index;
         $left = $this->parseFactor($depth);
+        $leftEnd = $this->index - 1;
 
         while (true) {
             $type = $this->tokens->types[$this->index] ?? null;
@@ -522,9 +555,21 @@ class Parser
                 break;
             }
 
-            $operandStart = $this->index;
-            $left = $this->combine('AND', $left, $this->parseFactor($depth), $start, $operandStart);
+            $rightStart = $this->index;
+            $right = $this->parseFactor($depth);
+            $left = $this->combine(
+                'AND',
+                $left,
+                $leftStart,
+                $leftEnd,
+                $right,
+                $rightStart,
+                $this->index - 1,
+            );
         }
+
+        $this->extentStart = $leftStart;
+        $this->extentEnd = $leftEnd;
 
         return $left;
     }
