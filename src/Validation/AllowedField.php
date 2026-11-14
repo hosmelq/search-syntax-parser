@@ -4,35 +4,12 @@ declare(strict_types=1);
 
 namespace HosmelQ\SearchSyntaxParser\Validation;
 
-use Closure;
-use HosmelQ\SearchSyntaxParser\Validation\Validators\BetweenValidator;
-use HosmelQ\SearchSyntaxParser\Validation\Validators\BooleanValidator;
-use HosmelQ\SearchSyntaxParser\Validation\Validators\CallbackValidator;
-use HosmelQ\SearchSyntaxParser\Validation\Validators\DecimalValidator;
-use HosmelQ\SearchSyntaxParser\Validation\Validators\IntegerValidator;
-use HosmelQ\SearchSyntaxParser\Validation\Validators\InValidator;
-use HosmelQ\SearchSyntaxParser\Validation\Validators\MaxValidator;
-use HosmelQ\SearchSyntaxParser\Validation\Validators\MinValidator;
-use HosmelQ\SearchSyntaxParser\Validation\Validators\NumericValidator;
-use HosmelQ\SearchSyntaxParser\Validation\Validators\SizeValidator;
-use HosmelQ\SearchSyntaxParser\Validation\Validators\StringValidator;
-
 class AllowedField
 {
-    /**
-     * Default value for this field.
-     */
-    protected mixed $default = null;
-
     /**
      * Whether this field expects an array value.
      */
     protected bool $expectsArray = false;
-
-    /**
-     * Whether this field has a default value.
-     */
-    protected bool $hasDefault = false;
 
     /**
      * Values that should be ignored during validation.
@@ -42,35 +19,25 @@ class AllowedField
     protected array $ignored = [];
 
     /**
-     * Validators applied to a specific item index when the value is an array.
+     * Rules applied to a specific item index when the value is an array.
      *
-     * @var array<int, list<ValidatorInterface>>
+     * @var array<int, AllowedFieldItemRules>
      */
-    protected array $indexItemValidators = [];
+    protected array $indexItemRules = [];
 
     /**
      * Internal field name for mapping.
      */
     protected string $internalName;
 
-    /**
-     * Validators applied to each item when the value is an array.
-     *
-     * @var list<ValidatorInterface>
-     */
-    protected array $itemValidators = [];
+    protected AllowedFieldItemRules $itemRules;
 
     /**
      * Whether this field allows null values.
      */
     protected bool $nullable = false;
 
-    /**
-     * Validators applied to the value.
-     *
-     * @var list<ValidatorInterface>
-     */
-    protected array $validators = [];
+    protected AllowedFieldItemRules $rules;
 
     /**
      * Create a new field with the specified name.
@@ -80,6 +47,8 @@ class AllowedField
         null|string $internalName = null,
     ) {
         $this->internalName = $internalName ?? $name;
+        $this->rules = new AllowedFieldItemRules();
+        $this->itemRules = new AllowedFieldItemRules();
     }
 
     /**
@@ -99,7 +68,8 @@ class AllowedField
     public static function boolean(string $name, null|string $internalName = null): self
     {
         $field = new self($name, $internalName);
-        $field->validators[] = new BooleanValidator();
+
+        $field->rules->boolean();
 
         return $field;
     }
@@ -115,7 +85,8 @@ class AllowedField
         null|string $internalName = null,
     ): self {
         $field = new self($name, $internalName);
-        $field->validators[] = new CallbackValidator(Closure::fromCallable($callback));
+
+        $field->rules->callback($callback);
 
         return $field;
     }
@@ -130,7 +101,8 @@ class AllowedField
         null|string $internalName = null,
     ): self {
         $field = new self($name, $internalName);
-        $field->validators[] = new DecimalValidator($min, $max);
+
+        $field->rules->decimal($min, $max);
 
         return $field;
     }
@@ -143,7 +115,8 @@ class AllowedField
     public static function in(string $name, array $values, null|string $internalName = null): self
     {
         $field = new self($name, $internalName);
-        $field->validators[] = new InValidator($values);
+
+        $field->rules->in($values);
 
         return $field;
     }
@@ -154,7 +127,8 @@ class AllowedField
     public static function integer(string $name, null|string $internalName = null): self
     {
         $field = new self($name, $internalName);
-        $field->validators[] = new IntegerValidator();
+
+        $field->rules->integer();
 
         return $field;
     }
@@ -165,7 +139,8 @@ class AllowedField
     public static function numeric(string $name, null|string $internalName = null): self
     {
         $field = new self($name, $internalName);
-        $field->validators[] = new NumericValidator();
+
+        $field->rules->numeric();
 
         return $field;
     }
@@ -176,7 +151,8 @@ class AllowedField
     public static function string(string $name, null|string $internalName = null): self
     {
         $field = new self($name, $internalName);
-        $field->validators[] = new StringValidator();
+
+        $field->rules->string();
 
         return $field;
     }
@@ -188,14 +164,9 @@ class AllowedField
      */
     public function at(int $index, callable $callback): self
     {
-        $rules = new AllowedFieldItemRules();
+        $rules = $this->indexItemRules[$index] ??= new AllowedFieldItemRules();
 
         $callback($rules);
-
-        $this->indexItemValidators[$index] = array_merge(
-            $this->indexItemValidators[$index] ?? [],
-            $rules->getValidators(),
-        );
 
         return $this;
     }
@@ -205,24 +176,23 @@ class AllowedField
      */
     public function between(float|int $min, float|int $max): self
     {
-        $this->validators[] = new BetweenValidator($min, $max);
+        $this->rules->between($min, $max);
 
         return $this;
     }
 
     /**
-     * Set a default value for the field.
+     * Cast a field value, using index-specific or shared item types for arrays.
      */
-    public function default(mixed $value): self
+    public function cast(string $value, bool $quoted, int $index = 0): bool|float|int|string
     {
-        $this->default = $value;
-        $this->hasDefault = true;
-
-        if (is_null($value)) {
-            $this->nullable();
+        if ($this->expectsArray) {
+            return isset($this->indexItemRules[$index])
+                ? $this->indexItemRules[$index]->cast($value, $quoted, $this->itemRules)
+                : $this->itemRules->cast($value, $quoted);
         }
 
-        return $this;
+        return $this->rules->cast($value, $quoted);
     }
 
     /**
@@ -232,11 +202,7 @@ class AllowedField
      */
     public function each(callable $callback): self
     {
-        $rules = new AllowedFieldItemRules();
-
-        $callback($rules);
-
-        $this->itemValidators = array_merge($this->itemValidators, $rules->getValidators());
+        $callback($this->itemRules);
 
         return $this;
     }
@@ -247,14 +213,6 @@ class AllowedField
     public function expectsArray(): bool
     {
         return $this->expectsArray;
-    }
-
-    /**
-     * Get the default value for this field.
-     */
-    public function getDefault(): mixed
-    {
-        return $this->default;
     }
 
     /**
@@ -271,14 +229,6 @@ class AllowedField
     public function getName(): string
     {
         return $this->name;
-    }
-
-    /**
-     * Check if this field has a default value.
-     */
-    public function hasDefault(): bool
-    {
-        return $this->hasDefault;
     }
 
     /**
@@ -304,7 +254,7 @@ class AllowedField
      */
     public function max(float|int $value): self
     {
-        $this->validators[] = new MaxValidator($value);
+        $this->rules->max($value);
 
         return $this;
     }
@@ -314,7 +264,7 @@ class AllowedField
      */
     public function min(float|int $value): self
     {
-        $this->validators[] = new MinValidator($value);
+        $this->rules->min($value);
 
         return $this;
     }
@@ -334,7 +284,7 @@ class AllowedField
      */
     public function size(float|int $value): self
     {
-        $this->validators[] = new SizeValidator($value);
+        $this->rules->size($value);
 
         return $this;
     }
@@ -348,48 +298,29 @@ class AllowedField
             return true;
         }
 
-        if ($this->expectsArray) {
-            if (! is_array($value)) {
-                return false;
-            }
-
-            foreach ($this->validators as $validator) {
-                if (! $validator($value, $this->internalName)) {
-                    return false;
-                }
-            }
-
-            if ($this->itemValidators !== []) {
-                foreach ($value as $item) {
-                    foreach ($this->itemValidators as $validator) {
-                        if (! $validator($item, $this->internalName)) {
-                            return false;
-                        }
-                    }
-                }
-            }
-
-            foreach ($this->indexItemValidators as $index => $validators) {
-                if (! array_key_exists($index, $value)) {
-                    continue;
-                }
-
-                $item = $value[$index];
-
-                foreach ($validators as $validator) {
-                    if (! $validator($item, $this->internalName)) {
-                        return false;
-                    }
-                }
-            }
-
-            return true;
+        if (! $this->expectsArray) {
+            return $this->rules->validate($value, $this->internalName);
         }
 
-        return array_all(
-            $this->validators,
-            fn (ValidatorInterface $validator): bool => $validator($value, $this->internalName),
-        );
+        if (! is_array($value) || ! $this->rules->validate($value, $this->internalName)) {
+            return false;
+        }
+
+        foreach ($value as $index => $item) {
+            $indexRules = $this->indexItemRules[$index] ?? null;
+            $length = $indexRules?->measuresLength($this->itemRules)
+                ?? $this->itemRules->measuresLength();
+
+            if (! $this->itemRules->validate($item, $this->internalName, $length)
+                || (
+                    $indexRules instanceof AllowedFieldItemRules
+                    && ! $indexRules->validate($item, $this->internalName, $length)
+                )) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**

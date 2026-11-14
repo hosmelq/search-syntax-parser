@@ -11,28 +11,24 @@ use Brick\Math\Exception\MathException;
 use InvalidArgumentException;
 use Safe\Exceptions\PcreException;
 use Stringable;
-use TypeError;
 
 trait ValidatesAttributes
 {
     /**
-     * Get the size of an attribute.
+     * Get the size of an attribute: numbers and numeric strings by value unless $length is set,
+     * other strings by character length, and arrays by item count.
      */
-    protected function getSize(string $attribute, mixed $value): float|int|string
-    {
-        if (is_numeric($value)) {
-            return $value;
-        }
-
-        if (is_array($value)) {
-            return count($value);
-        }
-
-        if ($value !== null && ! is_string($value)) {
-            throw new TypeError('Attribute size requires a number, string, array, or null.');
-        }
-
-        return mb_strlen($value ?? '');
+    protected function getSize(
+        string $attribute,
+        mixed $value,
+        bool $length = false,
+    ): null|float|int|string {
+        return match (true) {
+            is_int($value), is_float($value) => $value,
+            is_string($value) => ! $length && is_numeric($value) ? $value : mb_strlen($value),
+            is_array($value) => count($value),
+            default => null,
+        };
     }
 
     /**
@@ -68,12 +64,22 @@ trait ValidatesAttributes
      *
      * @param list<float|int> $parameters
      */
-    protected function validateBetween(string $attribute, mixed $value, array $parameters): bool
-    {
+    protected function validateBetween(
+        string $attribute,
+        mixed $value,
+        array $parameters,
+        bool $length = false,
+    ): bool {
         $this->requireParameterCount(2, $parameters, 'between');
 
+        $size = $this->getSize($attribute, $value, $length);
+
+        if ($size === null) {
+            return false;
+        }
+
         try {
-            $size = BigNumber::of((string) $this->getSize($attribute, $value));
+            $size = BigNumber::of((string) $size);
 
             return $size->isGreaterThanOrEqualTo((string) $this->trim($parameters[0]))
                 && $size->isLessThanOrEqualTo((string) $this->trim($parameters[1]));
@@ -113,7 +119,7 @@ trait ValidatesAttributes
             return false;
         }
 
-        $decimals = mb_strlen(end($matches)); // @phpstan-ignore-line argument.type
+        $decimals = mb_strlen($matches[1] ?? '');
 
         if (! isset($parameters[1])) {
             return $decimals === $parameters[0];
@@ -188,12 +194,22 @@ trait ValidatesAttributes
      *
      * @param list<float|int> $parameters
      */
-    protected function validateMax(string $attribute, mixed $value, array $parameters): bool
-    {
+    protected function validateMax(
+        string $attribute,
+        mixed $value,
+        array $parameters,
+        bool $length = false,
+    ): bool {
         $this->requireParameterCount(1, $parameters, 'max');
 
+        $size = $this->getSize($attribute, $value, $length);
+
+        if ($size === null) {
+            return false;
+        }
+
         try {
-            return BigNumber::of((string) $this->getSize($attribute, $value))
+            return BigNumber::of((string) $size)
                 ->isLessThanOrEqualTo((string) $this->trim($parameters[0]));
         } catch (MathException) {
             return false;
@@ -205,12 +221,22 @@ trait ValidatesAttributes
      *
      * @param list<float|int> $parameters
      */
-    protected function validateMin(string $attribute, mixed $value, array $parameters): bool
-    {
+    protected function validateMin(
+        string $attribute,
+        mixed $value,
+        array $parameters,
+        bool $length = false,
+    ): bool {
         $this->requireParameterCount(1, $parameters, 'min');
 
+        $size = $this->getSize($attribute, $value, $length);
+
+        if ($size === null) {
+            return false;
+        }
+
         try {
-            return BigNumber::of((string) $this->getSize($attribute, $value))
+            return BigNumber::of((string) $size)
                 ->isGreaterThanOrEqualTo((string) $this->trim($parameters[0]));
         } catch (MathException) {
             return false;
@@ -232,13 +258,22 @@ trait ValidatesAttributes
      *
      * @param list<float|int> $parameters
      */
-    protected function validateSize(string $attribute, mixed $value, array $parameters): bool
-    {
+    protected function validateSize(
+        string $attribute,
+        mixed $value,
+        array $parameters,
+        bool $length = false,
+    ): bool {
         $this->requireParameterCount(1, $parameters, 'size');
 
+        $size = $this->getSize($attribute, $value, $length);
+
+        if ($size === null) {
+            return false;
+        }
+
         try {
-            return BigNumber::of((string) $this->getSize($attribute, $value))
-                ->isEqualTo((string) $this->trim($parameters[0]));
+            return BigNumber::of((string) $size)->isEqualTo((string) $this->trim($parameters[0]));
         } catch (MathException) {
             return false;
         }

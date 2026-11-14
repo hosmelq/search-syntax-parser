@@ -21,8 +21,8 @@ class MaxValidator implements ValidatorInterface
      * Validate that the value is at most the maximum.
      */
     #[Override]
-    public function __invoke(mixed $value, string $attribute): bool
+    public function __invoke(mixed $value, string $attribute, bool $length = false): bool
     {
-        return $this->validateMax($attribute, $value, [$this->max]);
+        return $this->validateMax($attribute, $value, [$this->max], $length);
     }
 }

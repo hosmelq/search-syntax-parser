@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace HosmelQ\SearchSyntaxParser\Parser;
 
-use Doctrine\Common\Lexer\Token;
 use HosmelQ\SearchSyntaxParser\AST\Node\BinaryOperatorNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\ComparisonNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\ExistsNode;
@@ -17,48 +16,47 @@ use HosmelQ\SearchSyntaxParser\Exception\InvalidFieldException;
 use HosmelQ\SearchSyntaxParser\Exception\InvalidFieldValueException;
 use HosmelQ\SearchSyntaxParser\Exception\ParseException;
 use HosmelQ\SearchSyntaxParser\Lexer\SearchLexer;
+use HosmelQ\SearchSyntaxParser\Lexer\Tokens;
 use HosmelQ\SearchSyntaxParser\Lexer\TokenType;
 use HosmelQ\SearchSyntaxParser\SearchParser;
-use UnhandledMatchError;
+use HosmelQ\SearchSyntaxParser\Validation\AllowedFieldItemRules;
 
+/**
+ * @internal
+ */
 class Parser
 {
-    /**
-     * The lexer instance for tokenizing the input.
-     */
-    private readonly SearchLexer $lexer;
+    private int $clauses = 0;
+
+    private int $index = 0;
+
+    private Tokens $tokens;
+
+    public function __construct(
+        private readonly SearchParser $searchParser,
+        private readonly int $maxDepth,
+        private readonly int $maxClauses,
+    ) {}
 
     /**
-     * Create a new Parser instance.
-     */
-    public function __construct(private readonly SearchParser $searchParser)
-    {
-        $this->lexer = new SearchLexer();
-    }
-
-    /**
-     * Parse input string into an AST.
+     * Parse input into an AST, bounding recursion and tree size.
      *
      * @throws ParseException
      */
     public function parse(string $input): NodeInterface
     {
-        $this->lexer->setInput($input);
-        $this->lexer->moveNext();
+        $this->tokens = new SearchLexer()->tokenize($input);
+        $this->index = 0;
+        $this->clauses = 0;
 
-        $firstTokenType = $this->lexer->getLookaheadType();
-
-        if (! $firstTokenType instanceof TokenType) {
+        if ($this->tokens->types === []) {
             throw ParseException::emptyQuery();
         }
 
-        $ast = $this->parseExpression();
+        $ast = $this->parseExpression(0);
+        $remaining = $this->tokens->values[$this->index] ?? null;
 
-        if ($this->lexer->getLookaheadType() instanceof TokenType) {
-            $remaining = $this->lexer->lookahead instanceof Token
-                ? $this->lexer->lookahead->value
-                : 'Unknown';
-
+        if ($remaining !== null) {
             throw ParseException::unexpectedToken($remaining);
         }
 
@@ -66,210 +64,98 @@ class Parser
     }
 
     /**
-     * Convert a parsed value to string for term nodes.
+     * @phpstan-impure
      */
-    private function convertValueToString(bool|float|int|string $value): string
+    private function match(TokenType $expected): void
     {
-        return match (true) {
-            is_bool($value) => $value ? 'true' : 'false',
-            is_float($value), is_int($value) => (string) $value,
-            is_string($value) => $value,
-        };
+        $actual = $this->tokens->types[$this->index] ?? null;
+
+        if ($actual !== $expected) {
+            throw ParseException::expectedToken($expected->name, $actual->name ?? 'NULL');
+        }
+
+        $this->index++;
     }
 
     /**
-     * Check if token is a comparison operator (>, <, >=, <=, !=).
-     */
-    private function isComparisonOperator(null|TokenType $type): bool
-    {
-        if (! $type instanceof TokenType) {
-            return false;
-        }
-
-        return $type->in([
-            TokenType::Greater,
-            TokenType::GreaterEqual,
-            TokenType::Less,
-            TokenType::LessEqual,
-            TokenType::NotEqual,
-        ]);
-    }
-
-    /**
-     * Check if token can start a factor.
-     */
-    private function isFactorStart(TokenType $type): bool
-    {
-        return $type->in([
-            TokenType::Date,
-            TokenType::Identifier,
-            TokenType::Minus,
-            TokenType::Not,
-            TokenType::Number,
-            TokenType::OpenParenthesis,
-            TokenType::String,
-        ]);
-    }
-
-    /**
-     * Check if the next token indicates a field-based query.
-     */
-    private function isFieldQuery(null|TokenType $nextType): bool
-    {
-        if (TokenType::Colon->is($nextType)) {
-            return true;
-        }
-
-        return $nextType instanceof TokenType && $this->isComparisonOperator($nextType);
-    }
-
-    /**
-     * Ensure the next token matches the expected type.
-     *
-     * @throws ParseException
-     */
-    private function match(TokenType $expectedType): void
-    {
-        $actualType = $this->lexer->getLookaheadType();
-
-        if ($actualType !== $expectedType) {
-            $actualName = $actualType->name ?? 'NULL';
-
-            throw ParseException::expectedToken($expectedType->name, $actualName);
-        }
-
-        $this->lexer->moveNext();
-    }
-
-    /**
-     * Parse field query with colon syntax (field:value, field:[range], field:*).
-     *
-     * @throws ParseException
-     */
-    private function parseColonFieldQuery(string $field): NodeInterface
-    {
-        $this->lexer->moveNext();
-
-        if (TokenType::OpenBracket->is($this->lexer->getLookaheadType())) {
-            return $this->parseRange($field);
-        }
-
-        $afterColon = $this->lexer->getLookaheadType();
-        $operator = '=';
-
-        if ($afterColon instanceof TokenType && $this->isComparisonOperator($afterColon)) {
-            $operator = $this->parseOperator();
-        }
-
-        if (TokenType::Wildcard->is($this->lexer->getLookaheadType())) {
-            return $this->parseExistsQuery($field, $operator);
-        }
-
-        $value = $this->parseValue();
-
-        if (TokenType::Comma->is($this->lexer->getLookaheadType())) {
-            $values = [$value];
-
-            while (TokenType::Comma->is($this->lexer->getLookaheadType())) {
-                $this->match(TokenType::Comma);
-
-                $values[] = $this->parseValue();
-            }
-
-            if (! $this->searchParser->validateField($field, $values)) {
-                throw InvalidFieldValueException::invalidValue($field);
-            }
-
-            return new InNode($field, $operator, $values);
-        }
-
-        if (! $this->searchParser->validateField($field, $value)) {
-            throw InvalidFieldValueException::invalidValue($field);
-        }
-
-        return new ComparisonNode($field, $operator, $value);
-    }
-
-    /**
-     * Parse comparison or term expression.
-     *
-     * @throws ParseException
+     * @phpstan-impure
      */
     private function parseComparison(): NodeInterface
     {
-        $type = $this->lexer->getLookaheadType();
+        $type = $this->tokens->types[$this->index] ?? null;
+        $value = $this->tokens->values[$this->index] ?? '';
 
-        if (TokenType::Identifier->is($type)) {
-            return $this->parseIdentifierExpression();
+        if (
+            ($type !== TokenType::Word && $type !== TokenType::String)
+            || ($type === TokenType::Word && $value === '*')
+        ) {
+            throw ParseException::expectedValue();
         }
 
-        return $this->parseValueTerm();
+        if (++$this->clauses > $this->maxClauses) {
+            throw new ParseException(
+                sprintf('Search query exceeds the maximum of %d clauses.', $this->maxClauses),
+            );
+        }
+
+        $this->index++;
+
+        $next = $this->tokens->types[$this->index] ?? null;
+
+        if ($type === TokenType::Word && match ($next) {
+            TokenType::Colon, TokenType::Greater, TokenType::GreaterEqual, TokenType::Less, TokenType::LessEqual, TokenType::NotEqual => true,
+            default => false,
+        }) {
+            return $this->parseFieldQuery($value);
+        }
+
+        return new TermNode($value);
     }
 
     /**
-     * Parse field exists query (field:*).
-     *
-     * @throws ParseException
+     * @phpstan-impure
      */
-    private function parseExistsQuery(string $field, string $operator): ExistsNode
+    private function parseExpression(int $depth): NodeInterface
     {
-        if ($operator !== '=') {
-            throw ParseException::invalidWildcardUsage($field);
-        }
+        $left = $this->parseTerm($depth);
 
-        $this->lexer->moveNext();
+        while (($this->tokens->types[$this->index] ?? null) === TokenType::Or) {
+            $this->index++;
 
-        return new ExistsNode($field);
-    }
-
-    /**
-     * Parse expression with OR operators (term OR term).
-     *
-     * @throws ParseException
-     */
-    private function parseExpression(): NodeInterface
-    {
-        $left = $this->parseTerm();
-
-        while (TokenType::Or->is($this->lexer->getLookaheadType())) {
-            $this->match(TokenType::Or);
-
-            $right = $this->parseTerm();
-            $left = new BinaryOperatorNode('OR', $left, $right);
+            $left = new BinaryOperatorNode('OR', $left, $this->parseTerm($depth));
         }
 
         return $left;
     }
 
     /**
-     * Parse factor (NOT factor, -factor, (expression), comparison).
-     *
-     * @throws ParseException
+     * @phpstan-impure
      */
-    private function parseFactor(): NodeInterface
+    private function parseFactor(int $depth): NodeInterface
     {
-        $type = $this->lexer->getLookaheadType();
+        $type = $this->tokens->types[$this->index] ?? null;
 
-        if (! $type instanceof TokenType) {
+        if ($type === null) {
             throw ParseException::unexpectedEndOfInput();
         }
 
-        if ($type->is(TokenType::Not)) {
-            $this->match(TokenType::Not);
+        if (match ($type) {
+            TokenType::Not, TokenType::Minus, TokenType::OpenParenthesis => true,
+            default => false,
+        }) {
+            if ($depth >= $this->maxDepth) {
+                throw new ParseException(
+                    sprintf('Search query exceeds the maximum depth of %d.', $this->maxDepth),
+                );
+            }
 
-            return new UnaryOperatorNode('NOT', $this->parseFactor());
-        }
+            $this->index++;
 
-        if ($type->is(TokenType::Minus)) {
-            $this->match(TokenType::Minus);
+            if ($type !== TokenType::OpenParenthesis) {
+                return new UnaryOperatorNode('NOT', $this->parseFactor($depth + 1));
+            }
 
-            return new UnaryOperatorNode('NOT', $this->parseFactor());
-        }
-
-        if ($type->is(TokenType::OpenParenthesis)) {
-            $this->match(TokenType::OpenParenthesis);
-
-            $expression = $this->parseExpression();
+            $expression = $this->parseExpression($depth + 1);
 
             $this->match(TokenType::CloseParenthesis);
 
@@ -280,9 +166,7 @@ class Parser
     }
 
     /**
-     * Parse field-based query (field:value, field>value, field<=100).
-     *
-     * @throws ParseException
+     * @phpstan-impure
      */
     private function parseFieldQuery(string $field): NodeInterface
     {
@@ -293,179 +177,188 @@ class Parser
             );
         }
 
-        $type = $this->lexer->getLookaheadType();
+        $hasColon = ($this->tokens->types[$this->index] ?? null) === TokenType::Colon;
 
-        if (TokenType::Colon->is($type)) {
-            return $this->parseColonFieldQuery($field);
+        if ($hasColon) {
+            $this->index++;
+
+            if (($this->tokens->types[$this->index] ?? null) === TokenType::OpenBracket) {
+                return $this->parseRange($field);
+            }
         }
 
-        $operator = $this->parseOperator();
-
-        if (TokenType::Wildcard->is($this->lexer->getLookaheadType())) {
-            throw ParseException::invalidWildcardUsage($field);
-        }
-
-        $value = $this->parseValue();
-
-        if (! $this->searchParser->validateField($field, $value)) {
-            throw InvalidFieldValueException::invalidValue($field);
-        }
-
-        return new ComparisonNode($field, $operator, $value);
-    }
-
-    /**
-     * Parse identifier expression (field:value, field>value, or term).
-     *
-     * @throws ParseException
-     */
-    private function parseIdentifierExpression(): NodeInterface
-    {
-        $token = $this->lexer->lookahead;
-
-        if (! $token instanceof Token) {
-            throw ParseException::expectedIdentifier();
-        }
-
-        $field = $token->value;
-
-        $this->lexer->moveNext();
-
-        $nextType = $this->lexer->getLookaheadType();
-
-        if ($this->isFieldQuery($nextType)) {
-            return $this->parseFieldQuery($field);
-        }
-
-        return new TermNode($field);
-    }
-
-    /**
-     * Parse comparison operator (>, <, >=, <=, !=).
-     */
-    private function parseOperator(): string
-    {
-        $type = $this->lexer->getLookaheadType();
-        $operator = match ($type) {
+        $operator = match ($this->tokens->types[$this->index] ?? null) {
             TokenType::Greater => '>',
             TokenType::GreaterEqual => '>=',
             TokenType::Less => '<',
             TokenType::LessEqual => '<=',
             TokenType::NotEqual => '!=',
-            default => throw new UnhandledMatchError('Unexpected token type in parseOperator'),
+            default => '=',
         };
 
-        $this->lexer->moveNext();
+        if ($operator !== '=') {
+            $this->index++;
+        }
 
-        return $operator;
+        if (
+            ($this->tokens->types[$this->index] ?? null) === TokenType::Word
+            && $this->tokens->values[$this->index] === '*'
+        ) {
+            if (! $hasColon || $operator !== '=') {
+                throw ParseException::invalidWildcardUsage($field);
+            }
+
+            $this->index++;
+
+            return new ExistsNode($field);
+        }
+
+        $value = $this->parseValue($field);
+
+        if ($hasColon && ($this->tokens->types[$this->index] ?? null) === TokenType::Comma) {
+            $values = [$value];
+
+            do {
+                $this->index++;
+
+                $values[] = $this->parseValue($field, count($values));
+            } while (($this->tokens->types[$this->index] ?? null) === TokenType::Comma);
+
+            $this->validateValue($field, $values);
+
+            return new InNode($field, $operator, $values);
+        }
+
+        $this->validateValue($field, $value);
+
+        return new ComparisonNode($field, $operator, $value);
     }
 
     /**
-     * Parse range expression ([value TO value]).
-     *
-     * @throws ParseException
+     * @phpstan-impure
      */
     private function parseRange(string $field): RangeNode
     {
-        $this->match(TokenType::OpenBracket);
+        $this->index++;
 
-        $from = $this->parseValue();
+        $from = $this->parseRangeBound($field);
+        $separator = $this->tokens->types[$this->index] ?? null;
 
-        $this->match(TokenType::To);
+        if (
+            $separator !== TokenType::Word
+            || mb_strtoupper($this->tokens->values[$this->index]) !== 'TO'
+        ) {
+            throw ParseException::expectedToken('TO', $separator->name ?? 'NULL');
+        }
 
-        $to = $this->parseValue();
+        $this->index++;
+
+        $to = $this->parseRangeBound($field);
 
         $this->match(TokenType::CloseBracket);
 
-        return new RangeNode($field, $from, $to);
+        foreach ([$from, $to] as $bound) {
+            if ($bound !== null) {
+                $this->validateValue($field, $bound);
+            }
+        }
+
+        return new RangeNode($field, $from ?? '*', $to ?? '*');
     }
 
     /**
-     * Parse term with AND operators (factor AND factor, implicit AND).
+     * Parse a range bound, returning null for an open `*` bound, which is neither cast nor validated.
      *
-     * @throws ParseException
+     * @phpstan-impure
      */
-    private function parseTerm(): NodeInterface
+    private function parseRangeBound(string $field): null|bool|float|int|string
     {
-        $left = $this->parseFactor();
+        if (
+            ($this->tokens->types[$this->index] ?? null) === TokenType::Word
+            && $this->tokens->values[$this->index] === '*'
+        ) {
+            $this->index++;
 
-        while ($this->lexer->lookahead instanceof Token) {
-            $type = $this->lexer->getLookaheadType();
+            return null;
+        }
 
-            if (TokenType::And->is($type)) {
-                $this->match(TokenType::And);
+        return $this->parseValue($field);
+    }
 
-                $right = $this->parseFactor();
-                $left = new BinaryOperatorNode('AND', $left, $right);
+    /**
+     * @phpstan-impure
+     */
+    private function parseTerm(int $depth): NodeInterface
+    {
+        $left = $this->parseFactor($depth);
 
-                continue;
+        while (true) {
+            $type = $this->tokens->types[$this->index] ?? null;
+
+            if ($type === TokenType::And) {
+                $this->index++;
+            } elseif (! match ($type) {
+                TokenType::Word, TokenType::String, TokenType::Not, TokenType::Minus, TokenType::OpenParenthesis => true,
+                default => false,
+            }) {
+                break;
             }
 
-            if ($type instanceof TokenType && $this->isFactorStart($type)) {
-                $right = $this->parseFactor();
-                $left = new BinaryOperatorNode('AND', $left, $right);
-
-                continue;
-            }
-
-            break;
+            $left = new BinaryOperatorNode('AND', $left, $this->parseFactor($depth));
         }
 
         return $left;
     }
 
     /**
-     * Parse value with type conversion and wildcard support ("text", 123, true, Nike*).
-     *
-     * @throws ParseException
+     * @phpstan-impure
      */
-    private function parseValue(): bool|float|int|string
+    private function parseValue(string $field, int $index = 0): bool|float|int|string
     {
-        $lookahead = $this->lexer->lookahead;
+        $type = $this->tokens->types[$this->index] ?? null;
 
-        if (! $lookahead instanceof Token) {
+        if ($type === null) {
             throw ParseException::expectedValue();
         }
 
-        $type = $this->lexer->getLookaheadType();
-        $value = $lookahead->value;
+        $value = $this->tokens->values[$this->index];
+        $quoted = $type === TokenType::String;
 
-        $this->lexer->moveNext();
+        if ($type === TokenType::Minus) {
+            $next = $this->index + 1;
 
-        if (TokenType::Wildcard->is($this->lexer->getLookaheadType())) {
-            $value .= '*';
-
-            $this->lexer->moveNext();
-        }
-
-        if (TokenType::Number->is($type)) {
-            if (filter_var($value, FILTER_VALIDATE_INT) !== false) {
-                return (int) $value;
+            if (
+                ($this->tokens->types[$next] ?? null) !== TokenType::Word
+                || $this->tokens->offsets[$next] !== $this->tokens->offsets[$this->index] + 1
+            ) {
+                throw ParseException::expectedValue();
             }
 
-            return (float) $value;
+            $value .= $this->tokens->values[$next];
+
+            $this->index++;
+        } elseif (! match ($type) {
+            TokenType::Word, TokenType::String, TokenType::And, TokenType::Or, TokenType::Not => true,
+            default => false,
+        }) {
+            throw ParseException::expectedValue();
         }
 
-        if (TokenType::Identifier->is($type)) {
-            return match (mb_strtolower($value)) {
-                'false' => false,
-                'true' => true,
-                default => $value,
-            };
-        }
+        $this->index++;
 
-        return $value;
+        $allowed = $this->searchParser->getAllowedField($field);
+
+        return $allowed?->cast($value, $quoted, $index)
+            ?? AllowedFieldItemRules::infer($value, $quoted);
     }
 
     /**
-     * Parse standalone value term.
-     *
-     * @throws ParseException
+     * @param bool|float|int|list<bool|float|int|string>|string $value
      */
-    private function parseValueTerm(): TermNode
+    private function validateValue(string $field, array|bool|float|int|string $value): void
     {
-        $value = $this->parseValue();
-
-        return new TermNode($this->convertValueToString($value));
+        if (! $this->searchParser->validateField($field, $value)) {
+            throw InvalidFieldValueException::invalidValue($field);
+        }
     }
 }

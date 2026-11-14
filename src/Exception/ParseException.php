@@ -17,14 +17,6 @@ class ParseException extends Exception
     }
 
     /**
-     * Expected identifier token.
-     */
-    public static function expectedIdentifier(): self
-    {
-        return new self('Expected identifier.');
-    }
-
-    /**
      * Unexpected token type encountered.
      */
     public static function expectedToken(string $expected, string $actual): self

@@ -64,6 +64,8 @@ $result = SearchParser::query('title:Coffee')->build();
 
 Combine multiple terms with logical operators. When no connective is specified, AND is implied.
 
+`NOT` and `-` bind first, then explicit or implicit `AND`, then `OR`. Use parentheses to change the grouping. `AND`, `OR`, and `NOT` are case-insensitive; in a field value such as `title:and`, they are literal text.
+
 ```php
 SearchParser::query('title:Coffee AND price:<10')->build(); // Explicit AND
 SearchParser::query('title:Coffee OR title:Tea')->build();  // OR operator
@@ -84,16 +86,16 @@ SearchParser::query('status:!=sold')->build();  // Not equal
 
 #### Comma-separated values
 
-Use multi-value field searches as syntactic sugar for OR operations:
+Use multi-value field searches to compare a field against a list:
 
 ```php
 // Single field, multiple values
 SearchParser::query('status:ACTIVE,DRAFT,PENDING')->build();
 // Equivalent to: status:ACTIVE OR status:DRAFT OR status:PENDING
 
-// Works with any operator
+// Exclude every listed value
 SearchParser::query('status:!=SOLD,EXPIRED')->build();
-// Equivalent to: status:!=SOLD OR status:!=EXPIRED
+// Equivalent to: status:!=SOLD AND status:!=EXPIRED
 
 // Can be combined with boolean logic
 SearchParser::query('status:ACTIVE,DRAFT AND price:>100')->build();
@@ -111,14 +113,19 @@ SearchParser::query('category:*')->build();      // Field has any value
 SearchParser::query('NOT discount:*')->build();  // Field doesn't exist
 ```
 
+Only an unquoted value exactly equal to `*` produces an exists query, and only with `:`. Other patterns (`nike*`, `*fee`, `co*fee`, `12*`) remain literal values, including their asterisks; adapters decide how to use them. A quoted `"*"` is a literal string. A bare `*` term and comparisons such as `price:>*` are invalid.
+
 #### Range queries
 
-Search within value ranges using boundary operators:
+Search within value ranges using brackets. Both bounds use the field's casting and validation rules:
 
 ```php
 SearchParser::query('price:[10 TO 50]')->build();                 // Numeric range
 SearchParser::query('date:[2025-01-01 TO 2025-12-31]')->build();  // Date range
+SearchParser::query('price:[10 TO *]')->build();                  // Open-ended range
 ```
+
+An unquoted `*` bound is open-ended: it is returned as `*` and is not cast or validated. `TO` is a case-insensitive separator only inside ranges. Elsewhere it is ordinary text, so `go to market` produces three terms.
 
 #### Terms
 
@@ -136,6 +143,14 @@ Negate terms or subqueries using `-` or `NOT`:
 SearchParser::query('NOT title:Coffee')->build();  // NOT modifier
 SearchParser::query('-title:Coffee')->build();     // - modifier (equivalent)
 ```
+
+Words support Unicode, hyphens and punctuation such as `nombre:José`, `title:t-shirt`, and `email:john@example.com`. A leading `-` negates a term; after a field operator it joins an adjacent word as a negative value, so `temp:>-5`, `price:[-5 TO 5]`, and `location:37.7749,-122.4194` work. Standalone terms keep their text, including `007` and `12.50`.
+
+### Quoted values
+
+Use single or double quotes for values containing spaces or reserved punctuation (`(`, `)`, `[`, `]`, `:`, `,`, `<`, `>`). For example, write `url:"https://example.com"` or `time:"12:30"`. ISO 8601 datetimes such as `created_at:>2025-01-01T12:30:45.123Z` may be unquoted, with or without a timezone.
+
+Inside quotes, only `\\`, `\"`, and `\'` are unescaped. A quoted value immediately followed by `*`, such as `title:"Co"*`, produces `Co*`. Unterminated quotes and invalid UTF-8 throw `ParseException`.
 
 ### Field validation
 
@@ -165,9 +180,24 @@ $result = $parser->build();
 // The array adapter will output the internal name "user_age" for the field
 ```
 
+### Value types
+
+Without a typed field, quoted values stay strings. Unquoted `true` and `false` become booleans, case-insensitively. Whole numbers without leading zeros that fit in a PHP integer become integers; decimal literals such as `12.50` and `-0.5` become floats. Leading-zero identifiers (`01234`), overflowing integers, exponent notation (`1e5`), and wildcard values (`12*`) stay strings. This inference also applies to string entries in `allowedFields()`, `new AllowedField(...)`, and `AllowedField::callback()`.
+
+Typed fields cast their values regardless of quotes:
+
+- `string()` preserves text, including `12345` and `true`.
+- `integer()` accepts whole numbers without leading zeros that fit in a PHP integer.
+- `numeric()` produces an integer when possible, otherwise a float for numeric input, including exponent notation.
+- `decimal()` preserves a numeric string and its decimal places. `AllowedField::decimal('price', 2)` accepts `price:10.50` and outputs `"10.50"`.
+- `boolean()` maps `true`/`1` and `false`/`0` to booleans, case-insensitively.
+- `in()` returns the allowed value whose string form matches the input text or its inferred value, keeping that value's type. `in('code', ['01', '02'])` keeps `01` as a string; `in('level', [1, 2, 3])` casts `2` to an integer; boolean allowed values match `true`/`1` and `false`/`0` like `boolean()`.
+
+Invalid typed input fails validation. Size rules (`min`, `max`, `between`, `size`) compare numbers and numeric strings by value, other strings by character length, and arrays by item count, so `decimal('price', 2)->max(100)` rejects `150.00`. `string()` fields and item rules always measure character length, even for numeric-looking text such as `12345`. Values without a size, such as booleans, fail size validation.
+
 ### Array item validation (each and at)
 
-For array fields, use `each()` to validate every item and `at(index)` to validate specific positions.
+For array fields, use `each()` to validate every item and `at(index)` to validate specific positions. Each item uses its `at()` type when set, otherwise its `each()` type, otherwise inference. All configured validators still apply, and size rules from both use that item type regardless of rule order.
 
 Per‑item rules with `each()`:
 
@@ -201,6 +231,22 @@ $parser = SearchParser::query('location:37.7749,-122.4194')
 
 $result = $parser->build();
 ```
+
+### Query limits
+
+By default, queries allow up to 10,000 characters, 32 nested parenthesized groups and `NOT`/`-` operators, and 1024 leaf clauses. Comparisons, lists, ranges, exists queries and terms each count as one clause; a list's items do not add clauses. The length is checked before tokenizing, and excess input throws `ParseException` before building an unsafe AST.
+
+Configure the limits for your input:
+
+```php
+$result = SearchParser::query('NOT (title:Coffee OR title:Tea)')
+    ->maxLength(500)
+    ->maxDepth(16)
+    ->maxClauses(100)
+    ->build();
+```
+
+Limits must be positive integers; non-positive values throw `InvalidArgumentException`. Keep these limits bounded for untrusted input: very large values, such as tens of thousands of clauses, can exhaust memory or crash PHP while building or freeing the AST.
 
 ### Custom adapters
 

@@ -12,7 +12,9 @@ it('computes size for numbers, arrays, and strings', function (): void {
         ->sizeOf('float', 10.5)->toBe(10.5)
         ->sizeOf('arr', [1, 2, 3])->toBe(3)
         ->sizeOf('str', 'Coffee')->toBe(6)
-        ->sizeOf('null', null)->toBe(0);
+        ->sizeOf('numeric string', '123')->toBe('123')
+        ->sizeOf('null', null)->toBeNull()
+        ->sizeOf('boolean', true)->toBeNull();
 });
 
 it('trims only strings and leaves other values untouched', function (): void {

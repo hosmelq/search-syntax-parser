@@ -15,18 +15,12 @@ it('returns field name and internal name', function (): void {
         ->and($fieldWithInternalName->getInternalName())->toBe('user_age');
 });
 
-it('handles default values and nullability', function (): void {
-    $fieldWithNullDefault = new AllowedField('status')->default(null);
-    $fieldWithDefault = new AllowedField('status')->default('DRAFT');
+it('configures nullability explicitly', function (): void {
+    $field = new AllowedField('status');
 
-    expect($fieldWithNullDefault)
-        ->hasDefault()->toBeTrue()
-        ->getDefault()->toBeNull()
-        ->isNullable()->toBeTrue()
-        ->and($fieldWithDefault)
-        ->hasDefault()->toBeTrue()
-        ->getDefault()->toBe('DRAFT')
-        ->isNullable()->toBeFalse();
+    expect($field)->isNullable()->toBeFalse()
+        ->and($field->nullable())->isNullable()->toBeTrue()
+        ->and($field->nullable(false))->isNullable()->toBeFalse();
 });
 
 it('validates ignored and nullable values', function (): void {

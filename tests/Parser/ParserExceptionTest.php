@@ -18,7 +18,7 @@ it('throws on unexpected token after complete parse', function (): void {
 
 it('throws on expected token mismatch', function (): void {
     SearchParser::query('price:[10 50]')->build();
-})->throws(ParseException::class, 'Unexpected token, expected To but got Number.');
+})->throws(ParseException::class, 'Unexpected token, expected TO but got Word.');
 
 it('throws on invalid wildcard usage', function (): void {
     SearchParser::query('price>*')->build();

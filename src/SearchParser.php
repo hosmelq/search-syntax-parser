@@ -25,10 +25,16 @@ class SearchParser
      */
     private array $allowedFields = [];
 
+    private int $clauseLimit = 1_024;
+
     /**
      * @var array<string, Closure(): QueryAdapterInterface>
      */
     private array $customCreators = [];
+
+    private int $depthLimit = 32;
+
+    private int $lengthLimit = 10_000;
 
     /**
      * Create a new SearchParser instance.
@@ -80,10 +86,6 @@ class SearchParser
      */
     public function build(null|string $adapter = null): mixed
     {
-        if ($this->query === '') {
-            throw ParseException::emptyQuery();
-        }
-
         $ast = $this->parse();
 
         return $this->adapter($adapter)->build($ast);
@@ -136,6 +138,48 @@ class SearchParser
     }
 
     /**
+     * Limit the number of leaf clauses in a query.
+     */
+    public function maxClauses(int $clauses): self
+    {
+        if ($clauses <= 0) {
+            throw new InvalidArgumentException('Maximum clauses must be positive.');
+        }
+
+        $this->clauseLimit = $clauses;
+
+        return $this;
+    }
+
+    /**
+     * Limit nesting of groups and negation operators.
+     */
+    public function maxDepth(int $depth): self
+    {
+        if ($depth <= 0) {
+            throw new InvalidArgumentException('Maximum depth must be positive.');
+        }
+
+        $this->depthLimit = $depth;
+
+        return $this;
+    }
+
+    /**
+     * Limit the query length in characters, checked before tokenizing.
+     */
+    public function maxLength(int $characters): self
+    {
+        if ($characters <= 0) {
+            throw new InvalidArgumentException('Maximum length must be positive.');
+        }
+
+        $this->lengthLimit = $characters;
+
+        return $this;
+    }
+
+    /**
      * Parse the query string into an AST.
      *
      * @throws ParseException
@@ -146,7 +190,16 @@ class SearchParser
             throw ParseException::emptyQuery();
         }
 
-        $parser = new Parser($this);
+        if (mb_strlen($this->query) > $this->lengthLimit) {
+            throw new ParseException(
+                sprintf(
+                    'Search query exceeds the maximum length of %d characters.',
+                    $this->lengthLimit,
+                ),
+            );
+        }
+
+        $parser = new Parser($this, $this->depthLimit, $this->clauseLimit);
 
         return $parser->parse($this->query);
     }

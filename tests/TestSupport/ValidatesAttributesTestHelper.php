@@ -55,7 +55,7 @@ class ValidatesAttributesTestHelper
         return $this->validateSize($attribute, $value, $parameters);
     }
 
-    public function sizeOf(string $attribute, mixed $value): float|int|string
+    public function sizeOf(string $attribute, mixed $value): null|float|int|string
     {
         return $this->getSize($attribute, $value);
     }

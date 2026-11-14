@@ -21,8 +21,8 @@ readonly class BetweenValidator implements ValidatorInterface
      * Validate that the value is between min and max (inclusive).
      */
     #[Override]
-    public function __invoke(mixed $value, string $attribute): bool
+    public function __invoke(mixed $value, string $attribute, bool $length = false): bool
     {
-        return $this->validateBetween($attribute, $value, [$this->min, $this->max]);
+        return $this->validateBetween($attribute, $value, [$this->min, $this->max], $length);
     }
 }

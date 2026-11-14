@@ -24,9 +24,7 @@
     },
     "require": {
         "php": "^8.4",
-        "archtechx/enums": "^1.1",
         "brick/math": "^0.14 || ^0.15 || ^0.16 || ^0.17 || ^0.18 || ^0.19 || ^0.20 || ^1.0",
-        "doctrine/lexer": "^3.0",
         "thecodingmachine/safe": "^3.4"
     },
     "require-dev": {

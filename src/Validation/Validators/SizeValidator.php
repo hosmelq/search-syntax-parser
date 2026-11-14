@@ -21,8 +21,8 @@ class SizeValidator implements ValidatorInterface
      * Validate that the value has exactly the specified size.
      */
     #[Override]
-    public function __invoke(mixed $value, string $attribute): bool
+    public function __invoke(mixed $value, string $attribute, bool $length = false): bool
     {
-        return $this->validateSize($attribute, $value, [$this->size]);
+        return $this->validateSize($attribute, $value, [$this->size], $length);
     }
 }

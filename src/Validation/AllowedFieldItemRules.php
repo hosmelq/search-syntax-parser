@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace HosmelQ\SearchSyntaxParser\Validation;
 
+use function Safe\preg_match;
+
 use Closure;
 use HosmelQ\SearchSyntaxParser\Validation\Validators\BetweenValidator;
 use HosmelQ\SearchSyntaxParser\Validation\Validators\BooleanValidator;
@@ -25,9 +27,51 @@ use HosmelQ\SearchSyntaxParser\Validation\Validators\StringValidator;
 final class AllowedFieldItemRules
 {
     /**
+     * @var null|'boolean'|'decimal'|'in'|'integer'|'numeric'|'string'
+     */
+    private null|string $type = null;
+
+    /**
      * @var list<ValidatorInterface>
      */
     private array $validators = [];
+
+    /**
+     * @var list<mixed>
+     */
+    private array $values = [];
+
+    /**
+     * Infer untyped values without losing identifiers or quoted text.
+     */
+    public static function infer(string $value, bool $quoted): bool|float|int|string
+    {
+        if ($quoted) {
+            return $value;
+        }
+
+        $boolean = match (mb_strtolower($value)) {
+            'true' => true,
+            'false' => false,
+            default => null,
+        };
+
+        if ($boolean !== null) {
+            return $boolean;
+        }
+
+        if (! is_numeric($value)) {
+            return $value;
+        }
+
+        $integer = filter_var($value, FILTER_VALIDATE_INT);
+
+        if ($integer !== false) {
+            return $integer;
+        }
+
+        return preg_match('/^-?(0|[1-9]\d*)\.\d+$/D', $value) === 1 ? (float) $value : $value;
+    }
 
     /**
      * Require size/value between min and max for each item.
@@ -44,6 +88,7 @@ final class AllowedFieldItemRules
      */
     public function boolean(): self
     {
+        $this->type = 'boolean';
         $this->validators[] = new BooleanValidator();
 
         return $this;
@@ -62,10 +107,34 @@ final class AllowedFieldItemRules
     }
 
     /**
+     * Cast raw text using this type or the fallback rules' type.
+     */
+    public function cast(
+        string $value,
+        bool $quoted,
+        null|self $fallback = null,
+    ): bool|float|int|string {
+        if ($this->type === null) {
+            return $fallback?->cast($value, $quoted) ?? self::infer($value, $quoted);
+        }
+
+        return match ($this->type) {
+            'string', 'decimal' => $value,
+            'integer' => filter_var($value, FILTER_VALIDATE_INT) !== false ? (int) $value : $value,
+            'numeric' => filter_var($value, FILTER_VALIDATE_INT) !== false
+                ? (int) $value
+                : (is_numeric($value) ? (float) $value : $value),
+            'boolean' => $this->toBoolean($value) ?? $value,
+            'in' => $this->castMember($value, $quoted),
+        };
+    }
+
+    /**
      * Require each numeric item to have decimal places within the range.
      */
     public function decimal(int $min, null|int $max = null): self
     {
+        $this->type = 'decimal';
         $this->validators[] = new DecimalValidator($min, $max);
 
         return $this;
@@ -86,6 +155,8 @@ final class AllowedFieldItemRules
      */
     public function in(array $values): self
     {
+        $this->type = 'in';
+        $this->values = $values;
         $this->validators[] = new InValidator($values);
 
         return $this;
@@ -96,6 +167,7 @@ final class AllowedFieldItemRules
      */
     public function integer(): self
     {
+        $this->type = 'integer';
         $this->validators[] = new IntegerValidator();
 
         return $this;
@@ -109,6 +181,14 @@ final class AllowedFieldItemRules
         $this->validators[] = new MaxValidator($value);
 
         return $this;
+    }
+
+    /**
+     * Check whether size rules measure strings by length, using the fallback rules' type when untyped.
+     */
+    public function measuresLength(null|self $fallback = null): bool
+    {
+        return ($this->type ?? $fallback?->type) === 'string';
     }
 
     /**
@@ -126,6 +206,7 @@ final class AllowedFieldItemRules
      */
     public function numeric(): self
     {
+        $this->type = 'numeric';
         $this->validators[] = new NumericValidator();
 
         return $this;
@@ -146,8 +227,66 @@ final class AllowedFieldItemRules
      */
     public function string(): self
     {
+        $this->type = 'string';
         $this->validators[] = new StringValidator();
 
         return $this;
+    }
+
+    /**
+     * Validate the value; string types size strings by length regardless of rule order.
+     */
+    public function validate(mixed $value, string $attribute, null|bool $length = null): bool
+    {
+        $length ??= $this->measuresLength();
+
+        foreach ($this->validators as $validator) {
+            $valid = $validator instanceof MinValidator || $validator instanceof MaxValidator
+                || $validator instanceof BetweenValidator || $validator instanceof SizeValidator
+                ? $validator($value, $attribute, $length)
+                : $validator($value, $attribute);
+
+            if (! $valid) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Match boolean allowed values like boolean(), and other scalars by text or inferred number.
+     */
+    private function castMember(string $value, bool $quoted): bool|float|int|string
+    {
+        $boolean = $this->toBoolean($value);
+        $inferred = self::infer($value, $quoted);
+        $candidates = is_int($inferred) || is_float($inferred)
+            ? [$value, (string) $inferred]
+            : [$value];
+
+        foreach ($this->values as $allowed) {
+            if (
+                is_bool($allowed)
+                ? $boolean === $allowed
+                : is_scalar($allowed) && in_array((string) $allowed, $candidates, true)
+            ) {
+                return $allowed;
+            }
+        }
+
+        return $value;
+    }
+
+    /**
+     * Map true/1 and false/0, case-insensitively, to booleans.
+     */
+    private function toBoolean(string $value): null|bool
+    {
+        return match (mb_strtolower($value)) {
+            'true', '1' => true,
+            'false', '0' => false,
+            default => null,
+        };
     }
 }
