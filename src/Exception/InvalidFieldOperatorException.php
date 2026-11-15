@@ -105,6 +105,19 @@ class InvalidFieldOperatorException extends SearchSyntaxException
         );
     }
 
+    public static function wordWildcardNotAllowed(string $field, int $position): self
+    {
+        return new self(
+            sprintf(
+                "Wildcards for whole-word field '%s' may only end a word, as in 'coff*'.",
+                $field,
+            ),
+            $field,
+            ErrorReason::WordWildcardNotAllowed,
+            position: $position,
+        );
+    }
+
     public function getField(): string
     {
         return $this->field;

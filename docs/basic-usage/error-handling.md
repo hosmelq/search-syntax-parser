@@ -63,6 +63,7 @@ Dynamic keys that fail their configured rule use `field_not_allowed`, with the f
 | `invalid_wildcard_pattern` | None |
 | `leading_wildcard_not_allowed` (`LeadingWildcardNotAllowed`) | `field` for a field pattern; none for free text |
 | `wildcard_too_short` (`WildcardTooShort`) | `field`, `minimum` literal character count |
+| `word_wildcard_not_allowed` (`WordWildcardNotAllowed`) | `field` |
 | `maximum_length`, `maximum_depth`, `maximum_clauses` | `limit` |
 | `field_not_allowed` | `field`, `allowed` field-name list |
 | `invalid_field_value` | `field` |

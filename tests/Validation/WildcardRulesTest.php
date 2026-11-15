@@ -142,3 +142,65 @@ it('retains withoutWildcards when leading patterns are enabled', function (): vo
 it('rejects a negative minimum wildcard length', function (): void {
     AllowedField::string('name')->minWildcardLength(-1);
 })->throws(InvalidArgumentException::class);
+
+it('accepts only word prefixes as patterns on whole-word fields', function (): void {
+    $body = AllowedField::string('body')->words();
+
+    expect(SearchParser::query('body:coff*')->allowedFields([$body])->parse()->getSegments())
+        ->toBe(['coff', ''])
+        ->and(
+            SearchParser::query('body:"coffee ma"*')
+                ->allowedFields([$body])
+                ->parse()
+                ->getSegments(),
+        )
+        ->toBe(['coffee ma', ''])
+        ->and(SearchParser::query('body:coff**')->allowedFields([$body])->parse()->getSegments())
+        ->toBe(['coff', ''])
+        ->and(
+            SearchParser::query('body:co*ee')
+                ->allowedFields([AllowedField::string('body')])
+                ->parse()
+                ->getSegments(),
+        )
+        ->toBe(['co', 'ee']);
+});
+
+it('rejects other patterns on whole-word fields at the pattern', function (
+    string $query,
+    int $position,
+): void {
+    try {
+        SearchParser::query($query)
+            ->allowedFields([AllowedField::string('body')->words()])
+            ->parse();
+
+        test()->fail('Expected a whole-word wildcard error.');
+    } catch (InvalidFieldOperatorException $invalidFieldOperatorException) {
+        expect($invalidFieldOperatorException->getReason())->toBe(
+            ErrorReason::WordWildcardNotAllowed,
+        )
+            ->and($invalidFieldOperatorException->getField())->toBe('body')
+            ->and($invalidFieldOperatorException->getPosition())->toBe($position);
+    }
+})->with([
+    ['body:co*ee', 5],
+    ['body:*offee', 5],
+    ['body:co**ee*', 5],
+    ['body:tea,co*ee', 9],
+    ['body:!=co*ee', 7],
+]);
+
+it('rejects leading wildcards on whole-word fields in either configuration order', function (
+    Closure $field,
+): void {
+    SearchParser::query('')->allowedFields([$field()]);
+})->throws(
+    InvalidArgumentException::class,
+    "Whole-word field 'body' cannot allow leading wildcards.",
+)->with(
+    [
+        fn (): AllowedField => AllowedField::string('body')->words()->allowLeadingWildcards(),
+        fn (): AllowedField => AllowedField::string('body')->allowLeadingWildcards()->words(),
+    ],
+);

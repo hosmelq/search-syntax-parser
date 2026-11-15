@@ -191,6 +191,8 @@ class Parser
         // A quoted pattern is its literal text plus a trailing `*`; an unquoted one may hold
         // several `*`. Counting characters avoids splitting the pattern into segments.
         $leading = $quoted ? mb_strlen($pattern) === 1 : str_starts_with($pattern, '*');
+        // A word prefix has literal text and wildcards only at its end.
+        $prefix = ! $leading && ($quoted || ! str_contains(mb_rtrim($pattern, '*'), '*'));
 
         if ($allowed instanceof AllowedField) {
             $allowed->assertWildcardAllowed(
@@ -198,6 +200,7 @@ class Parser
                 mb_strlen($pattern) - ($quoted ? 1 : mb_substr_count($pattern, '*')),
                 $this->position($start),
                 $field,
+                $prefix,
             );
         } elseif ($leading && ! $this->leadingWildcards) {
             throw InvalidFieldOperatorException::leadingWildcardNotAllowed(

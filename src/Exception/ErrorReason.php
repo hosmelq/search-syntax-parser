@@ -27,4 +27,5 @@ enum ErrorReason: string
     case Unsupported = 'unsupported';
     case UnterminatedQuote = 'unterminated_quote';
     case WildcardTooShort = 'wildcard_too_short';
+    case WordWildcardNotAllowed = 'word_wildcard_not_allowed';
 }

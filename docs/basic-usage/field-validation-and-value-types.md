@@ -465,7 +465,7 @@ assert(SearchParser::query('name:s*on')->allowedFields([$name])->parse()->getSeg
 assert(SearchParser::query('name:*')->allowedFields([$name])->parse()->getType() === 'Exists');
 ```
 
-These checks run alongside `withoutWildcards()` before any alias, cast, or validator, including all items of a list. `withoutWildcards()` still rejects every pattern after an opt-in. Rejected field patterns throw `InvalidFieldOperatorException` with the typed external name, the pattern item's position, and reason `leading_wildcard_not_allowed` or `wildcard_too_short`. Free-text leading patterns throw `ParseException` with `leading_wildcard_not_allowed`.
+These checks run alongside `withoutWildcards()` before any alias, cast, or validator, including all items of a list. `withoutWildcards()` still rejects every pattern after an opt-in. On a `words()` field a pattern is a word prefix: literal text followed by `*`, such as `coff*` or `"coffee ma"*`. Other patterns, including leading and infix wildcards, fail with `word_wildcard_not_allowed`, and combining `words()` with `allowLeadingWildcards()` throws `InvalidArgumentException` when the field is passed to `allowedFields()`. Rejected field patterns throw `InvalidFieldOperatorException` with the typed external name, the pattern item's position, and reason `leading_wildcard_not_allowed`, `wildcard_too_short`, or `word_wildcard_not_allowed`. Free-text leading patterns throw `ParseException` with `leading_wildcard_not_allowed`.
 
 ## Value aliases
 

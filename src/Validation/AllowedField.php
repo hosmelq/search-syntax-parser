@@ -401,6 +401,12 @@ class AllowedField
             );
         }
 
+        if ($this->textMatch === TextMatch::Words && $this->allowsLeadingWildcards) {
+            throw new InvalidArgumentException(
+                sprintf("Whole-word field '%s' cannot allow leading wildcards.", $this->name),
+            );
+        }
+
         if ($this->decimalKeyCollision && $this->hasDecimalItems()) {
             throw new InvalidArgumentException(
                 sprintf(
@@ -421,7 +427,13 @@ class AllowedField
         int $literals,
         int $position,
         string $field,
+        bool $prefix,
     ): void {
+        // Whole words support only word prefixes: literal text followed by trailing wildcards.
+        if ($this->textMatch === TextMatch::Words && ! $prefix) {
+            throw InvalidFieldOperatorException::wordWildcardNotAllowed($field, $position);
+        }
+
         if ($leading && ! $this->allowsLeadingWildcards) {
             throw InvalidFieldOperatorException::leadingWildcardNotAllowed($field, $position);
         }

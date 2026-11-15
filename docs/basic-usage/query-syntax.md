@@ -68,7 +68,7 @@ Values compare case-insensitively. Adapters must compare text that way for exact
 
 `in()` returns its configured canonical string, and `enum()` accepts either backing values or case names, ignoring case. Enum backing values take precedence when a token also matches another case's name. Non-string allowed members retain their existing matching rules. See [field validation and value types](field-validation-and-value-types) for configuration errors and storage conversions.
 
-`prefix()`, `contains()`, and `words()` select how unquoted text matches; the last configured mode wins. `words()` requests whole-word matching; the adapter implements word boundaries appropriate to its backend. A quoted value forces exact matching for that comparison or list item. Explicit wildcard patterns keep their own meaning regardless of the field's configured mode.
+`prefix()`, `contains()`, and `words()` select how unquoted text matches; the last configured mode wins. `words()` requests whole-word matching; the adapter implements word boundaries appropriate to its backend. On a `words()` field a wildcard pattern is a word prefix, so it must be literal text followed by `*`, as in `coff*` or `"coffee ma"*`. A quoted value forces exact matching for that comparison or list item. Explicit wildcard patterns keep their own meaning regardless of the field's configured mode.
 
 ## Complements and missing values
 
