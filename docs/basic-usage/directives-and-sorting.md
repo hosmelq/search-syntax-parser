@@ -106,7 +106,7 @@ Default settings and ignored mentions are omitted. Parsing the serialized text w
 
 ## Describe available settings
 
-`AllowedSort` implements `JsonSerializable` and exports its public `name` and default `direction`. Internal names stay private. `getAllowedSorts()` returns the configured sort definitions; `getAllowedFields()` returns field definitions keyed by public name, including directives and normalized string declarations.
+`SearchParser` implements `JsonSerializable` without parsing the query. Its description has a `fields` list with every allowed field, including directives, and a `sorts` list with each sort's public `name` and default `direction`. Internal names stay private.
 
 ```php
 use HosmelQ\SearchSyntaxParser\SearchParser;
@@ -117,10 +117,7 @@ $parser = SearchParser::query('')
     ->allowedFields([Field::in('mode', ['active', 'all'])->directive()])
     ->allowedSorts([AllowedSort::field('created', 'created_at')->defaultDirection('desc')]);
 
-$json = json_encode([
-    'fields' => $parser->getAllowedFields(),
-    'sorts' => $parser->getAllowedSorts(),
-], JSON_THROW_ON_ERROR);
+$json = json_encode($parser, JSON_THROW_ON_ERROR);
 ```
 
-The `created` sort serializes as `{"direction":"desc","name":"created"}`. These accessors describe configuration without parsing. See [field descriptions](field-validation-and-value-types#describe-fields) for the field export keys.
+The `created` sort serializes as `{"direction":"desc","name":"created"}`. See [field descriptions](field-validation-and-value-types#describe-fields) for the keys of each field. `getAllowedFields()` and `getAllowedSorts()` return the same `Field` and `AllowedSort` definitions keyed by public name; both classes implement `JsonSerializable`.

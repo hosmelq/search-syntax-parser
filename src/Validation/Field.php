@@ -643,7 +643,7 @@ class Field implements JsonSerializable
     #[Override]
     public function jsonSerialize(): array
     {
-        $operators = ['=', '!=', '>', '>=', '<', '<='];
+        $operators = $this->directive ? ['='] : ['=', '!=', '>', '>=', '<', '<='];
         $clauses = ['exists', 'lists', 'ranges'];
 
         if (in_array($this->getValueType(), [null, 'string'], true)) {
@@ -667,10 +667,9 @@ class Field implements JsonSerializable
             'match' => $this->getValueType() === 'string' ? $this->textMatch->value : null,
             'name' => $this->name,
             'names' => $this->expectsArray ? null : $this->rules->getNames(),
-            'operators' => $this->directive ? ['='] : array_values(array_intersect(
-                $operators,
-                $this->operators ?? $operators,
-            )),
+            'operators' => array_values(
+                array_intersect($operators, $this->operators ?? $operators),
+            ),
             'pattern' => $this->pattern,
             'type' => $this->expectsArray ? 'array' : $this->rules->getType(),
             'values' => $this->expectsArray ? null : $this->rules->getValues(),
@@ -827,9 +826,7 @@ class Field implements JsonSerializable
     {
         $this->assertNoStorageConversion();
 
-        $type = $this->expectsArray ? $this->itemRules->getType() : $this->rules->getType();
-
-        if (! in_array($type, ['integer', 'numeric', 'decimal'], true)) {
+        if (! in_array($this->getValueType(), ['integer', 'numeric', 'decimal'], true)) {
             throw new InvalidArgumentException(
                 'Scaling requires an integer, numeric, or decimal field or shared item type.',
             );
@@ -988,9 +985,7 @@ class Field implements JsonSerializable
 
     private function assertTextMatchAllowed(): void
     {
-        $rules = $this->expectsArray ? $this->itemRules : $this->rules;
-
-        if ($rules->getType() !== 'string' || ($this->expectsArray && array_any(
+        if ($this->getValueType() !== 'string' || ($this->expectsArray && array_any(
             $this->indexItemRules,
             static fn (FieldItemRules $item): bool
                 => $item->getType() !== null && $item->getType() !== 'string',

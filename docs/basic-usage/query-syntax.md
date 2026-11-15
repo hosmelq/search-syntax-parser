@@ -6,7 +6,7 @@ weight: 1
 
 Create a parser with `SearchParser::query($text)` or `new SearchParser($text)`. `parse()` returns a syntax tree and `build()` returns an array. Both return null when no filters or defaults remain.
 
-Field queries need [allowed fields](field-validation-and-value-types). Call `allowAnyField()` only when the application can handle every field name. Bare words need no configuration.
+Field queries need [allowed fields](field-validation-and-value-types). Call `allowAnyField()` only when the application can handle every field name. Bare terms need no configuration.
 
 ## Combine search terms
 
@@ -34,7 +34,7 @@ Write the field name, a colon, and its value. Add a comparison operator after th
 | `price:<10` or `price:<=10` | Less than 10, or at most 10. |
 | `title:AND` | The literal value `AND`. |
 
-Comparators also work without a colon, such as `price>10`. A negative value must touch its minus: `temperature:>-5` is valid and `temperature:>- 5` is not.
+Comparison operators also work without a colon, such as `price>10`. A negative value must touch its minus: `temperature:>-5` is valid and `temperature:>- 5` is not.
 
 Field rules cast values and decide whether they are valid. Without a type, unquoted booleans and ordinary numbers are inferred; quoted values and identifiers such as `007` remain strings. See [value inference](field-validation-and-value-types#value-inference).
 
@@ -83,7 +83,7 @@ time:'12:30'
 title:"co*fee"
 ```
 
-Quote values containing parentheses, brackets, colons, commas, comparison punctuation, or whitespace. Quote a standalone term starting with `-` to keep the hyphen literal.
+Quote values containing parentheses, brackets, colons, commas, comparison punctuation, or whitespace. Quote a bare term starting with `-` to keep the hyphen literal.
 
 Inside quotes, `\\`, `\"`, and `\'` are unescaped; other backslashes stay. A missing closing quote is an error. ISO datetimes may be unquoted, with or without a timezone, but other values containing colons need quotes.
 

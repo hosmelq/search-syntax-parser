@@ -30,6 +30,10 @@ it('restores serialize precision when float conversion throws', function (): voi
     }
 });
 
+it('trims surrounding whitespace from decimal strings', function (): void {
+    expect((string) Decimal::from(" \t\n\r\v\f1.25 \t\n\r\v\f"))->toBe('1.25');
+});
+
 it('uses the shortest round trip for floats and restores serialize precision', function (
     float $value,
     string $expected,
@@ -46,7 +50,3 @@ it('uses the shortest round trip for floats and restores serialize precision', f
     [0.1, '0.1'],
     [0.1 + 0.2, '0.30000000000000004'],
 ]);
-
-it('trims surrounding whitespace from decimal strings', function (): void {
-    expect((string) Decimal::from(" \t\n\r\v\f1.25 \t\n\r\v\f"))->toBe('1.25');
-});

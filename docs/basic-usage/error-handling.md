@@ -79,7 +79,7 @@ An empty query, or a query whose filters are all ignored, is not an error. Witho
 
 Rejected dynamic keys use `field.not_allowed` with the complete typed name and configured patterns in `allowed`. With no configured fields, `allowed` is empty and the message says "No fields are allowed."
 
-Directive placement, duplicates, and shape errors use `InvalidFieldOperatorException`, including `sort:`. Unknown sort keys and directions use `InvalidFieldValueException` for `sort`. Free-text leading wildcard failures use `ParseException`; field wildcard failures use `InvalidFieldOperatorException`.
+Directive placement, duplicates, and shape errors use `InvalidFieldOperatorException`, including `sort:`. Unknown sort keys and directions use `InvalidFieldValueException` for `sort`. Leading wildcard failures in bare terms use `ParseException`; field wildcard failures use `InvalidFieldOperatorException`.
 
 ## Fix configuration errors
 

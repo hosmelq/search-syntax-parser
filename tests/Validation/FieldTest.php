@@ -959,6 +959,245 @@ it('counts literal Unicode characters across all wildcard segments', function (
     ['name:"a*b"*', 3],
 ]);
 
+it('describes alias tokens without evaluating or exposing their values', function (): void {
+    $calls = 0;
+    $field = Field::integer('owner', 'secret_owner')
+        ->alias('mine', function () use (&$calls): int {
+            $calls++;
+
+            return 42;
+        })
+        ->alias('007', 7)
+        ->alias('123', 456)
+        ->default(42)
+        ->ignore(999)
+        ->min(1)
+        ->max(100)
+        ->map([42 => 'secret']);
+    $description = $field->jsonSerialize();
+    $json = json_encode($field, JSON_THROW_ON_ERROR);
+
+    expect($description['aliases'])->toBe(['mine', '007', '123'])
+        ->and($calls)->toBe(0)
+        ->and($description['clauses'])->toBe(['exists', 'lists', 'ranges'])
+        ->and($description['type'])->toBe('integer')
+        ->and($json)->not->toContain(
+            'secret',
+            '456',
+            '42',
+            '999',
+            'default',
+            'ignored',
+            'min',
+            'max',
+        );
+});
+
+it('describes configured comparison operators in canonical order', function (): void {
+    expect(
+        Field::integer('value')
+            ->operators('<=', '=', '>=', '=', '!=')
+            ->jsonSerialize()['operators'],
+    )
+        ->toBe(['=', '!=', '>=', '<='])
+        ->and(Field::integer('value')->operators()->jsonSerialize()['operators'])->toBeEmpty();
+});
+
+it('describes date options on shared array items', function (Field $field, array $date): void {
+    expect($field->jsonSerialize()['items'])->toBe([
+        'date' => $date,
+        'names' => null,
+        'type' => 'date',
+        'values' => null,
+    ])->and($field->jsonSerialize()['date'])->toBeNull();
+})->with([
+    [
+        Field::array('dates')->each(fn (FieldItemRules $rules): FieldItemRules => $rules->date()),
+        ['format' => null, 'partial' => false, 'time' => true],
+    ],
+    [
+        Field::array('dates')->each(
+            fn (FieldItemRules $rules): FieldItemRules => $rules->date('d/m/Y'),
+        ),
+        ['format' => 'd/m/Y', 'partial' => false, 'time' => true],
+    ],
+    [
+        Field::array('dates')->each(
+            fn (FieldItemRules $rules): FieldItemRules
+                => $rules->date()->allowPartialDates()->withoutTime(),
+        ),
+        ['format' => null, 'partial' => true, 'time' => false],
+    ],
+]);
+
+it('describes date options only on scalar date fields', function (
+    Field $field,
+    null|array $date,
+): void {
+    expect($field->jsonSerialize()['date'])->toBe($date);
+})->with([
+    [Field::date('date', 'd/m/Y'), ['format' => 'd/m/Y', 'partial' => false, 'time' => true]],
+    [
+        Field::date('date')->allowPartialDates(),
+        ['format' => null, 'partial' => true, 'time' => true],
+    ],
+    [Field::date('date')->withoutTime(), ['format' => null, 'partial' => false, 'time' => false]],
+    [
+        Field::date('date')->allowPartialDates()->withoutTime(),
+        ['format' => null, 'partial' => true, 'time' => false],
+    ],
+    [
+        Field::array('dates')->each(
+            fn (FieldItemRules $rules): FieldItemRules
+                => $rules->date()->allowPartialDates()->withoutTime(),
+        ),
+        null,
+    ],
+]);
+
+it('describes directives as single equalities unless equality is disabled', function (): void {
+    $description = Field::in('mode', ['active', 'all'])->directive()->jsonSerialize();
+
+    expect($description['directive'])->toBeTrue()
+        ->and($description['operators'])->toBe(['='])
+        ->and($description['clauses'])->toBeEmpty()
+        ->and($description['values'])->toBe(['active', 'all'])
+        ->and(
+            Field::in('mode', ['active', 'all'])
+                ->directive()
+                ->operators('!=')
+                ->jsonSerialize()['operators'],
+        )
+        ->toBeEmpty();
+});
+
+it('describes disabled clause forms and storage conversions', function (
+    Field $field,
+    array $clauses,
+): void {
+    expect($field->jsonSerialize()['clauses'])->toBe($clauses);
+})->with([
+    [Field::string('value')->withoutExists(), ['lists', 'ranges', 'wildcards']],
+    [Field::string('value')->withoutLists(), ['exists', 'ranges', 'wildcards']],
+    [Field::string('value')->withoutRanges(), ['exists', 'lists', 'wildcards']],
+    [Field::string('value')->withoutWildcards(), ['exists', 'lists', 'ranges']],
+    [
+        Field::string('value')
+            ->withoutExists()
+            ->withoutLists()
+            ->withoutRanges()
+            ->withoutWildcards(),
+        [],
+    ],
+    [Field::integer('value')->scale(100), ['exists', 'lists', 'ranges']],
+    [Field::string('value')->map(['open' => 1]), ['exists', 'lists', 'ranges']],
+]);
+
+it('describes dynamic public names without exposing key rules', function (): void {
+    $field = Field::string('meta.*', 'secret.*')->keys('/^[a-z]+$/')->prefix();
+    $description = $field->jsonSerialize();
+
+    expect($description['name'])->toBe('meta.*')
+        ->and($description['pattern'])->toBeTrue()
+        ->and($description['match'])->toBe('prefix')
+        ->and(json_encode($field, JSON_THROW_ON_ERROR))->not->toContain('secret', 'keys', '[a-z]');
+});
+
+it('describes public scalar types without exposing backend rules', function (
+    Field $field,
+    null|string $type,
+    null|array $values,
+    null|array $names = null,
+): void {
+    $description = json_decode(
+        json_encode($field, JSON_THROW_ON_ERROR),
+        true,
+        flags: JSON_THROW_ON_ERROR,
+    );
+
+    expect($description)->toBe([
+        'aliases' => [],
+        'clauses' => in_array($type, [null, 'string'], true)
+            ? ['exists', 'lists', 'ranges', 'wildcards']
+            : ['exists', 'lists', 'ranges'],
+        'date' => $type === 'date' ? ['format' => null, 'partial' => false, 'time' => true] : null,
+        'directive' => false,
+        'items' => null,
+        'match' => $type === 'string' ? 'exact' : null,
+        'name' => 'value',
+        'names' => $names,
+        'operators' => ['=', '!=', '>', '>=', '<', '<='],
+        'pattern' => false,
+        'type' => $type,
+        'values' => $values,
+    ]);
+})->with([
+    [new Field('value', 'private_value'), null, null],
+    [Field::callback('value', fn (mixed $value): bool => true, 'private_value'), null, null],
+    [Field::boolean('value'), 'boolean', null],
+    [Field::date('value'), 'date', null],
+    [Field::decimal('value', 2), 'decimal', null],
+    [Field::in('value', ['open', 'closed']), 'in', ['open', 'closed']],
+    [Field::in('value', [true, 1, '01']), 'in', [true, 1, '01']],
+    [
+        Field::enum('value', PublicationStatus::class),
+        'in',
+        ['draft', 'published'],
+        ['draft', 'published'],
+    ],
+    [Field::enum('value', PriorityLevel::class), 'in', [2, 1], ['high', 'low']],
+    [Field::integer('value'), 'integer', null],
+    [Field::numeric('value'), 'numeric', null],
+    [Field::string('value'), 'string', null],
+    [Field::ulid('value'), 'ulid', null],
+    [Field::uuid('value'), 'uuid', null],
+]);
+
+it('describes shared array rules without positional or collection rules', function (): void {
+    $description = Field::array('tags', 'secret_tags')
+        ->each(fn (FieldItemRules $rules): FieldItemRules => $rules->in(['red', 'blue']))
+        ->at(0, fn (FieldItemRules $rules): FieldItemRules => $rules->in(['red']))
+        ->size(2)
+        ->jsonSerialize();
+
+    expect($description['type'])->toBe('array')
+        ->and($description['items'])->toBe([
+            'date' => null,
+            'names' => null,
+            'type' => 'in',
+            'values' => ['red', 'blue'],
+        ])
+        ->and($description['values'])->toBeNull()
+        ->and($description['date'])->toBeNull()
+        ->and($description['match'])->toBeNull()
+        ->and(Field::array('tags')->jsonSerialize()['items'])->toBe([
+            'date' => null,
+            'names' => null,
+            'type' => null,
+            'values' => null,
+        ])
+        ->and(Field::array('levels')->each(
+            fn (FieldItemRules $rules): FieldItemRules => $rules->enum(PriorityLevel::class),
+        )->jsonSerialize()['items'])->toBe([
+            'date' => null,
+            'names' => ['high', 'low'],
+            'type' => 'in',
+            'values' => [2, 1],
+        ]);
+});
+
+it('describes text match modes on strings and shared string items', function (string $mode): void {
+    expect(Field::string('title')->$mode()->jsonSerialize()['match'])->toBe($mode)
+        ->and(
+            Field::array('tags')
+                ->each(fn (FieldItemRules $rules): FieldItemRules => $rules->string())
+                ->$mode()
+                ->jsonSerialize()['match'],
+        )->toBe(
+            $mode,
+        );
+})->with(['prefix', 'contains', 'words']);
+
 it('ignores and validates user values before storage conversion including defaults', function (): void {
     $field = Field::integer('amount')->max(10)->ignore('all', 0)->scale(100)->default('5');
 
@@ -1264,6 +1503,28 @@ it('measures numeric-looking strings by character length', function (string $rul
         '123',
     );
 })->with(['min', 'max', 'between', 'size']);
+
+it('omits wildcard clauses for typed scalar and shared item rules', function (
+    string $type,
+    array $arguments,
+): void {
+    $clauses = ['exists', 'lists', 'ranges'];
+
+    expect(Field::$type('value', ...$arguments)->jsonSerialize()['clauses'])->toBe($clauses)
+        ->and(Field::array('value')->each(
+            fn (FieldItemRules $rules): FieldItemRules => $rules->$type(...$arguments),
+        )->jsonSerialize()['clauses'])->toBe($clauses);
+})->with([
+    ['boolean', []],
+    ['date', []],
+    ['decimal', [2]],
+    ['enum', [PublicationStatus::class]],
+    ['in', [['open', 'closed']]],
+    ['integer', []],
+    ['numeric', []],
+    ['ulid', []],
+    ['uuid', []],
+]);
 
 it('permits literal asterisks and existence when wildcard patterns are disabled', function (): void {
     $field = Field::string('status')->withoutWildcards()->operators('!=');
@@ -1581,261 +1842,4 @@ it('uses only the last configured text match mode', function (): void {
     expect(SearchParser::query('title:mug')->allowedFields([$field])->build()['match'])->toBe(
         'prefix',
     );
-});
-
-it('describes public scalar types without exposing backend rules', function (
-    Field $field,
-    null|string $type,
-    null|array $values,
-    null|array $names = null,
-): void {
-    $description = json_decode(
-        json_encode($field, JSON_THROW_ON_ERROR),
-        true,
-        flags: JSON_THROW_ON_ERROR,
-    );
-
-    expect($description)->toBe([
-        'aliases' => [],
-        'clauses' => in_array($type, [null, 'string'], true)
-            ? ['exists', 'lists', 'ranges', 'wildcards']
-            : ['exists', 'lists', 'ranges'],
-        'date' => $type === 'date' ? ['format' => null, 'partial' => false, 'time' => true] : null,
-        'directive' => false,
-        'items' => null,
-        'match' => $type === 'string' ? 'exact' : null,
-        'name' => 'value',
-        'names' => $names,
-        'operators' => ['=', '!=', '>', '>=', '<', '<='],
-        'pattern' => false,
-        'type' => $type,
-        'values' => $values,
-    ]);
-})->with([
-    [new Field('value', 'private_value'), null, null],
-    [Field::callback('value', fn (mixed $value): bool => true, 'private_value'), null, null],
-    [Field::boolean('value'), 'boolean', null],
-    [Field::date('value'), 'date', null],
-    [Field::decimal('value', 2), 'decimal', null],
-    [Field::in('value', ['open', 'closed']), 'in', ['open', 'closed']],
-    [Field::in('value', [true, 1, '01']), 'in', [true, 1, '01']],
-    [
-        Field::enum('value', PublicationStatus::class),
-        'in',
-        ['draft', 'published'],
-        ['draft', 'published'],
-    ],
-    [Field::enum('value', PriorityLevel::class), 'in', [2, 1], ['high', 'low']],
-    [Field::integer('value'), 'integer', null],
-    [Field::numeric('value'), 'numeric', null],
-    [Field::string('value'), 'string', null],
-    [Field::ulid('value'), 'ulid', null],
-    [Field::uuid('value'), 'uuid', null],
-]);
-
-it('describes alias tokens without evaluating or exposing their values', function (): void {
-    $calls = 0;
-    $field = Field::integer('owner', 'secret_owner')
-        ->alias('mine', function () use (&$calls): int {
-            $calls++;
-
-            return 42;
-        })
-        ->alias('007', 7)
-        ->alias('123', 456)
-        ->default(42)
-        ->ignore(999)
-        ->min(1)
-        ->max(100)
-        ->map([42 => 'secret']);
-    $description = $field->jsonSerialize();
-    $json = json_encode($field, JSON_THROW_ON_ERROR);
-
-    expect($description['aliases'])->toBe(['mine', '007', '123'])
-        ->and($calls)->toBe(0)
-        ->and($description['clauses'])->toBe(['exists', 'lists', 'ranges'])
-        ->and($description['type'])->toBe('integer')
-        ->and($json)->not->toContain(
-            'secret',
-            '456',
-            '42',
-            '999',
-            'default',
-            'ignored',
-            'min',
-            'max',
-        );
-});
-
-it('describes configured comparison operators in canonical order', function (): void {
-    expect(
-        Field::integer('value')
-            ->operators('<=', '=', '>=', '=', '!=')
-            ->jsonSerialize()['operators'],
-    )
-        ->toBe(['=', '!=', '>=', '<='])
-        ->and(Field::integer('value')->operators()->jsonSerialize()['operators'])->toBeEmpty();
-});
-
-it('describes disabled clause forms and storage conversions', function (
-    Field $field,
-    array $clauses,
-): void {
-    expect($field->jsonSerialize()['clauses'])->toBe($clauses);
-})->with([
-    [Field::string('value')->withoutExists(), ['lists', 'ranges', 'wildcards']],
-    [Field::string('value')->withoutLists(), ['exists', 'ranges', 'wildcards']],
-    [Field::string('value')->withoutRanges(), ['exists', 'lists', 'wildcards']],
-    [Field::string('value')->withoutWildcards(), ['exists', 'lists', 'ranges']],
-    [
-        Field::string('value')
-            ->withoutExists()
-            ->withoutLists()
-            ->withoutRanges()
-            ->withoutWildcards(),
-        [],
-    ],
-    [Field::integer('value')->scale(100), ['exists', 'lists', 'ranges']],
-    [Field::string('value')->map(['open' => 1]), ['exists', 'lists', 'ranges']],
-]);
-
-it('describes directives as single equalities', function (): void {
-    $description = Field::in('mode', ['active', 'all'])
-        ->directive()
-        ->operators('!=')
-        ->jsonSerialize();
-
-    expect($description['directive'])->toBeTrue()
-        ->and($description['operators'])->toBe(['='])
-        ->and($description['clauses'])->toBeEmpty()
-        ->and($description['values'])->toBe(['active', 'all']);
-});
-
-it('describes shared array rules without positional or collection rules', function (): void {
-    $description = Field::array('tags', 'secret_tags')
-        ->each(fn (FieldItemRules $rules): FieldItemRules => $rules->in(['red', 'blue']))
-        ->at(0, fn (FieldItemRules $rules): FieldItemRules => $rules->in(['red']))
-        ->size(2)
-        ->jsonSerialize();
-
-    expect($description['type'])->toBe('array')
-        ->and($description['items'])->toBe([
-            'date' => null,
-            'names' => null,
-            'type' => 'in',
-            'values' => ['red', 'blue'],
-        ])
-        ->and($description['values'])->toBeNull()
-        ->and($description['date'])->toBeNull()
-        ->and($description['match'])->toBeNull()
-        ->and(Field::array('tags')->jsonSerialize()['items'])->toBe([
-            'date' => null,
-            'names' => null,
-            'type' => null,
-            'values' => null,
-        ])
-        ->and(Field::array('levels')->each(
-            fn (FieldItemRules $rules): FieldItemRules => $rules->enum(PriorityLevel::class),
-        )->jsonSerialize()['items'])->toBe([
-            'date' => null,
-            'names' => ['high', 'low'],
-            'type' => 'in',
-            'values' => [2, 1],
-        ]);
-});
-
-it('describes date options only on scalar date fields', function (
-    Field $field,
-    null|array $date,
-): void {
-    expect($field->jsonSerialize()['date'])->toBe($date);
-})->with([
-    [Field::date('date', 'd/m/Y'), ['format' => 'd/m/Y', 'partial' => false, 'time' => true]],
-    [
-        Field::date('date')->allowPartialDates(),
-        ['format' => null, 'partial' => true, 'time' => true],
-    ],
-    [Field::date('date')->withoutTime(), ['format' => null, 'partial' => false, 'time' => false]],
-    [
-        Field::date('date')->allowPartialDates()->withoutTime(),
-        ['format' => null, 'partial' => true, 'time' => false],
-    ],
-    [
-        Field::array('dates')->each(
-            fn (FieldItemRules $rules): FieldItemRules
-                => $rules->date()->allowPartialDates()->withoutTime(),
-        ),
-        null,
-    ],
-]);
-
-it('omits wildcard clauses for typed scalar and shared item rules', function (
-    string $type,
-    array $arguments,
-): void {
-    $clauses = ['exists', 'lists', 'ranges'];
-
-    expect(Field::$type('value', ...$arguments)->jsonSerialize()['clauses'])->toBe($clauses)
-        ->and(Field::array('value')->each(
-            fn (FieldItemRules $rules): FieldItemRules => $rules->$type(...$arguments),
-        )->jsonSerialize()['clauses'])->toBe($clauses);
-})->with([
-    ['boolean', []],
-    ['date', []],
-    ['decimal', [2]],
-    ['enum', [PublicationStatus::class]],
-    ['in', [['open', 'closed']]],
-    ['integer', []],
-    ['numeric', []],
-    ['ulid', []],
-    ['uuid', []],
-]);
-
-it('describes date options on shared array items', function (Field $field, array $date): void {
-    expect($field->jsonSerialize()['items'])->toBe([
-        'date' => $date,
-        'names' => null,
-        'type' => 'date',
-        'values' => null,
-    ])->and($field->jsonSerialize()['date'])->toBeNull();
-})->with([
-    [
-        Field::array('dates')->each(fn (FieldItemRules $rules): FieldItemRules => $rules->date()),
-        ['format' => null, 'partial' => false, 'time' => true],
-    ],
-    [
-        Field::array('dates')->each(
-            fn (FieldItemRules $rules): FieldItemRules => $rules->date('d/m/Y'),
-        ),
-        ['format' => 'd/m/Y', 'partial' => false, 'time' => true],
-    ],
-    [
-        Field::array('dates')->each(
-            fn (FieldItemRules $rules): FieldItemRules
-                => $rules->date()->allowPartialDates()->withoutTime(),
-        ),
-        ['format' => null, 'partial' => true, 'time' => false],
-    ],
-]);
-
-it('describes text match modes on strings and shared string items', function (string $mode): void {
-    expect(Field::string('title')->$mode()->jsonSerialize()['match'])->toBe($mode)
-        ->and(
-            Field::array('tags')
-                ->each(fn (FieldItemRules $rules): FieldItemRules => $rules->string())
-                ->$mode()
-                ->jsonSerialize()['match'],
-        )->toBe(
-            $mode,
-        );
-})->with(['prefix', 'contains', 'words']);
-
-it('describes dynamic public names without exposing key rules', function (): void {
-    $field = Field::string('meta.*', 'secret.*')->keys('/^[a-z]+$/')->prefix();
-    $description = $field->jsonSerialize();
-
-    expect($description['name'])->toBe('meta.*')
-        ->and($description['pattern'])->toBeTrue()
-        ->and($description['match'])->toBe('prefix')
-        ->and(json_encode($field, JSON_THROW_ON_ERROR))->not->toContain('secret', 'keys', '[a-z]');
 });

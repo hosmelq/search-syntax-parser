@@ -515,6 +515,24 @@ it('casts list default items by position on array fields', function (): void {
     expect(SearchParser::query('')->allowedFields([$field])->parse()->getValues())->toBe([1.5, 2]);
 });
 
+it('describes allowed fields and sorts as ordered lists without parsing', function (): void {
+    $parser = SearchParser::query('unknown:invalid')
+        ->allowedFields(['status', Field::in('mode', ['active', 'all'])->directive()])
+        ->allowedSorts([
+            'status',
+            AllowedSort::field('created', 'created_at')->defaultDirection('desc'),
+        ]);
+    $description = $parser->jsonSerialize();
+
+    expect(array_column($description['fields'], 'name'))->toBe(['status', 'mode'])
+        ->and($description['fields'][1])->toBe($parser->getAllowedFields()['mode']->jsonSerialize())
+        ->and($description['sorts'])->toBe([
+            ['direction' => 'asc', 'name' => 'status'],
+            ['direction' => 'desc', 'name' => 'created'],
+        ])
+        ->and(new SearchParser()->jsonSerialize())->toBe(['fields' => [], 'sorts' => []]);
+});
+
 it('distinguishes default clauses from parsed and spanless programmatic clauses', function (): void {
     foreach ([
         [42, 'status:42', new ComparisonNode('status', '=', 42)],
@@ -573,6 +591,26 @@ it('explicitly accepts any field using normal value inference', function (): voi
         ->and($parser->getAllowedField('anything'))->toBeNull()
         ->and($parser->build()['left']['value'])->toBe(25)
         ->and($parser->build()['right']['value'])->toBeTrue();
+});
+
+it('exposes normalized field definitions by their public names without parsing', function (): void {
+    $title = Field::string('title', 'private_title')->contains();
+    $parser = SearchParser::query('unknown:invalid')->allowedFields(['status', $title]);
+    $fields = $parser->getAllowedFields();
+
+    expect(array_keys($fields))->toBe(['status', 'title'])
+        ->and($fields['status'])->toBeInstanceOf(Field::class)
+        ->and($fields['title'])->toBe($title)
+        ->and(
+            json_decode(
+                json_encode($fields, JSON_THROW_ON_ERROR),
+                true,
+                flags: JSON_THROW_ON_ERROR,
+            )['status']['name'],
+        )->toBe(
+            'status',
+        )
+        ->and(new SearchParser()->getAllowedFields())->toBeEmpty();
 });
 
 it('flags both nodes of a null default', function (): void {
@@ -1114,24 +1152,4 @@ it('validates defaults with the complete collection and internal field name', fu
 
     expect(SearchParser::query('')->allowedFields([$field, $callback])->build()['left']['values'])
         ->toBe($values);
-});
-
-it('exposes normalized field definitions by their public names without parsing', function (): void {
-    $title = Field::string('title', 'private_title')->contains();
-    $parser = SearchParser::query('unknown:invalid')->allowedFields(['status', $title]);
-    $fields = $parser->getAllowedFields();
-
-    expect(array_keys($fields))->toBe(['status', 'title'])
-        ->and($fields['status'])->toBeInstanceOf(Field::class)
-        ->and($fields['title'])->toBe($title)
-        ->and(
-            json_decode(
-                json_encode($fields, JSON_THROW_ON_ERROR),
-                true,
-                flags: JSON_THROW_ON_ERROR,
-            )['status']['name'],
-        )->toBe(
-            'status',
-        )
-        ->and(new SearchParser()->getAllowedFields())->toBeEmpty();
 });

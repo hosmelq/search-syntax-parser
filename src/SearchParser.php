@@ -21,8 +21,10 @@ use HosmelQ\SearchSyntaxParser\Sorting\AllowedSort;
 use HosmelQ\SearchSyntaxParser\Sorting\Sort;
 use HosmelQ\SearchSyntaxParser\Validation\Field;
 use InvalidArgumentException;
+use JsonSerializable;
+use Override;
 
-class SearchParser
+class SearchParser implements JsonSerializable
 {
     /**
      * @var array<string, QueryAdapterInterface>
@@ -308,6 +310,27 @@ class SearchParser
     public function isFieldAllowed(string $field): bool
     {
         return $this->getAllowedField($field)?->accepts($field) ?? $this->allowsAnyField;
+    }
+
+    /**
+     * @return array{
+     *     fields: list<array<string, mixed>>,
+     *     sorts: list<array{direction: 'asc'|'desc', name: string}>,
+     * }
+     */
+    #[Override]
+    public function jsonSerialize(): array
+    {
+        return [
+            'fields' => array_map(
+                static fn (Field $field): array => $field->jsonSerialize(),
+                array_values($this->allowedFields),
+            ),
+            'sorts' => array_map(
+                static fn (AllowedSort $sort): array => $sort->jsonSerialize(),
+                array_values($this->allowedSorts),
+            ),
+        ];
     }
 
     public function maxClauses(int $clauses): self

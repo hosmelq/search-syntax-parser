@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
-- Describe fields and sorts as JSON for autocomplete, and add `getAllowedFields()`.
+- Describe parsers, fields, and sorts as JSON for autocomplete, and add `getAllowedFields()`.
 - Add `Query\Matcher` to evaluate searches against records in memory.
 - Require the `mbstring` extension and brick/math 0.14.4 or newer, up to 1.x.
 - Require explicit field permissions and return null when no filters or defaults apply.

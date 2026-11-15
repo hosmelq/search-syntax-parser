@@ -31,7 +31,7 @@ A string entry in `allowedFields()`, `new Field(...)`, or a callback field uses 
 | Quoted text | String. |
 | Other text | String. |
 
-Leading-zero identifiers such as `01234`, overflowing numbers, exponent notation such as `1e5`, and incomplete decimals such as `5.` and `.5` remain strings. Standalone terms always keep their text. Wildcards have their own nodes.
+Leading-zero identifiers such as `01234`, overflowing numbers, exponent notation such as `1e5`, and incomplete decimals such as `5.` and `.5` remain strings. Bare terms always keep their text. Wildcards have their own nodes.
 
 ## Choose a type
 
@@ -216,7 +216,7 @@ This accepts `name:*son*` and `name:s*on`. The minimum counts literal Unicode ch
 
 A `words()` field accepts only trailing prefixes, such as `coff*` or `"coffee ma"*`. Leading and infix patterns fail with `wildcard.word_not_allowed`. Combining `words()` with `allowLeadingWildcards()` is a configuration error when the field is registered.
 
-Field violations use `InvalidFieldOperatorException` and identify the offending item. Free-text leading wildcards use `ParseException`. See [error handling](error-handling).
+Field violations use `InvalidFieldOperatorException` and identify the offending item. Leading wildcards in bare terms use `ParseException`. See [error handling](error-handling).
 
 ## Convert storage values
 
@@ -411,11 +411,11 @@ $parser = SearchParser::query('')->allowedFields([
     'reference',
 ]);
 
-$json = json_encode($parser->getAllowedFields(), JSON_THROW_ON_ERROR);
+$json = json_encode($parser, JSON_THROW_ON_ERROR);
 $description = $parser->getAllowedFields()['status']->jsonSerialize();
 ```
 
-`$description['values']` is `['open', 'closed']`, `$description['operators']` is `['=', '!=']`, and `$description['clauses']` is `['exists', 'lists']`. `getAllowedFields()` returns definitions keyed by public name, including string declarations normalized to `Field` objects. Each description has these keys in alphabetical order:
+`$description['values']` is `['open', 'closed']`, `$description['operators']` is `['=', '!=']`, and `$description['clauses']` is `['exists', 'lists']`. `$json` lists the descriptions under `fields` in configuration order, next to the parser's [sorts](directives-and-sorting#describe-available-settings). `getAllowedFields()` returns definitions keyed by public name, including string declarations normalized to `Field` objects. Each description has these keys in alphabetical order:
 
 | Key | Value |
 | --- | --- |
@@ -432,7 +432,7 @@ $description = $parser->getAllowedFields()['status']->jsonSerialize();
 | `type` | `array`, `boolean`, `date`, `decimal`, `in`, `integer`, `numeric`, `string`, `ulid`, or `uuid`; null for untyped or callback fields. Enums use `in`. |
 | `values` | Configured `in()` values or enum backing values; null otherwise. Array member values belong to `items.values`. |
 
-Directives report only `operators: ["="]` and no clause forms. `map()` and `scale()` remove `wildcards` from the advertised forms. Descriptions do not include internal names, storage conversions, key rules, validators, size limits, defaults, ignored values, or positional `at()` rules. Alias closures are not called.
+Directives report no clause forms. Their `operators` is `["="]`, or empty when `operators()` excludes `=`. `map()` and `scale()` remove `wildcards` from the advertised forms. Descriptions do not include internal names, storage conversions, key rules, validators, size limits, defaults, ignored values, or positional `at()` rules. Alias closures are not called.
 
 ## Extend field definitions
 

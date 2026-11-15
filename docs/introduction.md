@@ -1,6 +1,6 @@
 ---
 title: "Introduction"
-description: "Parse search queries into typed filters, query settings, and clauses your application's search backend can use."
+description: "Parse search queries into structured data with field searches, boolean logic, ranges, lists, and adapters."
 weight: 1
 ---
 
@@ -27,7 +27,7 @@ $text = $parser->build('string');
 
 `$filters` contains two comparisons joined with AND. `$text` is `title:Coffee AND price:<10`. Call `parse()` to work with the syntax tree directly.
 
-No fields are allowed until you configure them. Bare words work without field rules. An empty query returns null unless a [default](basic-usage/defaults) supplies a filter.
+No fields are allowed until you configure them. Bare terms work without field rules. An empty query returns null unless a [default](basic-usage/defaults) supplies a filter.
 
 ## Next steps
 

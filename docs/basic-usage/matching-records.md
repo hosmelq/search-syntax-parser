@@ -4,6 +4,8 @@ description: "Filter records in memory with validated search clauses, stored val
 weight: 6
 ---
 
+`Query\Matcher` evaluates a search against arrays and objects in PHP, without a database. It applies the same field rules, defaults, and storage conversions as the parser.
+
 ## Filter records
 
 Construct a `Matcher` with a configured parser, then pass each record to `matches()`:
