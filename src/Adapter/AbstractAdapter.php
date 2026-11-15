@@ -25,6 +25,11 @@ abstract readonly class AbstractAdapter implements QueryAdapterInterface, Visito
 
         $allowedField = $this->searchParser->getAllowedField($field);
 
+        if ($allowedField?->isPattern() === true) {
+            return mb_substr($allowedField->getInternalName(), 0, -1)
+                .mb_substr($field, mb_strlen($allowedField->getName()) - 1);
+        }
+
         return $allowedField?->getInternalName() ?? $field;
     }
 }

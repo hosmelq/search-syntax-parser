@@ -14,7 +14,7 @@ it('builds explicit wildcard patterns', function (
     string $operator,
     array $segments,
 ): void {
-    expect(SearchParser::query($query)->allowAnyField()->build())->toBe([
+    expect(SearchParser::query($query)->allowAnyField()->allowLeadingWildcards()->build())->toBe([
         'field' => $field,
         'operator' => $operator,
         'segments' => $segments,

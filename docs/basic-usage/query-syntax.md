@@ -42,7 +42,9 @@ A leading `-` after a field comparator joins an adjacent word as a negative valu
 
 ## Ranges and existence
 
-Ranges include both endpoints. `TO` must be uppercase and is a separator only inside ranges. An unquoted bound exactly equal to `*` is open and bypasses casting and validation. Open bounds are `null` in the AST and array output. Other bounds use the field rules. Quoted `"*"` is the literal string `*`, and quoted bounds can contain literal asterisks; unquoted wildcard patterns are rejected.
+Ranges include both endpoints. Write `field:[a TO b]` or the compact `field:a..b` form. In brackets, `TO` must be uppercase and is a separator only inside ranges. An unquoted bound exactly equal to `*` is open and bypasses casting and validation. Open bounds are `null` in the AST and array output. Other bounds use the field rules. Quoted `"*"` is the literal string `*`, and quoted bounds can contain literal asterisks; unquoted wildcard patterns are rejected.
+
+Compact ranges require two non-empty bounds, with `*` for an open end: `stars:10..*` and `price:*..20`. Numbers, decimals, negatives, dates, datetimes containing colons, partial dates, and relative dates work as bounds. Field rules still decide which values are valid. A compact range has exactly one `..`, touching no other dot, and no `/`: ellipses such as `title:wait...` or `title:a...b`, repeated separators such as `x:a..b..c`, paths such as `path:src/../lib` or `path:../x`, and quoted `title:"1..2"` remain literal text. As with brackets, a range cannot be a list item or follow a comparison operator: `price:1..5,10` and `price:>1..5` are invalid. The string adapter always writes bracket ranges.
 
 `field:*` checks existence. Use `NOT field:*` for missing values; `field:!=*` and `field:>*` are invalid.
 
@@ -50,6 +52,10 @@ Ranges include both endpoints. `TO` must be uppercase and is a separator only in
 use HosmelQ\SearchSyntaxParser\SearchParser;
 
 assert(SearchParser::query('price:[10 TO 50]')->allowAnyField()->build()['from'] === 10);
+assert(SearchParser::query('price:-5.5..20')->allowAnyField()->build()['from'] === -5.5);
+assert(SearchParser::query('price:*..20')->allowAnyField()->build()['from'] === null);
+assert(SearchParser::query('created:2024-01-01T10:00..2024-01-01T12:00')->allowAnyField()->build()['to'] === '2024-01-01T12:00');
+assert(SearchParser::query('price:10..50')->allowAnyField()->build('string') === 'price:[10 TO 50]');
 assert(SearchParser::query('price:[* TO 50]')->allowAnyField()->build()['from'] === null);
 assert(SearchParser::query('title:["*" TO "z*"]')->allowAnyField()->build()['from'] === '*');
 assert(SearchParser::query('category:*')->allowAnyField()->build()['type'] === 'exists');
@@ -88,7 +94,9 @@ assert(SearchParser::query('title:"co*fee"')->allowAnyField()->build()['value'] 
 
 ## Wildcards
 
-Unquoted terms and field values containing `*` produce `WildcardNode` leaves. Their segments are the literal text between wildcards: `nike*` gives `['nike', '']`, `*fee` gives `['', 'fee']`, and `a**b` gives `['a', 'b']`. Consecutive wildcards collapse. A quoted string immediately followed by `*`, such as `"a b"*`, creates a prefix pattern with segments `['a b', '']`; asterisks inside the quotes stay literal.
+Unquoted terms and field values containing `*` produce `WildcardNode` leaves. Their segments are the literal text between wildcards: `nike*` gives `['nike', '']` and `a**b` gives `['a', 'b']`. With leading wildcards enabled, `*fee` gives `['', 'fee']`. Consecutive wildcards collapse. A quoted string immediately followed by `*`, such as `"a b"*`, creates a prefix pattern with segments `['a b', '']`; asterisks inside the quotes stay literal.
+
+Leading wildcards are rejected by default, including patterns inside lists. Enable them on a configured field with `AllowedField::allowLeadingWildcards()`, or use `SearchParser::allowLeadingWildcards()` for free-text patterns and fields accepted only through `allowAnyField()`. The parser-level option does not override a configured field's rules. Trailing and infix patterns, quoted literal asterisks, and `field:*` exists checks remain available. `AllowedField::minWildcardLength($characters)` can require a minimum number of literal Unicode characters across the pattern's segments; `*` operators do not count. These restrictions run before aliases, casting, and value validation. A pattern after an ordering operator, such as `name:<=*fee`, is reported as `invalid_wildcard_pattern` instead.
 
 Field patterns support `:` and `:!=`/`!=`, and reject ordering comparisons. A list containing any pattern expands into OR for equality or AND for inequality. Each expanded leaf counts toward the clause limit. Patterns are cast and validated using the original pattern text, including its asterisks.
 
@@ -96,6 +104,7 @@ Field patterns support `:` and `:!=`/`!=`, and reject ordering comparisons. A li
 use HosmelQ\SearchSyntaxParser\SearchParser;
 
 assert(SearchParser::query('co*fee')->build()['segments'] === ['co', 'fee']);
+assert(SearchParser::query('*son')->allowLeadingWildcards()->build()['segments'] === ['', 'son']);
 assert(SearchParser::query('name:"a b"*')->allowAnyField()->build()['segments'] === ['a b', '']);
 assert(SearchParser::query('name:jo*,ann')->allowAnyField()->build()['operator'] === 'OR');
 assert(SearchParser::query('name:!=jo*,ann')->allowAnyField()->build()['operator'] === 'AND');

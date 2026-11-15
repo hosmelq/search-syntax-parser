@@ -13,6 +13,7 @@ enum ErrorReason: string
     case InvalidUtf8 = 'invalid_utf8';
     case InvalidWildcardPattern = 'invalid_wildcard_pattern';
     case InvalidWildcardUsage = 'invalid_wildcard_usage';
+    case LeadingWildcardNotAllowed = 'leading_wildcard_not_allowed';
     case MaximumClauses = 'maximum_clauses';
     case MaximumDepth = 'maximum_depth';
     case MaximumLength = 'maximum_length';
@@ -22,4 +23,5 @@ enum ErrorReason: string
     case UnexpectedToken = 'unexpected_token';
     case Unsupported = 'unsupported';
     case UnterminatedQuote = 'unterminated_quote';
+    case WildcardTooShort = 'wildcard_too_short';
 }

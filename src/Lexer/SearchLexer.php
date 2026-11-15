@@ -11,9 +11,11 @@ use HosmelQ\SearchSyntaxParser\Exception\ParseException;
  */
 final class SearchLexer
 {
+    private const string DATETIME = '\d{4}-\d{2}-\d{2}[Tt]\d{2}(?::\d{2}(?::\d{2}(?:\.\d+)?)?)?(?:[Zz]|[+-]\d{2}(?::?\d{2})?)?';
+
     private const string PATTERN = '/\G(\s*+)\K(?:'
         // A word starting with an ISO 8601 datetime may contain colons.
-        .'\d{4}-\d{2}-\d{2}[Tt]\d{2}(?::\d{2}(?::\d{2}(?:\.\d+)?)?)?(?:[Zz]|[+-]\d{2}(?::?\d{2})?)?'
+        .self::DATETIME
         .self::WORD_TAIL
         .'(*MARK:w)'
         .'|"[^"\\\\]*+(?:\\\\.[^"\\\\]*+)*+"(?:\*(*MARK:qs)|(*MARK:q))'
@@ -28,7 +30,8 @@ final class SearchLexer
     /**
      * Rest of a word, unrolled so long words don't spend one PCRE match step per character.
      */
-    private const string WORD_TAIL = '[^\s():,<>\[\]!]*+(?:!(?!=)[^\s():,<>\[\]!]*+)*+';
+    private const string WORD_TAIL = '[^\s():,<>\[\]!.]*+(?:(?:!(?!=)|\.\.'
+        .self::DATETIME.'|\.++)[^\s():,<>\[\]!.]*+)*+';
 
     /**
      * @throws ParseException

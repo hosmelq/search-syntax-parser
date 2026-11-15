@@ -7,10 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
-This release includes breaking changes to field permissions, ignored values, operators, wildcard AST nodes, exception inheritance, value typing, validation, default origin and serialization, nullable AST results, case-insensitive values, quoted field metadata, text match modes, storage conversions, query limits, and the lexer and parser APIs.
+This release includes breaking changes to field permissions, ignored values, operators, wildcard AST nodes, exception inheritance, value typing, validation, default origin and serialization, nullable AST results, case-insensitive values, quoted field metadata, text match modes, storage conversions, query limits, leading wildcard permissions, dynamic field patterns, compact ranges, and the lexer and parser APIs.
 
 ### Added
 
+- Add `AllowedField::allowLeadingWildcards()` and `minWildcardLength()` plus `SearchParser::allowLeadingWildcards()` for free text and unconfigured fields, checked before casting with positioned `LeadingWildcardNotAllowed` and `WildcardTooShort` error reasons.
+- Add the framework-independent `Support\LikePattern` helper for escaping SQL LIKE literals, wildcard segments, and exact, prefix, or contains text modes with an explicit escape character.
+- Add dynamic `.*` fields with mandatory regex or closure `keys()` rules, exact-name and longest-pattern precedence, full typed AST names, and suffix-preserving internal mappings; reject pattern defaults and invalid configuration.
+- Accept inclusive `field:a..b` ranges with open `*` ends, numeric and date bounds, existing field rules, and bracket-form string output.
 - Add opt-in `allowPartialDates()` for format-less date fields and array items, preserving whole-year and whole-month text.
 - Accept relative date anchors and single calendar or time offsets on every format-less date field, including comparisons, lists, ranges, and text defaults.
 - Add framework-independent `DateValue`, `DatePrecision`, and `DateBounds` for precision intervals, request-time relative resolution, explicit offsets, DST-aware calendar boundaries, and half-open adapter bounds.
@@ -33,6 +37,7 @@ This release includes breaking changes to field permissions, ignored values, ope
 
 ### Changed
 
+- Reject leading wildcards by default, including list items and free-text terms; field violations use `InvalidFieldOperatorException` with the complete external name.
 - Accept hour-precision ISO datetimes such as `2024-03-15T10` on format-less date fields.
 - Require brick/math 0.14.4 or newer, up to 1.x.
 - Match `in()` strings and `ignore()` values case-insensitively, returning canonical allowed members and rejecting duplicate allowed strings ignoring case; alias tokens remain case-sensitive.

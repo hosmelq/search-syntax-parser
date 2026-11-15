@@ -33,6 +33,8 @@ class SearchParser
 
     private bool $allowsAnyField = false;
 
+    private bool $allowsLeadingWildcards = false;
+
     private int $clauseLimit = 1_024;
 
     /**
@@ -43,6 +45,11 @@ class SearchParser
     private int $depthLimit = 32;
 
     private int $lengthLimit = 10_000;
+
+    /**
+     * @var list<AllowedField>
+     */
+    private array $patternFields = [];
 
     /**
      * Create a new SearchParser instance.
@@ -85,16 +92,52 @@ class SearchParser
     public function allowedFields(array $fields): self
     {
         $this->allowedFields = [];
+        $this->patternFields = [];
 
         foreach ($fields as $field) {
-            if ($field instanceof AllowedField) {
-                $this->allowedFields[$field->getName()] = $field;
-            } elseif (is_string($field)) {
-                $this->allowedFields[$field] = new AllowedField($field);
+            $field = is_string($field) ? new AllowedField($field) : $field;
+            $this->allowedFields[$field->getName()] = $field;
+        }
+
+        // Read patterns from the final map so a repeated name resolves to the same field.
+        foreach ($this->allowedFields as $field) {
+            if ($field->isPattern()) {
+                $field->assertValidConfiguration();
+
+                $this->patternFields[] = $field;
             }
         }
 
+        // The longest pattern wins when several match the same field name.
+        if (count($this->patternFields) > 1) {
+            usort($this->patternFields, static fn (AllowedField $left, AllowedField $right): int
+                => mb_strlen($right->getName()) <=> mb_strlen($left->getName()));
+        }
+
         return $this;
+    }
+
+    /**
+     * Accept leading wildcards in free text and fields accepted only through allowAnyField().
+     */
+    public function allowLeadingWildcards(): self
+    {
+        $this->allowsLeadingWildcards = true;
+
+        return $this;
+    }
+
+    /**
+     * Check whether fields without configuration are accepted.
+     */
+    public function allowsAnyField(): bool
+    {
+        return $this->allowsAnyField;
+    }
+
+    public function allowsLeadingWildcards(): bool
+    {
+        return $this->allowsLeadingWildcards;
     }
 
     /**
@@ -129,7 +172,19 @@ class SearchParser
      */
     public function getAllowedField(string $field): null|AllowedField
     {
-        return $this->allowedFields[$field] ?? null;
+        if (isset($this->allowedFields[$field])) {
+            return $this->allowedFields[$field];
+        }
+
+        foreach ($this->patternFields as $pattern) {
+            // Names with the prefix resolve to the pattern even with an empty key, so the
+            // pattern's key rule rejects them instead of allowAnyField() accepting them.
+            if (str_starts_with($field, mb_substr($pattern->getName(), 0, -1))) {
+                return $pattern;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -155,7 +210,7 @@ class SearchParser
      */
     public function isFieldAllowed(string $field): bool
     {
-        return $this->allowsAnyField || isset($this->allowedFields[$field]);
+        return $this->getAllowedField($field)?->accepts($field) ?? $this->allowsAnyField;
     }
 
     /**
@@ -277,9 +332,9 @@ class SearchParser
      */
     public function validateField(string $field, mixed $value): bool
     {
-        if (isset($this->allowedFields[$field])) {
-            $allowed = $this->allowedFields[$field];
+        $allowed = $this->getAllowedField($field);
 
+        if ($allowed instanceof AllowedField) {
             if ($allowed->expectsArray()) {
                 return $allowed->validate(is_array($value) ? $value : [$value]);
             }

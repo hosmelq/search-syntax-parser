@@ -47,6 +47,16 @@ class ParseException extends SearchSyntaxException
         ), ErrorReason::InvalidWildcardUsage, ['field' => $field], $position);
     }
 
+    public static function leadingWildcardNotAllowed(int $position): self
+    {
+        return new self(
+            'Leading wildcards are not allowed for free-text terms.',
+            ErrorReason::LeadingWildcardNotAllowed,
+            [],
+            $position,
+        );
+    }
+
     public static function maximumClauses(int $limit, int $position): self
     {
         return new self(

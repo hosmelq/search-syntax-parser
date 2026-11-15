@@ -33,6 +33,8 @@ Each node implements `getType()`, `getSpan()`, and `accept(VisitorInterface $vis
 
 AST type names are `BinaryOperator`, `Comparison`, `Exists`, `In`, `Range`, `Term`, `UnaryOperator`, and `Wildcard`. All field nodes retain external names. `WildcardNode::getField()` can be null for a bare term; `getOperator()` returns `=` or `!=`; `getSegments()` returns literal segments, with runs of unquoted asterisks collapsed.
 
+Dynamic field nodes retain their full typed name, such as `meta.color`. `getAllowedField()` resolves its pattern metadata, while internal mappings replace the pattern suffix, for example `meta.*` to `attributes.*`. Adapters must map accepted keys to trusted backend identifiers. Compact and bracket syntax both produce `RangeNode`; adapters need no separate compact-range handler.
+
 `AbstractAdapter` supplies `getInternalFieldName()` when constructed with a parser. Get a configured field through `SearchParser::getAllowedField($node->getField())`; its `getTextMatch($node, $index)` resolves effective text matching, and `toStorage($value)` converts cast values for your backend. Apply conversions to comparison values, list items, and non-null range bounds, and implement case-insensitive text comparisons. `ArrayAdapter` is also extensible, so a visitor can override one representation while inheriting the remaining node handling.
 
 ## Rewriting nodes
@@ -84,12 +86,13 @@ Adapters must implement that contract explicitly. A SQL adapter needs to include
 
 ## Wildcards to LIKE
 
-This adapter converts wildcard leaves into LIKE instructions and leaves other array output intact. It escapes literal `%`, `_`, and `!`, then joins segments with `%`. Apply the resulting pattern as a bound parameter with `ESCAPE '!'`; resolve the returned field through trusted database identifiers. Bare patterns target the configured title field in this example.
+This adapter converts wildcard leaves into LIKE instructions and leaves other array output intact. It uses the framework-independent `LikePattern` helper to escape literal `%`, `_`, and `!`, then join segments with `%`. Apply the resulting pattern as a bound parameter with `LIKE ? ESCAPE '!'`; resolve the returned field through trusted database identifiers. Bare patterns target the configured title field in this example.
 
 ```php
 use HosmelQ\SearchSyntaxParser\Adapter\ArrayAdapter;
 use HosmelQ\SearchSyntaxParser\AST\Node\WildcardNode;
 use HosmelQ\SearchSyntaxParser\SearchParser;
+use HosmelQ\SearchSyntaxParser\Support\LikePattern;
 use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
 
 final readonly class LikeAdapter extends ArrayAdapter
@@ -97,15 +100,10 @@ final readonly class LikeAdapter extends ArrayAdapter
     #[\Override]
     public function visitWildcard(WildcardNode $node): array
     {
-        $segments = array_map(
-            static fn (string $segment): string => strtr($segment, ['!' => '!!', '%' => '!%', '_' => '!_']),
-            $node->getSegments(),
-        );
-
         return [
             'field' => $this->getInternalFieldName($node->getField() ?? 'title'),
             'operator' => $node->getOperator() === '!=' ? 'NOT LIKE' : 'LIKE',
-            'pattern' => implode('%', $segments),
+            'pattern' => LikePattern::fromWildcard($node),
         ];
     }
 }
@@ -120,6 +118,19 @@ assert($parser->build('like') === [
     'operator' => 'LIKE',
     'pattern' => 'co%fee',
 ]);
+```
+
+`LikePattern::escape(string $value, string $escape = '!')` escapes literal SQL pattern characters. `fromWildcard(WildcardNode $node, string $escape = '!')` joins the escaped literal segments with `%`. `forMatch(string $value, TextMatch $match, string $escape = '!')` returns escaped text for `Exact`, `value%` for `Prefix`, and `%value%` for `Contains`. It throws `InvalidArgumentException` for `Words`, since LIKE cannot express whole-word matching. The escape must be a single Unicode character other than `%` and `_`; an invalid escape throws `InvalidArgumentException`. Emit the same escape in the backend's `ESCAPE` clause.
+
+```php
+use HosmelQ\SearchSyntaxParser\Support\LikePattern;
+use HosmelQ\SearchSyntaxParser\Validation\TextMatch;
+
+assert(LikePattern::escape('50%_!') === '50!%!_!!');
+assert(LikePattern::forMatch('50%', TextMatch::Exact) === '50!%');
+assert(LikePattern::forMatch('50%', TextMatch::Prefix) === '50!%%');
+assert(LikePattern::forMatch('50%', TextMatch::Contains) === '%50!%%');
+assert(LikePattern::escape('a_b#', '#') === 'a#_b##');
 ```
 
 A quoted asterisk is literal text inside its segment and is not converted to `%`. Keep field allowlists and bound values in your backend integration; parsing alone does not execute or authorize a database query.

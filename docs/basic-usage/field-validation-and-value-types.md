@@ -36,6 +36,47 @@ assert($result['left']['value'] === '123');
 assert($result['right']['value'] === 4.5);
 ```
 
+## Dynamic field keys
+
+A factory name ending in `.*` declares a pattern field: `AllowedField::string('meta.*')` matches `meta.<key>` for a non-empty key without `*`. Configure `keys(string|Closure $rule)` with a regular expression or `fn (string $key): bool`; the callback receives the full suffix after `meta.`, including any nested dots, and only a `true` result accepts the key. A pattern without `keys()` throws `InvalidArgumentException` when passed to `allowedFields()`. Invalid regexes and key rules on exact fields are configuration errors too.
+
+Lookup checks exact names first, then the longest matching pattern, regardless of registration order. The selected pattern's key rule must pass; a rejected key does not fall through to a shorter pattern or `allowAnyField()`. Every name with the pattern's prefix resolves to the pattern, so `meta.:x` and `meta.*:x` are rejected even when `allowAnyField()` is on. It throws `InvalidFieldException` at the field's position with reason `field_not_allowed`. Allowed-field lists display the configured patterns, such as `meta.*`.
+
+```php
+use HosmelQ\SearchSyntaxParser\SearchParser;
+use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
+
+$metadata = AllowedField::string('meta.*', 'attributes.*')
+    ->keys('/^[a-z_]+$/D')
+    ->prefix();
+$parser = SearchParser::query('meta.color:blue')->allowedFields([
+    $metadata,
+    AllowedField::integer('meta.count', 'item_count'),
+]);
+
+assert($parser->parse()->getField() === 'meta.color');
+assert($parser->build()['field'] === 'attributes.color');
+assert($parser->build()['match'] === 'prefix');
+assert($parser->getAllowedField('meta.color') === $metadata);
+assert(SearchParser::query('meta.count:12')->allowedFields([
+    $metadata,
+    AllowedField::integer('meta.count', 'item_count'),
+])->build()['value'] === 12);
+```
+
+Pattern fields apply their usual aliases, casts, validation, match modes, storage conversions, and clause restrictions to every accepted key. The AST and string adapter keep the full external name. Internal pattern names must also end in `.*`: `meta.color` becomes `attributes.color` in the array adapter above. Omitting an internal name retains `meta.color`. Pattern fields cannot have defaults, including null defaults; `default()` throws `InvalidArgumentException` immediately. Configure an exact field when a particular key needs a default.
+
+```php
+use HosmelQ\SearchSyntaxParser\SearchParser;
+use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
+
+assert(SearchParser::query('metrics.views:2')->allowedFields([
+    AllowedField::integer('metrics.*')
+        ->keys(fn (string $key): bool => in_array($key, ['views', 'likes'], true))
+        ->scale(100),
+])->build()['value'] === 200);
+```
+
 ## Value inference
 
 Untyped field values infer booleans from `true` and `false`, case-insensitively. Whole numbers without leading zeros that fit in a PHP integer become integers. Complete decimal literals such as `12.50` and `-0.5` become floats. Quoted values stay strings.
@@ -188,7 +229,7 @@ assert($bounds->to === null);
 | `>= value` | S | null |
 | `< value` | null | S |
 | `<= value` | null | E |
-| `[a TO b]` | S(a), or null for `*` | E(b), or null for `*` |
+| `[a TO b]` or `a..b` | S(a), or null for `*` | E(b), or null for `*` |
 
 `DateBounds::range(null|DateValue $from, null|DateValue $to)` converts the language's inclusive written range into half-open bounds. Resolve both ends with the same request time:
 
@@ -375,9 +416,9 @@ For collections and tuples, see [array fields](array-fields). Validation failure
 
 ## Operators and clause restrictions
 
-All comparison operators and clause kinds are allowed by default. `operators()` restricts comparisons, lists, and wildcard patterns to a subset of `=`, `!=`, `>`, `>=`, `<`, and `<=`. Passing no operators permits none of those comparisons; an unknown operator throws `InvalidArgumentException`. Ranges and existence checks have their own controls. Use `withoutLists()`, `withoutRanges()`, `withoutWildcards()`, and `withoutExists()` to reject those forms. Literal asterisks inside quotes are allowed when wildcard patterns are disabled.
+All comparison operators and clause kinds are allowed by default, subject to the wildcard restrictions below. `operators()` restricts comparisons, lists, and wildcard patterns to a subset of `=`, `!=`, `>`, `>=`, `<`, and `<=`. Passing no operators permits none of those comparisons; an unknown operator throws `InvalidArgumentException`. Ranges and existence checks have their own controls. Use `withoutLists()`, `withoutRanges()`, `withoutWildcards()`, and `withoutExists()` to reject those forms. Literal asterisks inside quotes are allowed when wildcard patterns are disabled.
 
-Restrictions run before aliases, casting, and value validation. A violation throws `InvalidFieldOperatorException` with the external field name and the explicit comparison operator's position, or the value start when no explicit operator exists. A range starts at `[`. Defaults bypass these restrictions, which govern what users type.
+Restrictions run before aliases, casting, and value validation. A violation throws `InvalidFieldOperatorException` with the external field name and the explicit comparison operator's position, or the value start when no explicit operator exists. A range starts at `[` or at its first compact bound. Leading-wildcard and minimum-length errors point to the offending pattern item. Defaults bypass these restrictions, which govern what users type.
 
 ```php
 use HosmelQ\SearchSyntaxParser\SearchParser;
@@ -391,6 +432,25 @@ $status = AllowedField::in('status', ['active', 'draft'])
 
 assert(SearchParser::query('status:active,draft')->allowedFields([$status])->parse()->getValues() === ['active', 'draft']);
 ```
+
+## Wildcard restrictions
+
+Leading wildcard patterns are rejected by default. `allowLeadingWildcards()` opts in for one configured field; `SearchParser::allowLeadingWildcards()` covers free-text terms and fields accepted only through `allowAnyField()`. Configured fields keep their own policy even when the parser-level option is enabled. Trailing and infix wildcards do not require an opt-in.
+
+`minWildcardLength(int $characters)` sets a non-negative minimum number of literal Unicode characters across a field pattern's segments. Wildcard operators do not count, including repeated `*` runs. Literal `*` characters inside a quoted prefix still count as literal text. A negative minimum throws `InvalidArgumentException`; zero removes the minimum. Ordinary comparisons, quoted literal asterisks, and `field:*` existence checks are unaffected.
+
+```php
+use HosmelQ\SearchSyntaxParser\SearchParser;
+use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
+
+$name = AllowedField::string('name')->allowLeadingWildcards()->minWildcardLength(3);
+
+assert(SearchParser::query('name:*son*')->allowedFields([$name])->parse()->getSegments() === ['', 'son', '']);
+assert(SearchParser::query('name:s*on')->allowedFields([$name])->parse()->getSegments() === ['s', 'on']);
+assert(SearchParser::query('name:*')->allowedFields([$name])->parse()->getType() === 'Exists');
+```
+
+These checks run alongside `withoutWildcards()` before any alias, cast, or validator, including all items of a list. `withoutWildcards()` still rejects every pattern after an opt-in. Rejected field patterns throw `InvalidFieldOperatorException` with the typed external name, the pattern item's position, and reason `leading_wildcard_not_allowed` or `wildcard_too_short`. Free-text leading patterns throw `ParseException` with `leading_wildcard_not_allowed`.
 
 ## Value aliases
 

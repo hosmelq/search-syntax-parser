@@ -15,6 +15,7 @@ use HosmelQ\SearchSyntaxParser\AST\Node\UnaryOperatorNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\WildcardNode;
 use HosmelQ\SearchSyntaxParser\AST\Span;
 use HosmelQ\SearchSyntaxParser\Exception\InvalidFieldException;
+use HosmelQ\SearchSyntaxParser\Exception\InvalidFieldOperatorException;
 use HosmelQ\SearchSyntaxParser\Exception\InvalidFieldValueException;
 use HosmelQ\SearchSyntaxParser\Exception\ParseException;
 use HosmelQ\SearchSyntaxParser\Lexer\SearchLexer;
@@ -29,6 +30,8 @@ use HosmelQ\SearchSyntaxParser\Validation\AllowedFieldItemRules;
  */
 class Parser
 {
+    private readonly bool $anyField;
+
     private int $clauses = 0;
 
     /**
@@ -38,7 +41,19 @@ class Parser
 
     private int $extentStart = 0;
 
+    /**
+     * Whether the query contains `..` at all, so clauses can skip compact range checks.
+     */
+    private bool $hasDotRanges = false;
+
+    /**
+     * Whether the query contains `*` at all, so clauses can skip pattern checks.
+     */
+    private bool $hasStars = false;
+
     private int $index = 0;
+
+    private readonly bool $leadingWildcards;
 
     /**
      * Field mentions are tracked only when defaults need them.
@@ -60,7 +75,10 @@ class Parser
         private readonly SearchParser $searchParser,
         private readonly int $maxDepth,
         private readonly int $maxClauses,
-    ) {}
+    ) {
+        $this->anyField = $searchParser->allowsAnyField();
+        $this->leadingWildcards = $searchParser->allowsLeadingWildcards();
+    }
 
     /**
      * Return field mentions, including clauses removed by ignored values.
@@ -80,6 +98,8 @@ class Parser
     public function parse(string $input, bool $hasDefaults = false): null|NodeInterface
     {
         $this->tokens = new SearchLexer()->tokenize($input);
+        $this->hasStars = str_contains($input, '*');
+        $this->hasDotRanges = str_contains($input, '..');
         $this->index = 0;
         $this->clauses = 0;
         $this->referencedFields = $hasDefaults ? [] : null;
@@ -96,6 +116,35 @@ class Parser
         }
 
         return $ast;
+    }
+
+    /**
+     * Check a field pattern's shape: leading wildcards and the minimum literal length.
+     */
+    private function assertPattern(
+        string $field,
+        null|AllowedField $allowed,
+        string $pattern,
+        bool $quoted,
+        int $start,
+    ): void {
+        // A quoted pattern is its literal text plus a trailing `*`; an unquoted one may hold
+        // several `*`. Counting characters avoids splitting the pattern into segments.
+        $leading = $quoted ? mb_strlen($pattern) === 1 : str_starts_with($pattern, '*');
+
+        if ($allowed instanceof AllowedField) {
+            $allowed->assertWildcardAllowed(
+                $leading,
+                mb_strlen($pattern) - ($quoted ? 1 : mb_substr_count($pattern, '*')),
+                $this->position($start),
+                $field,
+            );
+        } elseif ($leading && ! $this->leadingWildcards) {
+            throw InvalidFieldOperatorException::leadingWildcardNotAllowed(
+                $field,
+                $this->position($start),
+            );
+        }
     }
 
     /**
@@ -130,6 +179,20 @@ class Parser
             $left,
             $right,
             new Span($offset, $this->tokens->ends[$rightEnd] - $offset),
+        );
+    }
+
+    /**
+     * Tell cheaply whether the current value token, after a leading minus, contains `..`.
+     * Whether the minus is adjacent is checked by rangeBounds().
+     */
+    private function hasDots(): bool
+    {
+        $value = $this->tokens->values[$this->index] ?? '';
+
+        return str_contains(
+            $value === '-' ? ($this->tokens->values[$this->index + 1] ?? '') : $value,
+            '..',
         );
     }
 
@@ -248,6 +311,14 @@ class Parser
         $segments = ($type !== TokenType::String && str_contains($value, '*'))
             ? $this->wildcardSegments($value, $type) : null;
 
+        if (
+            $segments !== null
+            && $segments[0] === ''
+            && ! $this->leadingWildcards
+        ) {
+            throw ParseException::leadingWildcardNotAllowed($this->position($start));
+        }
+
         return $segments === null
             ? new TermNode($value, $type === TokenType::String, $this->span($start))
             : new WildcardNode(null, '=', $segments, $this->span($start));
@@ -258,7 +329,9 @@ class Parser
      */
     private function parseFieldQuery(string $field, int $start): null|NodeInterface
     {
-        if (! $this->searchParser->isFieldAllowed($field)) {
+        $allowed = $this->searchParser->getAllowedField($field);
+
+        if (! ($allowed?->accepts($field) ?? $this->anyField)) {
             throw InvalidFieldException::fieldNotAllowed(
                 $field,
                 $this->searchParser->getAllowedFieldNames(),
@@ -270,16 +343,20 @@ class Parser
             $this->referencedFields[$field] = true;
         }
 
-        $allowed = $this->searchParser->getAllowedField($field);
         $hasColon = ($this->tokens->types[$this->index] ?? null) === TokenType::Colon;
 
         if ($hasColon) {
             $this->index++;
 
-            if (($this->tokens->types[$this->index] ?? null) === TokenType::OpenBracket) {
-                $allowed?->assertClauseAllowed('ranges', $this->position());
+            $bounds = $this->hasDotRanges && $this->hasDots() ? $this->rangeBounds() : null;
 
-                return $this->parseRange($field, $start, $allowed);
+            if (
+                ($this->tokens->types[$this->index] ?? null) === TokenType::OpenBracket
+                || $bounds !== null
+            ) {
+                $allowed?->assertClauseAllowed('ranges', $this->position(), $field);
+
+                return $this->parseRange($field, $start, $allowed, $bounds);
             }
         }
 
@@ -300,36 +377,79 @@ class Parser
             $operatorIndex = $this->index;
         }
 
-        if ($allowed instanceof AllowedField && $allowed->hasUsageRules()) {
-            $rulePosition = $this->position($operatorIndex);
+        // Inspect the whole clause before any alias, cast, or value validator runs. Usage
+        // rules apply to fields that declare them; pattern shapes apply to every field, and
+        // without usage rules only a pattern or a list can break them.
+        $rules = $allowed instanceof AllowedField && $allowed->hasUsageRules() ? $allowed : null;
+        $scan = $this->index;
+        $valueAt = ($this->tokens->types[$scan] ?? null) === TokenType::Minus ? $scan + 1 : $scan;
 
-            // Inspect the whole clause before any alias, cast, or value validator runs.
-            $scan = $this->index;
-            $exists = $hasColon
+        if (
+            $rules instanceof AllowedField
+            || (
+                $this->hasStars
+                && (
+                    str_contains($this->tokens->values[$valueAt] ?? '', '*')
+                    || (
+                        $hasColon
+                        && ($this->tokens->types[$valueAt + 1] ?? null) === TokenType::Comma
+                    )
+                )
+            )
+        ) {
+            if (
+                $hasColon
                 && $operator === '='
                 && ($this->tokens->types[$scan] ?? null) === TokenType::Word
-                && $this->tokens->values[$scan] === '*';
-
-            if ($exists) {
-                $allowed->assertClauseAllowed('exists', $rulePosition);
+                && $this->tokens->values[$scan] === '*'
+            ) {
+                $rules?->assertClauseAllowed('exists', $this->position($operatorIndex), $field);
             } else {
-                $allowed->assertOperatorAllowed($operator, $rulePosition);
+                $rules?->assertOperatorAllowed($operator, $this->position($operatorIndex), $field);
 
                 do {
                     $type = $this->tokens->types[$scan] ?? null;
                     $patternIndex = $type === TokenType::Minus ? $scan + 1 : $scan;
                     $patternType = $this->tokens->types[$patternIndex] ?? null;
+                    $text = $this->tokens->values[$patternIndex] ?? '';
 
-                    if ($patternType === TokenType::Wildcard
-                        || (
-                            $patternType === TokenType::Word
-                            && (
-                                $type === TokenType::Minus
-                                || $this->tokens->values[$patternIndex] !== '*'
+                    if (
+                        (
+                            $patternType === TokenType::Wildcard
+                            || (
+                                $patternType === TokenType::Word
+                                && ($type === TokenType::Minus || $text !== '*')
+                                && str_contains($text, '*')
                             )
-                            && str_contains($this->tokens->values[$patternIndex], '*')
-                        )) {
-                        $allowed->assertClauseAllowed('wildcards', $rulePosition);
+                        )
+                        && (! str_contains($text, '..') || $this->rangeBounds($scan) === null)
+                    ) {
+                        $rules?->assertClauseAllowed(
+                            'wildcards',
+                            $this->position($operatorIndex),
+                            $field,
+                        );
+
+                        // An ordering operator with a pattern, or a minus not directly followed by
+                        // a word, is a syntax error reported later.
+                        if (
+                            ($operator === '=' || $operator === '!=')
+                            && (
+                                $type !== TokenType::Minus
+                                || (
+                                    $patternType === TokenType::Word
+                                    && $this->tokens->offsets[$patternIndex] === $this->tokens->ends[$scan]
+                                )
+                            )
+                        ) {
+                            $this->assertPattern(
+                                $field,
+                                $allowed,
+                                ($type === TokenType::Minus ? '-' : '').$text,
+                                $patternType === TokenType::Wildcard,
+                                $scan,
+                            );
+                        }
                     }
 
                     $scan += $type === TokenType::Minus ? 2 : 1;
@@ -338,7 +458,7 @@ class Parser
                         break;
                     }
 
-                    $allowed->assertClauseAllowed('lists', $rulePosition);
+                    $rules?->assertClauseAllowed('lists', $this->position($operatorIndex), $field);
 
                     $scan++;
                 } while (true);
@@ -359,7 +479,7 @@ class Parser
         }
 
         $valueIndex = $this->index;
-        $value = $this->parseValue($field, $allowed);
+        $value = $this->parseValue($field, $allowed, rangeChecked: $hasColon && $operator === '=');
         $segments = $this->segments;
         $quoted = ($this->tokens->types[$valueIndex] ?? null) === TokenType::String;
 
@@ -466,36 +586,51 @@ class Parser
     }
 
     /**
+     * @param null|array{string, string} $bounds
+     *
      * @phpstan-impure
      */
     private function parseRange(
         string $field,
         int $start,
         null|AllowedField $allowed,
+        null|array $bounds = null,
     ): null|RangeNode {
         $valueIndex = $this->index;
 
-        $this->index++;
-
-        $from = $this->parseRangeBound($field, $allowed);
-        $separator = $this->tokens->types[$this->index] ?? null;
-
-        if (
-            $separator !== TokenType::Word
-            || $this->tokens->values[$this->index] !== 'TO'
-        ) {
-            throw ParseException::expectedToken(
-                'TO',
-                $separator->name ?? 'NULL',
-                $this->position(),
+        if ($bounds !== null) {
+            $this->index += $this->tokens->types[$this->index] === TokenType::Minus ? 2 : 1;
+            $position = $this->position($valueIndex);
+            $from = $this->parseRangeBound($field, $allowed, $bounds[0], $position);
+            $to = $this->parseRangeBound(
+                $field,
+                $allowed,
+                $bounds[1],
+                $position + mb_strlen($bounds[0]) + 2,
             );
+        } else {
+            $this->index++;
+
+            $from = $this->parseRangeBound($field, $allowed);
+            $separator = $this->tokens->types[$this->index] ?? null;
+
+            if (
+                $separator !== TokenType::Word
+                || $this->tokens->values[$this->index] !== 'TO'
+            ) {
+                throw ParseException::expectedToken(
+                    'TO',
+                    $separator->name ?? 'NULL',
+                    $this->position(),
+                );
+            }
+
+            $this->index++;
+
+            $to = $this->parseRangeBound($field, $allowed);
+
+            $this->match(TokenType::CloseBracket);
         }
-
-        $this->index++;
-
-        $to = $this->parseRangeBound($field, $allowed);
-
-        $this->match(TokenType::CloseBracket);
 
         $ignoreFrom = $from !== null && $allowed?->isIgnored($from) === true;
         $ignoreTo = $to !== null && $allowed?->isIgnored($to) === true;
@@ -524,7 +659,21 @@ class Parser
     private function parseRangeBound(
         string $field,
         null|AllowedField $allowed,
+        null|string $value = null,
+        null|int $position = null,
     ): null|bool|float|int|string {
+        if ($value !== null) {
+            if ($value === '*') {
+                return null;
+            }
+
+            if (str_contains($value, '*')) {
+                throw ParseException::invalidWildcardPattern($position);
+            }
+
+            return $allowed?->cast($value, false) ?? AllowedFieldItemRules::infer($value, false);
+        }
+
         if (
             ($this->tokens->types[$this->index] ?? null) === TokenType::Word
             && $this->tokens->values[$this->index] === '*'
@@ -535,7 +684,7 @@ class Parser
         }
 
         $start = $this->index;
-        $value = $this->parseValue($field, $allowed);
+        $value = $this->parseValue($field, $allowed, rangeChecked: true);
 
         if ($this->segments !== null) {
             throw ParseException::invalidWildcardPattern($this->position($start));
@@ -592,10 +741,19 @@ class Parser
         string $field,
         null|AllowedField $allowed,
         int $index = 0,
+        bool $rangeChecked = false,
     ): bool|float|int|string {
         $type = $this->tokens->types[$this->index] ?? null;
 
-        if ($type === null) {
+        if (
+            $type === null
+            || (
+                ! $rangeChecked
+                && $this->hasDotRanges
+                && $this->hasDots()
+                && $this->rangeBounds() !== null
+            )
+        ) {
             throw ParseException::expectedValue($this->position());
         }
 
@@ -639,6 +797,34 @@ class Parser
     private function position(null|int $index = null): int
     {
         return $this->tokens->offsets[$index ?? $this->index] ?? $this->tokens->length;
+    }
+
+    /**
+     * Read an unquoted a..b candidate without consuming it; a leading minus must be adjacent.
+     *
+     * @return null|array{string, string}
+     */
+    private function rangeBounds(null|int $index = null): null|array
+    {
+        $index ??= $this->index;
+        $start = $index;
+        $negative = ($this->tokens->types[$index] ?? null) === TokenType::Minus;
+
+        if ($negative) {
+            $index++;
+
+            if (($this->tokens->offsets[$index] ?? null) !== $this->tokens->ends[$start]) {
+                return null;
+            }
+        }
+
+        if (($this->tokens->types[$index] ?? null) !== TokenType::Word) {
+            return null;
+        }
+
+        $parts = DotRange::split($this->tokens->values[$index]);
+
+        return $parts === null ? null : [($negative ? '-' : '').$parts[0], $parts[1]];
     }
 
     private function span(int $start): Span

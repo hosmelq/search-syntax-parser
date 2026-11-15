@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use HosmelQ\SearchSyntaxParser\Lexer\SearchLexer;
 use HosmelQ\SearchSyntaxParser\SearchParser;
 
 it('preserves complete words as terms', function (string $input): void {
@@ -40,3 +41,29 @@ it('recognizes uppercase boolean operators', function (): void {
         ->and($result['left']['operator'])->toBe('AND')
         ->and($result['right']['operator'])->toBe('NOT');
 });
+
+it('keeps compact range bounds together including datetime colons and Unicode positions', function (
+    string $value,
+    array $tokens,
+): void {
+    $input = 'é x:'.$value;
+    $result = new SearchLexer()->tokenize($input);
+
+    expect($result->values)->toBe(['é', 'x', ':', ...$tokens])
+        ->and($result->offsets[3])->toBe(4)
+        ->and($result->ends[array_key_last($result->ends)])->toBe(mb_strlen($input));
+})->with([
+    ['1.25..2.50', ['1.25..2.50']],
+    ['-5..5', ['-', '5..5']],
+    ['-2.5..-0.5', ['-', '2.5..-0.5']],
+    ['*..20', ['*..20']],
+    ['10..*', ['10..*']],
+    ['*..*', ['*..*']],
+    ['2024-01-01..2024-03-31', ['2024-01-01..2024-03-31']],
+    ['2024-01-01T10:00..2024-01-01T12:00', ['2024-01-01T10:00..2024-01-01T12:00']],
+    ['*..2024-01-01T12:00', ['*..2024-01-01T12:00']],
+    ['2024-01-01T10:00..*', ['2024-01-01T10:00..*']],
+    ['-30d..2024-01-01T12:00', ['-', '30d..2024-01-01T12:00']],
+    ['2024..2024-06', ['2024..2024-06']],
+    ['../x', ['../x']], ['...', ['...']],
+]);

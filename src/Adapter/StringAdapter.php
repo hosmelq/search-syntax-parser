@@ -16,6 +16,7 @@ use HosmelQ\SearchSyntaxParser\AST\Node\WildcardNode;
 use HosmelQ\SearchSyntaxParser\Exception\ParseException;
 use HosmelQ\SearchSyntaxParser\Lexer\SearchLexer;
 use HosmelQ\SearchSyntaxParser\Lexer\TokenType;
+use HosmelQ\SearchSyntaxParser\Parser\DotRange;
 use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
 use HosmelQ\SearchSyntaxParser\Validation\AllowedFieldItemRules;
 use LogicException;
@@ -142,6 +143,7 @@ final readonly class StringAdapter extends AbstractAdapter
         if (
             count($segments) < 2
             || ! $this->canBeBare($pattern)
+            || ($node->getField() !== null && ! $this->isBareValue($pattern))
             || $pattern === '*'
             || array_any(
                 $segments,
@@ -210,6 +212,13 @@ final readonly class StringAdapter extends AbstractAdapter
      */
     private function isBareValue(string $value): bool
     {
+        // The parser reads a leading minus as its own token, then splits the rest.
+        if (DotRange::split(
+            str_starts_with($value, '-') ? mb_substr($value, 1) : $value,
+        ) !== null) {
+            return false;
+        }
+
         return $this->canBeBare($value, true)
             || (str_starts_with($value, '-') && $this->canBeBare(mb_substr($value, 1)));
     }

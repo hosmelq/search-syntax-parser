@@ -21,6 +21,8 @@ assert($parser->build('string') === 'coffee');
 
 ## Accepted values
 
+Pattern fields such as `meta.*` cannot have defaults; `default()` throws `InvalidArgumentException` immediately. Use an exact field such as `meta.color` for a key-specific default.
+
 A default must be null, a boolean, an integer, a float, a string, or a non-empty list of those scalar types. Empty arrays, associative arrays, nested arrays, objects, and lists containing null throw `InvalidArgumentException` immediately.
 
 A scalar produces a comparison with `=`. A list produces an `InNode` with `=`, including singleton lists and defaults on `array()` fields. A null produces `NOT field:*` and also makes the field nullable. `getDefault()` returns the configured value and `hasDefault()` distinguishes an explicit null default from no default.

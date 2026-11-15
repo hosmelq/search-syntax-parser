@@ -7,17 +7,18 @@ namespace HosmelQ\SearchSyntaxParser\Exception;
 class InvalidFieldOperatorException extends SearchSyntaxException
 {
     /**
-     * @param array<string, string> $parameters
+     * @param array<string, int|string> $parameters
      */
     public function __construct(
         string $message,
         private readonly string $field,
+        ErrorReason $reason,
         array $parameters = [],
         null|int $position = null,
     ) {
         parent::__construct(
             $message,
-            ErrorReason::OperatorNotAllowed,
+            $reason,
             ['field' => $field, ...$parameters],
             $position,
         );
@@ -32,8 +33,19 @@ class InvalidFieldOperatorException extends SearchSyntaxException
                 $field,
             ),
             $field,
+            ErrorReason::OperatorNotAllowed,
             ['clause' => $clause],
             $position,
+        );
+    }
+
+    public static function leadingWildcardNotAllowed(string $field, int $position): self
+    {
+        return new self(
+            sprintf("Leading wildcards are not allowed for field '%s'.", $field),
+            $field,
+            ErrorReason::LeadingWildcardNotAllowed,
+            position: $position,
         );
     }
 
@@ -42,7 +54,23 @@ class InvalidFieldOperatorException extends SearchSyntaxException
         return new self(
             sprintf("Operator '%s' is not allowed for field '%s'.", $operator, $field),
             $field,
+            ErrorReason::OperatorNotAllowed,
             ['operator' => $operator],
+            $position,
+        );
+    }
+
+    public static function wildcardTooShort(string $field, int $minimum, int $position): self
+    {
+        return new self(
+            sprintf(
+                "Wildcard patterns for field '%s' require at least %d literal characters.",
+                $field,
+                $minimum,
+            ),
+            $field,
+            ErrorReason::WildcardTooShort,
+            ['minimum' => $minimum],
             $position,
         );
     }

@@ -66,10 +66,17 @@ class AllowedField
      */
     private array $aliases = [];
 
+    private bool $allowsLeadingWildcards = false;
+
     /**
      * @var array<string, true>
      */
     private array $disabledClauses = [];
+
+    /**
+     * @var null|(Closure(string): bool)|string
+     */
+    private null|Closure|string $keyRule = null;
 
     /**
      * @var null|list<string>
@@ -77,11 +84,18 @@ class AllowedField
     private null|array $operators = null;
 
     /**
+     * Whether the name ends in ".*" and declares dynamic keys.
+     */
+    private readonly bool $pattern;
+
+    /**
      * @var null|Closure(bool|float|int|string): (bool|float|int|string)
      */
     private null|Closure $storageConversion = null;
 
     private TextMatch $textMatch = TextMatch::Exact;
+
+    private int $wildcardMinimumLength = 0;
 
     /**
      * Create a new field with the specified name.
@@ -91,6 +105,12 @@ class AllowedField
         null|string $internalName = null,
     ) {
         $this->internalName = $internalName ?? $name;
+        $this->pattern = str_ends_with($name, '.*');
+
+        if ($this->pattern && ! str_ends_with($this->internalName, '.*')) {
+            throw new InvalidArgumentException('A pattern field internal name must end in ".*".');
+        }
+
         $this->rules = new AllowedFieldItemRules();
         $this->itemRules = new AllowedFieldItemRules();
     }
@@ -258,6 +278,23 @@ class AllowedField
     }
 
     /**
+     * Check whether this field accepts the typed field name: its own name, or a valid dynamic key.
+     *
+     * @internal
+     */
+    public function accepts(string $field): bool
+    {
+        if (! $this->pattern) {
+            return true;
+        }
+
+        // A dynamic key is never empty and never a wildcard.
+        $key = mb_substr($field, mb_strlen($this->name) - 1);
+
+        return $key !== '' && ! str_contains($key, '*') && $this->allowsKey($key);
+    }
+
+    /**
      * Replace an exact unquoted value with a scalar, or with the result of a closure called at parse time.
      */
     public function alias(string $token, bool|Closure|float|int|string $value): static
@@ -267,6 +304,16 @@ class AllowedField
         }
 
         $this->aliases[$token] = $value;
+
+        return $this;
+    }
+
+    /**
+     * Accept wildcard patterns whose first literal segment is empty.
+     */
+    public function allowLeadingWildcards(): static
+    {
+        $this->allowsLeadingWildcards = true;
 
         return $this;
     }
@@ -288,14 +335,26 @@ class AllowedField
     }
 
     /**
+     * Check a dynamic key against the configured rule.
+     *
+     * @internal
+     */
+    public function allowsKey(string $key): bool
+    {
+        return $this->keyRule instanceof Closure
+            ? ($this->keyRule)($key) === true
+            : $this->keyRule !== null && preg_match($this->keyRule, $key) === 1;
+    }
+
+    /**
      * Throw when the clause kind is disabled for this field.
      *
      * @internal
      */
-    public function assertClauseAllowed(string $clause, int $position): void
+    public function assertClauseAllowed(string $clause, int $position, string $field): void
     {
         if (isset($this->disabledClauses[$clause])) {
-            throw InvalidFieldOperatorException::clauseNotAllowed($this->name, $clause, $position);
+            throw InvalidFieldOperatorException::clauseNotAllowed($field, $clause, $position);
         }
     }
 
@@ -304,12 +363,50 @@ class AllowedField
      *
      * @internal
      */
-    public function assertOperatorAllowed(string $operator, int $position): void
+    public function assertOperatorAllowed(string $operator, int $position, string $field): void
     {
         if ($this->operators !== null && ! in_array($operator, $this->operators, true)) {
             throw InvalidFieldOperatorException::operatorNotAllowed(
-                $this->name,
+                $field,
                 $operator,
+                $position,
+            );
+        }
+    }
+
+    /**
+     * Validate pattern metadata when this field is configured into a parser.
+     *
+     * @internal
+     */
+    public function assertValidConfiguration(): void
+    {
+        if ($this->isPattern() && $this->keyRule === null) {
+            throw new InvalidArgumentException(
+                sprintf("Pattern field '%s' requires a keys() rule.", $this->name),
+            );
+        }
+    }
+
+    /**
+     * Check a wildcard pattern's shape before aliases, casts, or validators run.
+     *
+     * @internal
+     */
+    public function assertWildcardAllowed(
+        bool $leading,
+        int $literals,
+        int $position,
+        string $field,
+    ): void {
+        if ($leading && ! $this->allowsLeadingWildcards) {
+            throw InvalidFieldOperatorException::leadingWildcardNotAllowed($field, $position);
+        }
+
+        if ($literals < $this->wildcardMinimumLength) {
+            throw InvalidFieldOperatorException::wildcardTooShort(
+                $field,
+                $this->wildcardMinimumLength,
                 $position,
             );
         }
@@ -387,6 +484,10 @@ class AllowedField
      */
     public function default(mixed $value): static
     {
+        if ($this->isPattern()) {
+            throw new InvalidArgumentException('Pattern fields cannot have defaults.');
+        }
+
         $message = 'A default must be null, a scalar, or a non-empty list of scalars.';
 
         if ($value === null || is_scalar($value)) {
@@ -510,7 +611,7 @@ class AllowedField
     }
 
     /**
-     * Check whether operators are restricted or clause kinds are disabled.
+     * Check whether operators or clause kinds are restricted.
      *
      * @internal
      */
@@ -546,6 +647,44 @@ class AllowedField
     public function isNullable(): bool
     {
         return $this->nullable;
+    }
+
+    /**
+     * Check whether this field declares dynamic keys with a trailing ".*".
+     */
+    public function isPattern(): bool
+    {
+        return $this->pattern;
+    }
+
+    /**
+     * Restrict a pattern field's non-empty key with a regex or predicate.
+     *
+     * @param (Closure(string): bool)|string $rule
+     */
+    public function keys(Closure|string $rule): static
+    {
+        if (! $this->isPattern()) {
+            throw new InvalidArgumentException('Key rules require a pattern field.');
+        }
+
+        if (is_string($rule)) {
+            set_error_handler(static fn (): bool => true);
+
+            try {
+                if (preg_match($rule, '') === false) {
+                    throw new InvalidArgumentException(
+                        'A key rule must be a valid regular expression.',
+                    );
+                }
+            } finally {
+                restore_error_handler();
+            }
+        }
+
+        $this->keyRule = $rule;
+
+        return $this;
     }
 
     /**
@@ -603,6 +742,20 @@ class AllowedField
     public function min(float|int $value): static
     {
         $this->rules->min($value);
+
+        return $this;
+    }
+
+    /**
+     * Require a minimum number of literal characters in each wildcard pattern.
+     */
+    public function minWildcardLength(int $characters): static
+    {
+        if ($characters < 0) {
+            throw new InvalidArgumentException('Minimum wildcard length cannot be negative.');
+        }
+
+        $this->wildcardMinimumLength = $characters;
 
         return $this;
     }

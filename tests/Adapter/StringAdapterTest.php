@@ -35,7 +35,11 @@ it('round trips date expression text and quotes unchanged', function (string $qu
 ]);
 
 it('normalizes queries into explicit syntax', function (string $query, string $expected): void {
-    expect(SearchParser::query($query)->allowAnyField()->build('string'))->toBe($expected);
+    expect(
+        SearchParser::query($query)->allowAnyField()->allowLeadingWildcards()->build('string'),
+    )->toBe(
+        $expected,
+    );
 })->with([
     ['  a b ', 'a AND b'],
     ['-name:coffee', 'NOT name:coffee'],
@@ -51,6 +55,7 @@ it('normalizes queries into explicit syntax', function (string $query, string $e
     ['***', '""*'],
     ['name:***', 'name:""*'],
     ['name:"a*b"*', 'name:"a*b"*'],
+    ['name:"1..2"*', 'name:"1..2"*'],
     ['price:[* TO 10.00]', 'price:[* TO 10.0]'],
     ['flag:TRUE', 'flag:true'],
     ['flag:"TRUE"', 'flag:"TRUE"'],
@@ -63,9 +68,14 @@ it('normalizes queries into explicit syntax', function (string $query, string $e
 ]);
 
 it('round trips observable array output', function (string $query): void {
-    $parser = SearchParser::query($query)->allowAnyField();
+    $parser = SearchParser::query($query)->allowAnyField()->allowLeadingWildcards();
 
-    expect(SearchParser::query($parser->build('string'))->allowAnyField()->build())->toBe(
+    expect(
+        SearchParser::query($parser->build('string'))
+            ->allowAnyField()
+            ->allowLeadingWildcards()
+            ->build(),
+    )->toBe(
         $parser->build(),
     );
 })->with([
@@ -237,4 +247,26 @@ it('serializes alias tokens without running alias closures', function (): void {
 
     expect(SearchParser::query('owner:"me" owner:other')->allowedFields([$field])->build('string'))
         ->toBe('owner:"me" AND owner:other');
+});
+
+it('quotes programmatic comparison values that would be read as compact ranges', function (): void {
+    $text = new StringAdapter()->build(new ComparisonNode('title', '=', 'a..b'));
+    $node = SearchParser::query($text)->allowAnyField()->parse();
+
+    expect($text)->toBe('title:"a..b"')
+        ->and($node)->toBeInstanceOf(ComparisonNode::class)
+        ->and($node->getValue())->toBe('a..b');
+});
+
+it('keeps a minus before dots bare when the parser reads it as literal text', function (): void {
+    $fields = static fn (): array => [AllowedField::string('p')->prefix()];
+    $parser = SearchParser::query('p:-..5')->allowedFields($fields());
+
+    expect($parser->build('string'))->toBe('p:-..5')
+        ->and(SearchParser::query('p:-..5')->allowedFields($fields())->build())->toBe(
+            $parser->build(),
+        )
+        ->and(SearchParser::query('p:"-5..1"')->allowedFields($fields())->build('string'))->toBe(
+            'p:"-5..1"',
+        );
 });
