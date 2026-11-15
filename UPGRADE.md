@@ -86,7 +86,7 @@ strict comparisons that expect floats.
 ### Untyped values
 
 Untyped values retain leading-zero identifiers, overflowing integers, exponent notation, and
-incomplete decimals as strings. Standalone terms retain their written text. Use a typed field
+incomplete decimals as strings. Bare terms retain their written text. Use a typed field
 when numeric conversion is required.
 
 ### Numeric validation
