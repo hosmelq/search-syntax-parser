@@ -6,6 +6,8 @@ weight: 3
 
 Use `AllowedField::array()` for fields whose values form a collection. Collection size rules count the items remaining after [ignored values](field-validation-and-value-types#ignored-values) are removed. A single query value is treated as a one-item array during validation, but its AST remains a comparison.
 
+A list such as `tags:alpha,beta` matches either value. Repeating the field, `tags:alpha tags:beta`, requires both. `tags:!=alpha` means no element equals `alpha`, including records with no elements. See [query semantics](query-syntax#complements-and-missing-values).
+
 ## Shared item rules
 
 `each()` configures rules for every item. It supports the same scalar types as fields, including `date()` and `enum()`, as well as callbacks and size constraints.
@@ -60,4 +62,4 @@ $result = SearchParser::query('dates:2024-02-29,2025-01-01')->allowedFields([
 assert($result['values'] === ['2024-02-29', '2025-01-01']);
 ```
 
-A list containing patterns removes ignored literal items, then validates the remaining collection and its items before expanding into wildcard and comparison leaves. Patterns are never removed by `ignore()`. Defaults for array fields are trusted lists and bypass these rules; see [defaults](defaults).
+A list containing patterns removes ignored literal items, then validates the remaining collection and its items before expanding into wildcard and comparison leaves. Patterns are never removed by `ignore()`. Defaults for array fields pass through the same collection and item validation; see [defaults](defaults).

@@ -13,7 +13,11 @@ readonly class ExistsNode implements NodeInterface
     /**
      * Create a new exists node.
      */
-    public function __construct(private string $field, private null|Span $span = null) {}
+    public function __construct(
+        private string $field,
+        private null|Span $span = null,
+        private bool $default = false,
+    ) {}
 
     /**
      * {@inheritDoc}
@@ -45,5 +49,13 @@ readonly class ExistsNode implements NodeInterface
     public function getType(): string
     {
         return 'Exists';
+    }
+
+    /**
+     * Whether this check was created from a configured null field default.
+     */
+    public function isDefault(): bool
+    {
+        return $this->default;
     }
 }

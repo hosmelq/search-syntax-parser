@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use HosmelQ\SearchSyntaxParser\Tests\TestSupport\PublicationStatus;
 use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
 use HosmelQ\SearchSyntaxParser\Validation\AllowedFieldItemRules;
 
@@ -192,3 +193,43 @@ it('validates per-item rules on arrays', function (): void {
     expect($numericBetweenField->validate([3]))->toBeFalse()
         ->and($numericBetweenField->validate([1.5]))->toBeTrue();
 });
+
+it('keeps field subclasses through factories and fluent configuration', function (
+    string $factory,
+    array $arguments,
+): void {
+    $prototype = new class ('field') extends AllowedField {
+        public function packageMethod(): string
+        {
+            return $this->getInternalName();
+        }
+    };
+    $field = $prototype::$factory('field', ...$arguments);
+
+    expect(
+        $field
+            ->min(1)
+            ->max(10)
+            ->between(1, 10)
+            ->size(2)
+            ->nullable()
+            ->default(null)
+            ->ignore('any')
+            ->alias('yes', true)
+            ->operators('=')
+            ->withoutLists()
+            ->withoutRanges()
+            ->withoutWildcards()
+            ->withoutExists()
+            ->each(fn ($rules) => $rules->string())
+            ->at(0, fn ($rules) => $rules->string())
+            ->packageMethod(),
+    )->toBe(
+        'field',
+    );
+})->with([
+    ['array', []], ['boolean', []], ['callback', [static fn (): bool => true]],
+    ['date', []], ['decimal', [2]],
+    ['enum', [PublicationStatus::class]],
+    ['in', [['open', 'closed']]], ['integer', []], ['numeric', []], ['string', []],
+]);

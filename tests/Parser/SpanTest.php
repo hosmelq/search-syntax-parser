@@ -72,7 +72,7 @@ it('gives every expanded wildcard list node the whole clause span', function (
 it('marks all default-generated nodes and joins with null spans', function (): void {
     $node = SearchParser::query('coffee')->allowedFields([
         AllowedField::string('status')->default('active'),
-        AllowedField::string('tag')->default(['one', 'two']),
+        AllowedField::array('tag')->default(['one', 'two']),
         AllowedField::string('deleted')->default(null),
     ])->parse();
 

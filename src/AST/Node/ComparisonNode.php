@@ -18,6 +18,7 @@ readonly class ComparisonNode implements NodeInterface
         private string $operator,
         private bool|float|int|string $value,
         private null|Span $span = null,
+        private bool $default = false,
     ) {}
 
     /**
@@ -66,5 +67,13 @@ readonly class ComparisonNode implements NodeInterface
     public function getValue(): bool|float|int|string
     {
         return $this->value;
+    }
+
+    /**
+     * Whether this clause was created from a configured field default.
+     */
+    public function isDefault(): bool
+    {
+        return $this->default;
     }
 }

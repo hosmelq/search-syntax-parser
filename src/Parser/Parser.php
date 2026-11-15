@@ -85,11 +85,7 @@ class Parser
         $this->referencedFields = $hasDefaults ? [] : null;
 
         if ($this->tokens->types === []) {
-            if ($hasDefaults) {
-                return null;
-            }
-
-            throw ParseException::emptyQuery();
+            return null;
         }
 
         $ast = $this->parseExpression(0);

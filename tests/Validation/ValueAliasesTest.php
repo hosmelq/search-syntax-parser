@@ -93,10 +93,10 @@ it('rejects alias closures returning nonscalar values', function (mixed $value):
     ])->parse();
 })->throws(InvalidArgumentException::class)->with([null, [[]], [(object) []]]);
 
-it('does not resolve aliases for trusted defaults or quoted range bounds', function (): void {
+it('resolves aliases for string defaults but not for quoted range bounds', function (): void {
     $field = AllowedField::string('x')->alias('token', 'resolved')->default('token');
 
-    expect(SearchParser::query('')->allowedFields([$field])->parse()->getValue())->toBe('token')
+    expect(SearchParser::query('')->allowedFields([$field])->parse()->getValue())->toBe('resolved')
         ->and(
             SearchParser::query('x:["token" TO token]')
                 ->allowedFields([$field])

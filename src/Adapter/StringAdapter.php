@@ -33,33 +33,16 @@ final readonly class StringAdapter implements QueryAdapterInterface, VisitorInte
     #[Override]
     public function visitBinaryOperator(BinaryOperatorNode $node): string
     {
-        $operator = $node->getOperator();
-        $left = $node->getLeft();
-        $right = $node->getRight();
-        $leftText = $this->build($left);
-        $rightText = $this->build($right);
-
-        if (
-            $operator === 'AND'
-            && $left instanceof BinaryOperatorNode
-            && $left->getOperator() === 'OR'
-        ) {
-            $leftText = '('.$leftText.')';
-        }
-
-        if (
-            $right instanceof BinaryOperatorNode
-            && ($operator === 'AND' || $right->getOperator() === 'OR')
-        ) {
-            $rightText = '('.$rightText.')';
-        }
-
-        return $leftText.' '.$operator.' '.$rightText;
+        return $this->render($node)[0];
     }
 
     #[Override]
     public function visitComparison(ComparisonNode $node): string
     {
+        if ($node->isDefault()) {
+            return '';
+        }
+
         return $this->fieldPrefix($node->getField())
             .($node->getOperator() === '=' ? '' : $node->getOperator())
             .$this->value($node->getValue());
@@ -68,12 +51,20 @@ final readonly class StringAdapter implements QueryAdapterInterface, VisitorInte
     #[Override]
     public function visitExists(ExistsNode $node): string
     {
+        if ($node->isDefault()) {
+            return '';
+        }
+
         return $this->fieldPrefix($node->getField()).'*';
     }
 
     #[Override]
     public function visitIn(InNode $node): string
     {
+        if ($node->isDefault()) {
+            return '';
+        }
+
         return $this->fieldPrefix($node->getField())
             .($node->getOperator() === '=' ? '' : $node->getOperator())
             .implode(',', array_map($this->value(...), $node->getValues()));
@@ -99,10 +90,17 @@ final readonly class StringAdapter implements QueryAdapterInterface, VisitorInte
     #[Override]
     public function visitUnaryOperator(UnaryOperatorNode $node): string
     {
-        $operand = $node->getOperand();
-        $text = $this->build($operand);
+        if ($node->isDefault()) {
+            return '';
+        }
 
-        return 'NOT '.($operand instanceof BinaryOperatorNode ? '('.$text.')' : $text);
+        [$text, $operator] = $this->render($node->getOperand());
+
+        if ($text === '') {
+            return '';
+        }
+
+        return 'NOT '.($operator === null ? $text : '('.$text.')');
     }
 
     #[Override]
@@ -175,6 +173,44 @@ final readonly class StringAdapter implements QueryAdapterInterface, VisitorInte
     private function quote(string $value): string
     {
         return '"'.strtr($value, ['\\' => '\\\\', '"' => '\\"']).'"';
+    }
+
+    /**
+     * Render text and its surviving root operator so omitted defaults cannot change precedence.
+     *
+     * @return array{string, null|string}
+     */
+    private function render(NodeInterface $node): array
+    {
+        if (! $node instanceof BinaryOperatorNode) {
+            /** @var string $text */
+            $text = $node->accept($this);
+
+            return [$text, null];
+        }
+
+        $operator = $node->getOperator();
+
+        [$leftText, $leftOperator] = $this->render($node->getLeft());
+        [$rightText, $rightOperator] = $this->render($node->getRight());
+
+        if ($leftText === '') {
+            return [$rightText, $rightOperator];
+        }
+
+        if ($rightText === '') {
+            return [$leftText, $leftOperator];
+        }
+
+        if ($operator === 'AND' && $leftOperator === 'OR') {
+            $leftText = '('.$leftText.')';
+        }
+
+        if ($rightOperator !== null && ($operator === 'AND' || $rightOperator === 'OR')) {
+            $rightText = '('.$rightText.')';
+        }
+
+        return [$leftText.' '.$operator.' '.$rightText, $operator];
     }
 
     private function value(bool|float|int|string $value): string

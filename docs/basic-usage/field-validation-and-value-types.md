@@ -72,6 +72,41 @@ assert(SearchParser::query('code:123')->allowedFields([
 ])->build()['value'] === '123');
 ```
 
+## Probing a candidate value
+
+Adapters can call `tryCast(string $value, bool $quoted = false, int $index = 0): null|bool|float|int|string` before using a bare term as a typed field value. It resolves aliases exactly like `cast()`, then validates the result. Invalid input returns `null` without throwing. Valid `false`, `0`, and `''` remain distinct from failure, so check with `!== null`.
+
+```php
+use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
+
+$id = AllowedField::integer('id')->min(1)->alias('@me', 1042);
+
+assert($id->tryCast('1042') === 1042);
+assert($id->tryCast('abc') === null);
+assert($id->tryCast('@me') === 1042);
+assert($id->tryCast('@me', quoted: true) === null);
+```
+
+For an array field, the candidate is validated as a one-item collection at `$index`, using collection, shared item, and positional rules. The return value is the cast item. Exceptions thrown by aliases or validators propagate, as they do during parsing; `tryCast()` does not apply `ignore()` or query operator restrictions.
+
+## Extending field rules
+
+Field factories use late static binding and all fluent field methods return `static`. A subclass can chain its own methods after inherited factories and rules. `AllowedField` has a final constructor; add package configuration through methods.
+
+```php
+use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
+
+class Field extends AllowedField
+{
+    public function packageMethod(): static
+    {
+        return $this;
+    }
+}
+
+assert(Field::string('title')->min(1)->packageMethod() instanceof Field);
+```
+
 ## Dates
 
 Without a format, `date()` accepts `YYYY-MM-DD` and `YYYY-MM-DDTHH:MM[:SS[.fraction]][Z|±HH[:MM]]`. Dates, hours, minutes, seconds, and timezone components must be valid: `2025-02-30`, `25:00`, and minute `60` are rejected. The `T` and `Z` markers are uppercase.
@@ -114,7 +149,7 @@ assert(SearchParser::query('status:draft')->allowedFields([
 
 Chain `min()`, `max()`, `between()`, and `size()`. Numbers and numeric strings are compared by value, other strings by character length, and arrays by item count. String fields always measure character length, including numeric-looking text. Booleans fail size validation because they have no size.
 
-Use `callback()` for additional validation. `nullable()` permits null when validating programmatic values. The query language itself has no null literal; use a missing-field expression or a [null default](defaults).
+Use `callback()` for additional validation. `nullable()` declares that the stored value can be missing: a NULL column, an optional relation, or an absent key. Adapters use this metadata to include missing values in complements such as `NOT price:>10` or `status:!=closed`. It also makes `validate(null)` pass. The query language itself has no null literal; use a missing-field expression or a [null default](defaults).
 
 ```php
 use HosmelQ\SearchSyntaxParser\SearchParser;
@@ -148,7 +183,7 @@ assert(SearchParser::query('status:ALL,active')->allowedFields($fields)->parse()
 assert(SearchParser::query('status:[ALL TO draft]')->allowedFields($fields)->parse()->getFrom() === null);
 ```
 
-A removed clause still mentions its field and suppresses that field's [default](defaults). If nothing remains and no default applies, there are **no constraints**: `parse()` and `build()` throw the same `ParseException` as an empty query, with reason `empty_query`.
+A removed clause still mentions its field and suppresses that field's [default](defaults). If nothing remains and no default applies, `parse()` and `build()` return `null`. `build()` does not call the adapter.
 
 ## Internal field names
 
@@ -172,7 +207,7 @@ For collections and tuples, see [array fields](array-fields). Validation failure
 
 All comparison operators and clause kinds are allowed by default. `operators()` restricts comparisons, lists, and wildcard patterns to a subset of `=`, `!=`, `>`, `>=`, `<`, and `<=`. Passing no operators permits none of those comparisons; an unknown operator throws `InvalidArgumentException`. Ranges and existence checks have their own controls. Use `withoutLists()`, `withoutRanges()`, `withoutWildcards()`, and `withoutExists()` to reject those forms. Literal asterisks inside quotes are allowed when wildcard patterns are disabled.
 
-Restrictions run before aliases, casting, and value validation. A violation throws `InvalidFieldOperatorException` with the external field name and the explicit comparison operator's position, or the value start when no explicit operator exists. A range starts at `[`. Trusted defaults bypass these restrictions.
+Restrictions run before aliases, casting, and value validation. A violation throws `InvalidFieldOperatorException` with the external field name and the explicit comparison operator's position, or the value start when no explicit operator exists. A range starts at `[`. Defaults bypass these restrictions, which govern what users type.
 
 ```php
 use HosmelQ\SearchSyntaxParser\SearchParser;
@@ -191,7 +226,7 @@ assert(SearchParser::query('status:active,draft')->allowedFields([$status])->par
 
 `alias($token, $value)` resolves an exact, case-sensitive unquoted field value before casting. The alias may be a boolean, float, integer, string, or a closure called without arguments at parse time. The result bypasses casting and still passes through the field's validators, including per-item array rules. Closures must return one of those scalar types; other returns throw `InvalidArgumentException`.
 
-Aliases apply to comparisons, list items, and both range bounds. Quoted text never matches an alias, and a closure runs again each time the query is parsed. Open `*` bounds remain null and bypass aliases. Defaults are trusted values and do not resolve aliases.
+Aliases apply to comparisons, list items, and both range bounds. Quoted text never matches an alias, and a closure runs again each time the query is parsed. Open `*` bounds remain null and bypass aliases. String [defaults](defaults) resolve aliases too.
 
 ```php
 use HosmelQ\SearchSyntaxParser\SearchParser;

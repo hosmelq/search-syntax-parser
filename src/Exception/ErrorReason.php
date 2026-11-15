@@ -6,7 +6,6 @@ namespace HosmelQ\SearchSyntaxParser\Exception;
 
 enum ErrorReason: string
 {
-    case EmptyQuery = 'empty_query';
     case ExpectedToken = 'expected_token';
     case ExpectedValue = 'expected_value';
     case FieldNotAllowed = 'field_not_allowed';

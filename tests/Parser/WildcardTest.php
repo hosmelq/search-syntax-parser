@@ -40,12 +40,27 @@ it('keeps quoted wildcard text literal', function (string $query, array $expecte
     expect(SearchParser::query($query)->allowAnyField()->build())->toBe($expected);
 })->with([
     ['"co*fee"', ['quoted' => true, 'type' => 'term', 'value' => 'co*fee']],
-    ['name:"*"', ['field' => 'name', 'operator' => '=', 'type' => 'comparison', 'value' => '*']],
+    [
+        'name:"*"',
+        [
+            'default' => false,
+            'field' => 'name',
+            'operator' => '=',
+            'type' => 'comparison',
+            'value' => '*',
+        ],
+    ],
     [
         'name:"nike*"',
-        ['field' => 'name', 'operator' => '=', 'type' => 'comparison', 'value' => 'nike*'],
+        [
+            'default' => false,
+            'field' => 'name',
+            'operator' => '=',
+            'type' => 'comparison',
+            'value' => 'nike*',
+        ],
     ],
-    ['name:*', ['field' => 'name', 'type' => 'exists']],
+    ['name:*', ['default' => false, 'field' => 'name', 'type' => 'exists']],
 ]);
 
 it('maps wildcard fields while preserving bare terms', function (): void {
@@ -73,6 +88,7 @@ it('expands mixed lists with the correct connective', function (
             ],
             'operator' => $connective,
             'right' => [
+                'default' => false,
                 'field' => 'name',
                 'operator' => $leafOperator,
                 'type' => 'comparison',
@@ -82,6 +98,7 @@ it('expands mixed lists with the correct connective', function (
         ],
         'operator' => $connective,
         'right' => [
+            'default' => false,
             'field' => 'name',
             'operator' => $leafOperator,
             'type' => 'comparison',

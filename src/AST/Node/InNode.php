@@ -20,6 +20,7 @@ readonly class InNode implements NodeInterface
         private string $operator,
         private array $values,
         private null|Span $span = null,
+        private bool $default = false,
     ) {}
 
     /**
@@ -70,5 +71,13 @@ readonly class InNode implements NodeInterface
     public function getValues(): array
     {
         return $this->values;
+    }
+
+    /**
+     * Whether this clause was created from a configured field default.
+     */
+    public function isDefault(): bool
+    {
+        return $this->default;
     }
 }

@@ -35,4 +35,4 @@ Configure [allowed fields and their value rules](../basic-usage/field-validation
 
 [Defaults](../basic-usage/defaults) supply optional filters and can be overridden by field references. Enforce mandatory authorization filters independently. Use [error positions](../basic-usage/error-handling) to report invalid input without exposing backend details.
 
-An ignored clause also suppresses its field's default. When every clause disappears and no default applies, the query has no constraints and throws `ParseException` with reason `empty_query`. Decide how your application should handle that result before executing a search.
+An ignored clause also suppresses its field's default. When every clause disappears and no default applies, the query has no constraints and returns `null` from both `parse()` and `build()`; `build()` resolves the adapter but does not call it. Decide how your application should handle that result before executing a search.

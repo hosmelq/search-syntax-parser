@@ -6,7 +6,6 @@ use HosmelQ\SearchSyntaxParser\AST\Node\ComparisonNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\InNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\UnaryOperatorNode;
 use HosmelQ\SearchSyntaxParser\AST\Span;
-use HosmelQ\SearchSyntaxParser\Exception\ErrorReason;
 use HosmelQ\SearchSyntaxParser\Exception\InvalidFieldOperatorException;
 use HosmelQ\SearchSyntaxParser\Exception\InvalidFieldValueException;
 use HosmelQ\SearchSyntaxParser\Exception\ParseException;
@@ -240,8 +239,9 @@ it('suppresses defaults for removed clauses in every expression context', functi
         AllowedField::string('region')->default('north'),
     ]);
 
-    expect($parser->build('string'))->toBe('region:north')
-        ->and($parser->build('string'))->toBe('region:north');
+    expect($parser->build()['field'])->toBe('region')
+        ->and($parser->build()['value'])->toBe('north')
+        ->and($parser->build('string'))->toBe('');
 })->with([
     'status:ALL',
     'status:ALL,ALL',
@@ -253,9 +253,9 @@ it('suppresses defaults for removed clauses in every expression context', functi
 it('does not ignore trusted defaults or treat bare terms as field mentions', function (): void {
     $field = AllowedField::string('status')->ignore('ALL')->default('ALL');
 
-    expect(SearchParser::query('')->allowedFields([$field])->build('string'))->toBe('status:ALL')
+    expect(SearchParser::query('')->allowedFields([$field])->build()['value'])->toBe('ALL')
         ->and(SearchParser::query('status')->allowedFields([$field])->build('string'))->toBe(
-            'status AND status:ALL',
+            'status',
         );
 });
 
@@ -272,16 +272,7 @@ it('reports no constraints exactly like an empty query when everything is ignore
 
     $parser = SearchParser::query($query)->allowedFields([$field]);
 
-    try {
-        $operation === 'parse' ? $parser->parse() : $parser->build();
-
-        test()->fail('Expected an empty query error.');
-    } catch (ParseException $parseException) {
-        expect($parseException->getMessage())->toBe(ParseException::emptyQuery()->getMessage())
-            ->and($parseException->getReason())->toBe(ErrorReason::EmptyQuery)
-            ->and($parseException->getParameters())->toBeEmpty()
-            ->and($parseException->getPosition())->toBeNull();
-    }
+    expect($operation === 'parse' ? $parser->parse() : $parser->build())->toBeNull();
 })->with([
     'status:ALL',
     'status:ALL,ALL',

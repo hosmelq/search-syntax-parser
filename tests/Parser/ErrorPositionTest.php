@@ -119,7 +119,7 @@ it('leaves positions unset when no location applies', function (string $query): 
     } catch (SearchSyntaxException $searchSyntaxException) {
         expect($searchSyntaxException->getPosition())->toBeNull();
     }
-})->with(['', '   ', "\xff", "é \xff"]);
+})->with(["\xff", "é \xff"]);
 
 it('leaves PCRE failure positions unset', function (): void {
     $limit = ini_get('pcre.backtrack_limit');

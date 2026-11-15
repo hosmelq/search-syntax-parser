@@ -7,15 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
-This release includes breaking changes to field permissions, ignored values, operators, wildcard AST nodes, exception inheritance, value typing, validation, query limits, and the lexer and parser APIs.
+This release includes breaking changes to field permissions, ignored values, operators, wildcard AST nodes, exception inheritance, value typing, validation, default origin and serialization, nullable AST results, query limits, and the lexer and parser APIs.
 
 ### Added
 
+- Add `AllowedField::tryCast()` to probe typed values with alias resolution and validation, returning null for invalid input.
+- Add `NodeTransformer` for selective AST rewriting and opt-in `NegationNormalFormTransformer` for set complements around positive leaves.
+- Expose `isDefault()` on comparison, exists, list, and unary nodes, and `default: bool` on their array output.
 - Add `allowAnyField()` to explicitly accept unconfigured fields while retaining rules, aliases, casting, and defaults for configured fields.
 - Expose optional Unicode source spans on every AST node; parsed clauses retain their exact source extent and default-generated nodes have null spans.
 - Add per-field comparison operator restrictions, clause restrictions, and scalar or deferred value aliases validated after resolution.
 - Add `InvalidFieldOperatorException` and machine-readable `ErrorReason` values and parameters on all query exceptions, including an extensible constructor for adapters.
-- Apply trusted field defaults to the AST when their external field is absent, including null defaults for missing fields, scalar comparisons, and non-empty lists. Empty queries can build defaults alone.
+- Apply field defaults to the AST when their external field is absent, including null defaults for missing fields, scalar comparisons, and non-empty lists. Empty queries can build defaults alone.
 - Add the built-in `string` adapter to serialize ASTs with explicit operators, quoting, external field names, wildcard patterns, and preserved grouping.
 - Add `SearchSyntaxException` as the common runtime exception base, Unicode character positions on query errors, and external field accessors on field exceptions.
 - Add `date()` field and array-item rules with strict calendar/time validation and optional exact formats, and `enum()` rules using backed enum values and types.
@@ -23,8 +26,13 @@ This release includes breaking changes to field permissions, ignored values, ope
 
 ### Changed
 
+- Return null from `SearchParser::parse()` and `build()` when no constraint or default applies; `build()` still resolves the adapter but does not call it.
+- Preserve field subclasses through late-bound factories and fluent `static` returns, with a final field constructor.
+- Read string defaults like typed query text, resolving aliases and casting, and validate defaults like the equivalent query clause, reporting invalid defaults as configuration errors naming the field. Non-string defaults must already have the field's cast type.
+- Omit default-origin clauses from string output; a tree containing only defaults serializes to an empty string.
+- Define `nullable()` as allowing missing stored values, with complements including those values; document multi-valued inequality and list semantics.
 - Reject field queries by default unless the field is configured with `allowedFields()` or `allowAnyField()` is enabled; bare terms remain available without configuration.
-- Remove constraints matching `ignore()` values after aliases and casting, filter list items, and open ignored range bounds. Removed field mentions suppress defaults; queries with no constraints or applicable defaults throw `empty_query`.
+- Remove constraints matching `ignore()` values after aliases and casting, filter list items, and open ignored range bounds. Removed field mentions suppress defaults; queries with no constraints or applicable defaults return null.
 - Represent open range bounds as null in AST and array output; quoted asterisks are literal bounds that are cast and validated.
 - Preserve the quoted flag on terms through the AST, array output, and string round trips.
 - Store token starts and ends in Unicode code points with one ASCII check per query, keeping negative value adjacency in the same coordinates.
@@ -59,6 +67,7 @@ This release includes breaking changes to field permissions, ignored values, ope
 
 ### Removed
 
+- Remove `ErrorReason::EmptyQuery` and `ParseException::emptyQuery()`.
 - Remove unused token cases and `ParseException::expectedIdentifier()`.
 - Remove the doctrine/lexer, archtechx/enums and thecodingmachine/safe runtime dependencies.
 

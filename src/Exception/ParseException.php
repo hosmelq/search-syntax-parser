@@ -6,11 +6,6 @@ namespace HosmelQ\SearchSyntaxParser\Exception;
 
 class ParseException extends SearchSyntaxException
 {
-    public static function emptyQuery(): self
-    {
-        return new self('Empty search query.', ErrorReason::EmptyQuery, []);
-    }
-
     public static function expectedToken(
         string $expected,
         string $actual,

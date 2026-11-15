@@ -63,6 +63,7 @@ it('casts backed enum values to their backing type', function (
     ]);
 
     expect($parser->build())->toBe([
+        'default' => false,
         'field' => 'stored_value',
         'operator' => '=',
         'type' => 'comparison',

@@ -38,7 +38,6 @@ it('exposes a machine-readable reason and parameters for query failures', functi
             ->and($searchSyntaxException->getParameters())->toBe($parameters);
     }
 })->with([
-    ['', ErrorReason::EmptyQuery, []],
     ['coffee )', ErrorReason::UnexpectedToken, ['token' => ')']],
     ['age:[1 to 2]', ErrorReason::ExpectedToken, ['expected' => 'TO', 'actual' => 'Word']],
     ['(coffee', ErrorReason::ExpectedToken, ['expected' => 'CloseParenthesis', 'actual' => 'NULL']],

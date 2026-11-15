@@ -184,6 +184,25 @@ final class AllowedFieldItemRules
     }
 
     /**
+     * Check that a typed value has the type query text is cast to, using the fallback rules when untyped.
+     *
+     * @internal
+     */
+    public function hasCastType(bool|float|int|string $value, null|self $fallback = null): bool
+    {
+        $rules = $this->type === null && $fallback instanceof self ? $fallback : $this;
+
+        return match ($rules->type) {
+            null => true,
+            'boolean' => is_bool($value),
+            'integer' => is_int($value),
+            'numeric' => is_int($value) || is_float($value),
+            'date', 'decimal', 'string' => is_string($value),
+            'in' => in_array($value, $rules->values, true),
+        };
+    }
+
+    /**
      * Require each item to be in the given list.
      *
      * @param list<mixed> $values

@@ -17,6 +17,7 @@ readonly class UnaryOperatorNode implements NodeInterface
         private string $operator,
         private NodeInterface $operand,
         private null|Span $span = null,
+        private bool $default = false,
     ) {}
 
     /**
@@ -57,5 +58,13 @@ readonly class UnaryOperatorNode implements NodeInterface
     public function getType(): string
     {
         return 'UnaryOperator';
+    }
+
+    /**
+     * Whether this clause was created from a configured field default.
+     */
+    public function isDefault(): bool
+    {
+        return $this->default;
     }
 }

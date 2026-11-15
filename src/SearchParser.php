@@ -99,14 +99,17 @@ class SearchParser
 
     /**
      * Parse and build a query using the specified or default adapter.
+     * Return null without calling the adapter when no constraints remain.
      *
+     * @throws InvalidArgumentException When a configured default is invalid or the adapter is unknown.
      * @throws ParseException
      */
     public function build(null|string $adapter = null): mixed
     {
         $ast = $this->parse();
+        $builder = $this->adapter($adapter);
 
-        return $this->adapter($adapter)->build($ast);
+        return $ast instanceof NodeInterface ? $builder->build($ast) : null;
     }
 
     /**
@@ -198,11 +201,12 @@ class SearchParser
     }
 
     /**
-     * Parse the query string into an AST.
+     * Parse the query string into an AST, or null when no constraints or defaults remain.
      *
+     * @throws InvalidArgumentException When a configured default is invalid for its field.
      * @throws ParseException
      */
-    public function parse(): NodeInterface
+    public function parse(): null|NodeInterface
     {
         if (mb_strlen($this->query) > $this->lengthLimit) {
             throw ParseException::maximumLength($this->lengthLimit);
@@ -230,10 +234,34 @@ class SearchParser
                 }
 
                 $value = $field->getDefault();
+
+                // Validate like the equivalent query clause: list items one by one on scalar
+                // fields, a scalar as a one-item collection on array fields.
+                if ($value !== null) {
+                    $value = is_array($value)
+                        ? array_map(
+                            fn (bool|float|int|string $item, int $index): bool|float|int|string
+                                => $this->castDefault($field, $item, $index),
+                            $value,
+                            array_keys($value),
+                        )
+                        : $this->castDefault($field, $value, 0);
+
+                    if (! $this->validateField($name, $value)) {
+                        throw new InvalidArgumentException(
+                            sprintf("Invalid default for field '%s'.", $name),
+                        );
+                    }
+                }
+
                 $node = match (true) {
-                    $value === null => new UnaryOperatorNode('NOT', new ExistsNode($name)),
-                    is_array($value) => new InNode($name, '=', $value),
-                    default => new ComparisonNode($name, '=', $value),
+                    $value === null => new UnaryOperatorNode(
+                        'NOT',
+                        new ExistsNode($name, default: true),
+                        default: true,
+                    ),
+                    is_array($value) => new InNode($name, '=', $value, default: true),
+                    default => new ComparisonNode($name, '=', $value, default: true),
                 };
                 $ast = $ast instanceof NodeInterface
                     ? new BinaryOperatorNode('AND', $ast, $node)
@@ -241,7 +269,7 @@ class SearchParser
             }
         }
 
-        return $ast ?? throw ParseException::emptyQuery();
+        return $ast;
     }
 
     /**
@@ -277,6 +305,27 @@ class SearchParser
     protected function createStringAdapter(): StringAdapter
     {
         return new StringAdapter();
+    }
+
+    /**
+     * Read a string default like typed query text; other scalars must already have the cast type.
+     */
+    private function castDefault(
+        AllowedField $field,
+        bool|float|int|string $value,
+        int $index,
+    ): bool|float|int|string {
+        if (is_string($value)) {
+            return $field->cast($value, false, $index);
+        }
+
+        if (! $field->hasCastType($value, $index)) {
+            throw new InvalidArgumentException(
+                sprintf("Invalid default for field '%s'.", $field->getName()),
+            );
+        }
+
+        return $value;
     }
 
     /**

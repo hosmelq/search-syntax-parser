@@ -4,7 +4,7 @@ description: "Implement custom output formats through AST visitors and translate
 weight: 3
 ---
 
-Implement `QueryAdapterInterface::build(NodeInterface $ast): mixed` to produce an output format. Register a creator with `extend()`, then select it by name. Creators receive no arguments; capture the parser when your adapter needs field mappings.
+Implement `QueryAdapterInterface::build(NodeInterface $ast): mixed` to produce an output format. Register a creator with `extend()`, then select it by name. When parsing returns `null`, `SearchParser::build()` still resolves the adapter, so an unknown name fails, but returns `null` without calling it; direct adapter calls require a non-null tree. Creators receive no arguments; capture the parser when your adapter needs field mappings.
 
 ```php
 use HosmelQ\SearchSyntaxParser\Adapter\QueryAdapterInterface;
@@ -34,6 +34,53 @@ Each node implements `getType()`, `getSpan()`, and `accept(VisitorInterface $vis
 AST type names are `BinaryOperator`, `Comparison`, `Exists`, `In`, `Range`, `Term`, `UnaryOperator`, and `Wildcard`. All field nodes retain external names. `WildcardNode::getField()` can be null for a bare term; `getOperator()` returns `=` or `!=`; `getSegments()` returns literal segments, with runs of unquoted asterisks collapsed.
 
 `AbstractAdapter` supplies `getInternalFieldName()` when constructed with a parser. `ArrayAdapter` is also extensible, so a visitor can override one representation while inheriting the remaining node handling.
+
+## Rewriting nodes
+
+Extend `NodeTransformer` to override a single `visit*()` method instead of implementing the whole visitor interface. `transform(NodeInterface $node): NodeInterface` recursively rewrites children and returns an equivalent tree by default. Unchanged readonly leaves are shared; rebuilt binary and unary nodes retain their spans, and default-origin flags survive.
+
+```php
+use HosmelQ\SearchSyntaxParser\Adapter\StringAdapter;
+use HosmelQ\SearchSyntaxParser\AST\Node\NodeInterface;
+use HosmelQ\SearchSyntaxParser\AST\Node\TermNode;
+use HosmelQ\SearchSyntaxParser\AST\Visitor\NodeTransformer;
+use HosmelQ\SearchSyntaxParser\SearchParser;
+
+final class UppercaseTerms extends NodeTransformer
+{
+    #[\Override]
+    public function visitTerm(TermNode $node): NodeInterface
+    {
+        return new TermNode(mb_strtoupper($node->getValue()), $node->isQuoted(), $node->getSpan());
+    }
+}
+
+$ast = SearchParser::query('coffee OR NOT tea')->parse();
+$rewritten = new UppercaseTerms()->transform($ast);
+
+assert(new StringAdapter()->build($rewritten) === 'COFFEE OR NOT TEA');
+```
+
+When replacing a comparison, exists, list, or unary node in a custom override, pass its `isDefault()` value as the new node's `default` argument.
+
+## Negation normal form
+
+`NegationNormalFormTransformer` extends `NodeTransformer` and is opt-in. `parse()` never runs it automatically. The result has `NOT` only directly around a leaf: a comparison, list, range, exists check, wildcard, or term. Leaves have positive operators, so `field:!=v`, not-equal lists, and not-equal wildcards become `NOT` around their `=` form. De Morgan's laws push negation through AND/OR, and double negations disappear. Comparisons such as `>`, `>=`, `<`, and `<=` keep their operators.
+
+```php
+use HosmelQ\SearchSyntaxParser\Adapter\StringAdapter;
+use HosmelQ\SearchSyntaxParser\AST\Visitor\NegationNormalFormTransformer;
+use HosmelQ\SearchSyntaxParser\SearchParser;
+
+$ast = SearchParser::query('NOT (price:>10 OR status:!=open)')->allowAnyField()->parse();
+$normalized = new NegationNormalFormTransformer()->transform($ast);
+
+assert(new StringAdapter()->build($normalized) === 'NOT price:>10 AND status:open');
+```
+
+Negation means set complement. A field declared `nullable()` can have a missing stored value, and its complement must include that value. `NOT price:>10` therefore stays `NOT price:>10`; changing it to `price:<=10` would exclude missing prices. For multi-valued fields, `tag:!=a` means no element equals `a`, including records with no elements.
+
+Adapters must implement that contract explicitly. A SQL adapter needs to include `IS NULL` or absent relations where appropriate instead of relying on SQL's three-valued logic or a plain `NOT LIKE`. See [query semantics](../basic-usage/query-syntax#complements-and-missing-values).
 
 ## Wildcards to LIKE
 
@@ -81,7 +128,7 @@ A quoted asterisk is literal text inside its segment and is not converted to `%`
 
 `getSpan()` returns a readonly `Span` with public `offset` and `length` integers, measured in Unicode code points from the exact query string. It uses the same coordinates as `SearchSyntaxException::getPosition()`. Quotes, a trailing wildcard, and closing range brackets are included. Binary nodes cover both operands, including consumed group delimiters; unary nodes start at `NOT` or `-` and include their operand's closing parenthesis. A group's inner node covers only its inner content. Each generated leaf and join in an expanded wildcard list covers the whole field clause.
 
-Every node constructor accepts an optional trailing `span: null|Span` argument; direct constructions default to null. `TermNode` also accepts `quoted: bool = false` before `span`, and exposes `isQuoted()`. Default-generated nodes and joins have null spans, so consumers can distinguish them from typed clauses. Neither built-in adapter emits spans. `RangeNode::getFrom()` and `getTo()` return null for open bounds and scalar values for literal bounds, including a quoted `*`.
+Every node constructor accepts an optional `span: null|Span` argument; direct constructions default to null. `TermNode` also accepts `quoted: bool = false` before `span`, and exposes `isQuoted()`. Default-generated nodes and joins also have null spans. Use `isDefault()` on `ComparisonNode`, `ExistsNode`, `InNode`, and `UnaryOperatorNode` to identify default-origin clauses, because hand-built trees may also be spanless. Those constructors accept `default: bool = false` after `span`. For a null default, both the NOT wrapper and its `ExistsNode` carry the flag. Parsed nodes always use false. Neither built-in adapter emits spans. `RangeNode::getFrom()` and `getTo()` return null for open bounds and scalar values for literal bounds, including a quoted `*`.
 
 ```php
 use HosmelQ\SearchSyntaxParser\SearchParser;

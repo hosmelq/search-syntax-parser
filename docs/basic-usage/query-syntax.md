@@ -4,7 +4,7 @@ description: "Write terms, comparisons, lists, ranges, existence checks, and wil
 weight: 1
 ---
 
-Create a parser with `SearchParser::query($text)` or `new SearchParser($text)`. Call `parse()` for the AST or `build()` for the default array output.
+Create a parser with `SearchParser::query($text)` or `new SearchParser($text)`. Call `parse()` for the AST or `build()` for the default array output. When no constraint remains and no default applies, both return `null`; defaults still apply to empty input.
 
 Field queries require `allowedFields()` or an explicit `allowAnyField()`. The examples below use `allowAnyField()` to focus on syntax; use an [allowlist](field-validation-and-value-types) for untrusted input. Bare terms need no configuration.
 
@@ -26,7 +26,7 @@ Terms preserve their text, including `007`, `12.50`, and `true`. `TermNode::isQu
 
 Use `field:value`, `field:>value`, `field:>=value`, `field:<value`, `field:<=value`, or `field:!=value`. Comparators also work without a colon, such as `price>10`. Logical keywords are literal text when used as field values, even in uppercase.
 
-Comma-separated values require the colon form. An equal list means OR across its values; a not-equal list means AND across its exclusions. Lists without wildcard patterns remain one `InNode`.
+Comma-separated values require the colon form. An equal list means OR across its values; a not-equal list means AND across its exclusions. Lists without wildcard patterns remain one `InNode`. On multi-valued fields, `tag:a,b` matches any listed value, while repeating the field (`tag:a tag:b`) requires all values.
 
 ```php
 use HosmelQ\SearchSyntaxParser\SearchParser;
@@ -55,6 +55,14 @@ assert(SearchParser::query('title:["*" TO "z*"]')->allowAnyField()->build()['fro
 assert(SearchParser::query('category:*')->allowAnyField()->build()['type'] === 'exists');
 assert(SearchParser::query('NOT discount:*')->allowAnyField()->build()['operator'] === 'NOT');
 ```
+
+## Complements and missing values
+
+`NOT x`, `-x`, and `field:!=v` mean set complement. When a field is `nullable()`, its stored value can be missing: a NULL column, an optional relation, or an absent key. Adapters must include those records in the complement. For example, `NOT price:>10` includes a missing price as well as prices at most 10; replacing it with `price:<=10` would lose missing values.
+
+On multi-valued fields, `tag:!=a` means "no element equals a" and includes records without elements. `tag:!=a,b` excludes records with either value, including records that also have other elements. A positive list matches any value; repeated field clauses require all of them.
+
+These semantics apply to custom adapters too. SQL integrations must account for missing values explicitly rather than relying on SQL's three-valued logic. The optional [negation normal form transformer](../advanced-usage/custom-adapters-and-visitors#negation-normal-form) keeps complements explicit.
 
 ## Quoted text
 

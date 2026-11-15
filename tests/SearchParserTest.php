@@ -14,6 +14,7 @@ it('accepts whitespace surrounding the query', function (): void {
     $result = SearchParser::query('  title:Coffee  ')->allowAnyField()->build();
 
     expect($result)->toEqual([
+        'default' => false,
         'field' => 'title',
         'operator' => '=',
         'type' => 'comparison',
@@ -87,4 +88,35 @@ it('accepts single value for array field', function (): void {
         ->getField()->toBe('labels')
         ->getOperator()->toBe('=')
         ->getValue()->toBe('abc');
+});
+
+it('returns null without calling the adapter when no constraints remain', function (
+    string $query,
+): void {
+    $parser = SearchParser::query($query)->allowedFields([
+        AllowedField::string('status')->ignore('any'),
+    ]);
+
+    $parser->extend(
+        'unused',
+        static fn (): QueryAdapterInterface => new class () implements QueryAdapterInterface {
+            #[Override]
+            public function build(NodeInterface $ast): never
+            {
+                throw new LogicException('An empty query must not call an adapter.');
+            }
+        },
+    );
+
+    expect($parser->parse())->toBeNull()
+        ->and($parser->build())->toBeNull()
+        ->and($parser->build('string'))->toBeNull()
+        ->and($parser->build('unused'))->toBeNull();
+})->with(['', '   ', "\n\t", "\u{00A0}", 'status:any']);
+
+it('rejects an unknown adapter even when no constraints remain', function (): void {
+    $parser = SearchParser::query('')->allowedFields([AllowedField::string('status')]);
+
+    expect(fn (): mixed => $parser->build('unknown'))
+        ->toThrow(InvalidArgumentException::class, "Adapter 'unknown' not supported.");
 });

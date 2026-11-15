@@ -8,10 +8,6 @@ use HosmelQ\SearchSyntaxParser\Exception\ParseException;
 use HosmelQ\SearchSyntaxParser\SearchParser;
 use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
 
-it('throws on empty query', function (): void {
-    SearchParser::query('')->build();
-})->throws(ParseException::class, 'Empty search query.');
-
 it('throws on unexpected token after complete parse', function (): void {
     SearchParser::query('title:Coffee )')->allowAnyField()->build();
 })->throws(ParseException::class, 'Unexpected token after query: ).');

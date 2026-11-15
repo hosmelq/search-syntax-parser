@@ -173,13 +173,16 @@ it('permits literal asterisks and existence when wildcard patterns are disabled'
 it('trusts defaults despite every configured usage restriction', function (): void {
     $fields = [
         AllowedField::string('scalar')->operators('!=')->default('active'),
-        AllowedField::string('list')->withoutLists()->default(['one', 'two']),
+        AllowedField::array('list')->withoutLists()->default(['one', 'two']),
         AllowedField::string('missing')->withoutExists()->default(null),
-        AllowedField::integer('literal')->withoutWildcards()->default('literal*'),
+        AllowedField::string('literal')->withoutWildcards()->default('literal*'),
     ];
+    $result = SearchParser::query('')->allowedFields($fields)->build();
 
-    expect(SearchParser::query('')->allowedFields($fields)->build('string'))
-        ->toBe('scalar:active AND list:one,two AND NOT missing:* AND literal:"literal*"');
+    expect($result['left']['left']['left']['value'])->toBe('active')
+        ->and($result['left']['left']['right']['values'])->toBe(['one', 'two'])
+        ->and($result['left']['right']['operand']['type'])->toBe('exists')
+        ->and($result['right']['value'])->toBe('literal*');
 });
 
 it('disables every comparison operator when the configured subset is empty', function (): void {

@@ -3,8 +3,10 @@
 declare(strict_types=1);
 
 use HosmelQ\SearchSyntaxParser\Adapter\StringAdapter;
+use HosmelQ\SearchSyntaxParser\AST\Node\BinaryOperatorNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\ComparisonNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\TermNode;
+use HosmelQ\SearchSyntaxParser\AST\Node\UnaryOperatorNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\WildcardNode;
 use HosmelQ\SearchSyntaxParser\SearchParser;
 use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
@@ -105,9 +107,7 @@ it('quotes values that would merge with a comparison operator', function (
 ]);
 
 it('refuses field names the query syntax cannot express', function (string $name): void {
-    SearchParser::query('')
-        ->allowedFields([AllowedField::string($name)->default('x')])
-        ->build('string');
+    new StringAdapter()->build(new ComparisonNode($name, '=', 'x'));
 })->throws(LogicException::class, 'This field name cannot be expressed by the query syntax.')
     ->with(['my field', 'AND', '-x', '*', 'a:b']);
 
@@ -126,3 +126,50 @@ it('keeps datetime-like field names apart from their colon', function (
     ['2026-01-01T12:30+05 :30', '2026-01-01T12:30+05 :30'],
     ['2026-01-01T12:30 :*', '2026-01-01T12:30 :*'],
 ]);
+
+it('omits every default clause while preserving explicit filters', function (
+    string $query,
+    string $expected,
+): void {
+    $parser = SearchParser::query($query)->allowedFields([
+        'title',
+        AllowedField::string('status')->default('open'),
+        AllowedField::array('tags')->default(['a', 'b']),
+        AllowedField::string('deleted')->default(null),
+    ]);
+
+    expect($parser->build('string'))->toBe($expected);
+})->with([
+    ['', ''], ['title:mug', 'title:mug'], ['title:mug OR title:cup', 'title:mug OR title:cup'],
+    ['status:open', 'status:open'], ['NOT deleted:*', 'NOT deleted:*'],
+]);
+
+it('omits defaults inside programmatic boolean trees without leaving dangling operators', function (): void {
+    $default = new ComparisonNode('status', '=', 'open', default: true);
+    $term = new TermNode('coffee');
+    $adapter = new StringAdapter();
+
+    foreach (['AND', 'OR'] as $operator) {
+        expect($adapter->build(new BinaryOperatorNode($operator, $default, $term)))->toBe('coffee')
+            ->and($adapter->build(new BinaryOperatorNode($operator, $term, $default)))->toBe(
+                'coffee',
+            );
+    }
+
+    expect($adapter->build(new UnaryOperatorNode('NOT', $default)))->toBeEmpty();
+});
+
+it('preserves precedence when omitting defaults exposes a nested boolean operator', function (): void {
+    $default = new ComparisonNode('status', '=', 'open', default: true);
+    $alternative = new BinaryOperatorNode('OR', new TermNode('coffee'), new TermNode('tea'));
+    $left = new BinaryOperatorNode('AND', $default, $alternative);
+    $right = new BinaryOperatorNode('AND', $alternative, $default);
+    $adapter = new StringAdapter();
+
+    foreach ([$left, $right] as $node) {
+        expect($adapter->build(new BinaryOperatorNode('AND', $node, new TermNode('mug'))))
+            ->toBe('(coffee OR tea) AND mug')
+            ->and($adapter->build(new UnaryOperatorNode('NOT', $node)))
+            ->toBe('NOT (coffee OR tea)');
+    }
+});

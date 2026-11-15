@@ -13,6 +13,7 @@ it('builds complex query with precedence and grouping', function (): void {
     expect($result)->toEqual([
         'left' => [
             'left' => [
+                'default' => false,
                 'field' => 'status',
                 'operator' => '=',
                 'type' => 'in',
@@ -20,6 +21,7 @@ it('builds complex query with precedence and grouping', function (): void {
             ],
             'operator' => 'AND',
             'right' => [
+                'default' => false,
                 'field' => 'price',
                 'operator' => '>',
                 'type' => 'comparison',
@@ -30,12 +32,15 @@ it('builds complex query with precedence and grouping', function (): void {
         'operator' => 'OR',
         'right' => [
             'left' => [
+                'default' => false,
                 'field' => 'category',
                 'type' => 'exists',
             ],
             'operator' => 'AND',
             'right' => [
+                'default' => false,
                 'operand' => [
+                    'default' => false,
                     'field' => 'discount',
                     'type' => 'exists',
                 ],
@@ -63,6 +68,7 @@ it('maps internal field names in complex output', function (): void {
     expect($result)->toEqual([
         'left' => [
             'left' => [
+                'default' => false,
                 'field' => 'state',
                 'operator' => '=',
                 'type' => 'in',
@@ -70,6 +76,7 @@ it('maps internal field names in complex output', function (): void {
             ],
             'operator' => 'AND',
             'right' => [
+                'default' => false,
                 'field' => 'unit_price',
                 'operator' => '>',
                 'type' => 'comparison',
@@ -80,12 +87,15 @@ it('maps internal field names in complex output', function (): void {
         'operator' => 'OR',
         'right' => [
             'left' => [
+                'default' => false,
                 'field' => 'cat',
                 'type' => 'exists',
             ],
             'operator' => 'AND',
             'right' => [
+                'default' => false,
                 'operand' => [
+                    'default' => false,
                     'field' => 'disc',
                     'type' => 'exists',
                 ],

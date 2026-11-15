@@ -36,7 +36,9 @@ Positions are zero-based Unicode code point offsets in the exact original string
 | Field not allowed | Field token. |
 | Disallowed operator or clause | Explicit comparison operator token, or the value start when no explicit operator exists. |
 | Invalid field value | First value token; the first list item for lists, or `[` for ranges. |
-| Empty query, invalid UTF-8, or a PCRE failure | Null because no position applies. |
+| Invalid UTF-8 or a PCRE failure | Null because no position applies. |
+
+Empty input, or input whose constraints are all ignored, returns `null` when no default applies. It is not a query error.
 
 Exception messages remain descriptive and can be displayed alongside a highlighted query location.
 
@@ -44,11 +46,10 @@ Exception messages remain descriptive and can be displayed alongside a highlight
 
 `getReason()` returns the backed `ErrorReason` enum; its snake_case `value` is suitable for application error codes. `getParameters()` returns an array keyed by strings with null, scalar, or string-list values, so applications can translate messages without parsing their English text.
 
-`empty_query` also means no constraints remain after ignoring values when no default applies. `field_not_allowed` includes an empty `allowed` list when no fields are configured; its message then says "No fields are allowed."
+`field_not_allowed` includes an empty `allowed` list when no fields are configured; its message then says "No fields are allowed."
 
 | Reason value | Parameters |
 | --- | --- |
-| `empty_query` | None |
 | `unexpected_token` | `token` |
 | `expected_token` | `expected`, `actual` token names |
 | `expected_value` | None |
@@ -79,6 +80,6 @@ try {
 
 ## Programmer errors
 
-Unknown adapters, non-positive limits, invalid defaults, unknown configured operators, nonscalar alias closure results, and non-backed enum rules throw `InvalidArgumentException`. They indicate invalid application configuration rather than a user's query error. A string adapter asked to serialize an unrepresentable wildcard throws `LogicException`.
+Unknown adapters, non-positive limits, defaults that have an invalid shape or fail the field's rules when applied, unknown configured operators, nonscalar alias closure results, and non-backed enum rules throw `InvalidArgumentException`. They indicate invalid application configuration rather than a user's query error. A string adapter asked to serialize an unrepresentable wildcard throws `LogicException`.
 
 Read [query limits and untrusted input](../advanced-usage/query-limits-and-untrusted-input) for limits that bound parser work.

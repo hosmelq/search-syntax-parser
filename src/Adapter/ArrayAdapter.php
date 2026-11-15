@@ -54,6 +54,7 @@ readonly class ArrayAdapter extends AbstractAdapter
     public function visitComparison(ComparisonNode $node): array
     {
         return [
+            'default' => $node->isDefault(),
             'field' => $this->getInternalFieldName($node->getField()),
             'operator' => $node->getOperator(),
             'type' => 'comparison',
@@ -70,6 +71,7 @@ readonly class ArrayAdapter extends AbstractAdapter
     public function visitExists(ExistsNode $node): array
     {
         return [
+            'default' => $node->isDefault(),
             'field' => $this->getInternalFieldName($node->getField()),
             'type' => 'exists',
         ];
@@ -84,6 +86,7 @@ readonly class ArrayAdapter extends AbstractAdapter
     public function visitIn(InNode $node): array
     {
         return [
+            'default' => $node->isDefault(),
             'field' => $this->getInternalFieldName($node->getField()),
             'operator' => $node->getOperator(),
             'type' => 'in',
@@ -131,6 +134,7 @@ readonly class ArrayAdapter extends AbstractAdapter
     public function visitUnaryOperator(UnaryOperatorNode $node): array
     {
         return [
+            'default' => $node->isDefault(),
             'operand' => $node->getOperand()->accept($this),
             'operator' => $node->getOperator(),
             'type' => 'unary',

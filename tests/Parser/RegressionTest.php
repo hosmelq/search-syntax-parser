@@ -12,6 +12,7 @@ it('keeps punctuation and unicode values intact', function (
     string $value,
 ): void {
     expect(SearchParser::query($input)->allowAnyField()->build())->toBe([
+        'default' => false,
         'field' => mb_strstr($input, ':', true),
         'operator' => '=',
         'type' => 'comparison',

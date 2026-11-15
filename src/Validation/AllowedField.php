@@ -50,7 +50,7 @@ class AllowedField
     protected AllowedFieldItemRules $itemRules;
 
     /**
-     * Whether this field allows null values.
+     * Whether the stored value can be missing: a NULL column, optional relation, or absent key.
      */
     protected bool $nullable = false;
 
@@ -74,7 +74,7 @@ class AllowedField
     /**
      * Create a new field with the specified name.
      */
-    public function __construct(
+    final public function __construct(
         protected string $name,
         null|string $internalName = null,
     ) {
@@ -86,9 +86,9 @@ class AllowedField
     /**
      * Create an array field (list of values).
      */
-    public static function array(string $name, null|string $internalName = null): self
+    public static function array(string $name, null|string $internalName = null): static
     {
-        $field = new self($name, $internalName);
+        $field = new static($name, $internalName);
         $field->expectsArray = true;
 
         return $field;
@@ -97,9 +97,9 @@ class AllowedField
     /**
      * Create a boolean field (true/false).
      */
-    public static function boolean(string $name, null|string $internalName = null): self
+    public static function boolean(string $name, null|string $internalName = null): static
     {
-        $field = new self($name, $internalName);
+        $field = new static($name, $internalName);
 
         $field->rules->boolean();
 
@@ -115,8 +115,8 @@ class AllowedField
         string $name,
         callable $callback,
         null|string $internalName = null,
-    ): self {
-        $field = new self($name, $internalName);
+    ): static {
+        $field = new static($name, $internalName);
 
         $field->rules->callback($callback);
 
@@ -130,8 +130,8 @@ class AllowedField
         string $name,
         null|string $format = null,
         null|string $internalName = null,
-    ): self {
-        $field = new self($name, $internalName);
+    ): static {
+        $field = new static($name, $internalName);
 
         $field->rules->date($format);
 
@@ -146,8 +146,8 @@ class AllowedField
         int $min,
         null|int $max = null,
         null|string $internalName = null,
-    ): self {
-        $field = new self($name, $internalName);
+    ): static {
+        $field = new static($name, $internalName);
 
         $field->rules->decimal($min, $max);
 
@@ -159,9 +159,12 @@ class AllowedField
      *
      * @param class-string<BackedEnum> $enum
      */
-    public static function enum(string $name, string $enum, null|string $internalName = null): self
-    {
-        $field = new self($name, $internalName);
+    public static function enum(
+        string $name,
+        string $enum,
+        null|string $internalName = null,
+    ): static {
+        $field = new static($name, $internalName);
 
         $field->rules->enum($enum);
 
@@ -173,9 +176,9 @@ class AllowedField
      *
      * @param list<mixed> $values
      */
-    public static function in(string $name, array $values, null|string $internalName = null): self
+    public static function in(string $name, array $values, null|string $internalName = null): static
     {
-        $field = new self($name, $internalName);
+        $field = new static($name, $internalName);
 
         $field->rules->in($values);
 
@@ -185,9 +188,9 @@ class AllowedField
     /**
      * Create an integer field.
      */
-    public static function integer(string $name, null|string $internalName = null): self
+    public static function integer(string $name, null|string $internalName = null): static
     {
-        $field = new self($name, $internalName);
+        $field = new static($name, $internalName);
 
         $field->rules->integer();
 
@@ -197,9 +200,9 @@ class AllowedField
     /**
      * Create a numeric field (integer or float).
      */
-    public static function numeric(string $name, null|string $internalName = null): self
+    public static function numeric(string $name, null|string $internalName = null): static
     {
-        $field = new self($name, $internalName);
+        $field = new static($name, $internalName);
 
         $field->rules->numeric();
 
@@ -209,9 +212,9 @@ class AllowedField
     /**
      * Create a string field.
      */
-    public static function string(string $name, null|string $internalName = null): self
+    public static function string(string $name, null|string $internalName = null): static
     {
-        $field = new self($name, $internalName);
+        $field = new static($name, $internalName);
 
         $field->rules->string();
 
@@ -221,7 +224,7 @@ class AllowedField
     /**
      * Replace an exact unquoted value with a scalar, or with the result of a closure called at parse time.
      */
-    public function alias(string $token, bool|Closure|float|int|string $value): self
+    public function alias(string $token, bool|Closure|float|int|string $value): static
     {
         if (str_contains($token, '*')) {
             throw new InvalidArgumentException('A value alias token cannot contain a wildcard.');
@@ -265,7 +268,7 @@ class AllowedField
      *
      * @param callable(AllowedFieldItemRules $rules): (AllowedFieldItemRules|void) $callback
      */
-    public function at(int $index, callable $callback): self
+    public function at(int $index, callable $callback): static
     {
         $rules = $this->indexItemRules[$index] ??= new AllowedFieldItemRules();
 
@@ -277,7 +280,7 @@ class AllowedField
     /**
      * Add a between constraint (min <= value <= max).
      */
-    public function between(float|int $min, float|int $max): self
+    public function between(float|int $min, float|int $max): static
     {
         $this->rules->between($min, $max);
 
@@ -312,9 +315,9 @@ class AllowedField
     }
 
     /**
-     * Set a default value for the field.
+     * Set a raw default value, validated against this field when the parser applies it.
      */
-    public function default(mixed $value): self
+    public function default(mixed $value): static
     {
         $message = 'A default must be null, a scalar, or a non-empty list of scalars.';
 
@@ -344,7 +347,7 @@ class AllowedField
      *
      * @param callable(AllowedFieldItemRules $rules): (AllowedFieldItemRules|void) $callback
      */
-    public function each(callable $callback): self
+    public function each(callable $callback): static
     {
         $callback($this->itemRules);
 
@@ -386,6 +389,22 @@ class AllowedField
     }
 
     /**
+     * Check that a typed value has the type this field casts query text to at the given index.
+     *
+     * @internal
+     */
+    public function hasCastType(bool|float|int|string $value, int $index = 0): bool
+    {
+        if (! $this->expectsArray) {
+            return $this->rules->hasCastType($value);
+        }
+
+        return isset($this->indexItemRules[$index])
+            ? $this->indexItemRules[$index]->hasCastType($value, $this->itemRules)
+            : $this->itemRules->hasCastType($value);
+    }
+
+    /**
      * Check if this field has a default value.
      */
     public function hasDefault(): bool
@@ -406,7 +425,7 @@ class AllowedField
     /**
      * Remove query constraints whose cast values strictly match these values.
      */
-    public function ignore(mixed ...$values): self
+    public function ignore(mixed ...$values): static
     {
         $this->ignored = array_merge($this->ignored, $values);
 
@@ -422,7 +441,7 @@ class AllowedField
     }
 
     /**
-     * Check if this field allows null values.
+     * Check whether the stored value can be missing.
      */
     public function isNullable(): bool
     {
@@ -432,7 +451,7 @@ class AllowedField
     /**
      * Add a maximum value constraint.
      */
-    public function max(float|int $value): self
+    public function max(float|int $value): static
     {
         $this->rules->max($value);
 
@@ -442,7 +461,7 @@ class AllowedField
     /**
      * Add a minimum value constraint.
      */
-    public function min(float|int $value): self
+    public function min(float|int $value): static
     {
         $this->rules->min($value);
 
@@ -450,9 +469,10 @@ class AllowedField
     }
 
     /**
-     * Allow null values for this field.
+     * Declare that the stored value can be missing: a NULL column, optional relation, or absent key.
+     * Adapters include missing values in complements; validate(null) also passes.
      */
-    public function nullable(bool $nullable = true): self
+    public function nullable(bool $nullable = true): static
     {
         $this->nullable = $nullable;
 
@@ -462,7 +482,7 @@ class AllowedField
     /**
      * Restrict the comparison operators accepted by comparisons, lists and wildcard patterns.
      */
-    public function operators(string ...$operators): self
+    public function operators(string ...$operators): static
     {
         foreach ($operators as $operator) {
             if (! in_array($operator, ['=', '!=', '>', '>=', '<', '<='], true)) {
@@ -480,11 +500,25 @@ class AllowedField
     /**
      * Add an exact size constraint.
      */
-    public function size(float|int $value): self
+    public function size(float|int $value): static
     {
         $this->rules->size($value);
 
         return $this;
+    }
+
+    /**
+     * Cast and validate a candidate value, returning null when it does not validate.
+     * Array candidates are validated as a one-item collection at the supplied index.
+     */
+    public function tryCast(
+        string $value,
+        bool $quoted = false,
+        int $index = 0,
+    ): null|bool|float|int|string {
+        $cast = $this->cast($value, $quoted, $index);
+
+        return $this->validate($this->expectsArray ? [$index => $cast] : $cast) ? $cast : null;
     }
 
     /**
@@ -524,7 +558,7 @@ class AllowedField
     /**
      * Reject exists queries such as field:* for this field.
      */
-    public function withoutExists(): self
+    public function withoutExists(): static
     {
         $this->disabledClauses['exists'] = true;
 
@@ -534,7 +568,7 @@ class AllowedField
     /**
      * Reject comma-separated lists for this field.
      */
-    public function withoutLists(): self
+    public function withoutLists(): static
     {
         $this->disabledClauses['lists'] = true;
 
@@ -544,7 +578,7 @@ class AllowedField
     /**
      * Reject range queries such as field:[a TO b] for this field.
      */
-    public function withoutRanges(): self
+    public function withoutRanges(): static
     {
         $this->disabledClauses['ranges'] = true;
 
@@ -554,7 +588,7 @@ class AllowedField
     /**
      * Reject wildcard patterns such as field:abc* for this field.
      */
-    public function withoutWildcards(): self
+    public function withoutWildcards(): static
     {
         $this->disabledClauses['wildcards'] = true;
 
