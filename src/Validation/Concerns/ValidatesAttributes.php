@@ -25,7 +25,7 @@ trait ValidatesAttributes
         bool $length = false,
     ): null|BigNumber {
         $size = match (true) {
-            is_int($value), is_float($value) => $value,
+            is_int($value), is_float($value) && is_finite($value) => $value,
             is_string($value) => ! $length && is_numeric($value) ? $value : mb_strlen($value),
             is_array($value) => count($value),
             default => null,
