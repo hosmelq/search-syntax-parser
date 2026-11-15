@@ -94,7 +94,9 @@ class AllowedField
     private readonly bool $pattern;
 
     /**
-     * @var null|Closure(bool|float|int|string): (bool|float|int|string)
+     * Converts a value given the effective type of its field or array item.
+     *
+     * @var null|Closure(bool|float|int|string, null|string): (bool|float|int|string)
      */
     private null|Closure $storageConversion = null;
 
@@ -731,6 +733,7 @@ class AllowedField
         $this->assertNoStorageConversion();
 
         $lookup = [];
+        $decimals = [];
 
         foreach ($map as $key => $stored) {
             $key = is_string($key) ? mb_strtolower($key) : $key;
@@ -742,31 +745,39 @@ class AllowedField
             }
 
             $lookup[$key] = $stored;
+            $decimal = $this->decimalKey($key);
+
+            if ($decimal === null) {
+                continue;
+            }
+
+            if (array_key_exists($decimal, $decimals) && $this->hasDecimalItems()) {
+                throw new InvalidArgumentException(
+                    'Storage map keys of a decimal field must be unique by value.',
+                );
+            }
+
+            $decimals[$decimal] = $stored;
         }
 
         $text = array_filter($lookup, is_string(...)) !== [];
-        $decimal = (
-            $this->expectsArray
-            ? $this->itemRules->getType()
-            : $this->rules->getType()
-        ) === 'decimal';
-        $this->storageConversion = static function (bool|float|int|string $value) use (
-            $decimal,
-            $lookup,
-            $text,
-        ): bool|float|int|string {
-            // Decimal text compares by value, so 7.0 and 1.50 match the keys 7 and '1.5'.
-            if ($decimal && is_string($value)) {
+        $this->storageConversion = static function (
+            bool|float|int|string $value,
+            null|string $type,
+        ) use ($decimals, $lookup, $text): bool|float|int|string {
+            if ($type === 'decimal' && ! is_bool($value)) {
+                // Decimal values match keys by value, so 7.00 and 1.5 match the keys 7 and '1.50'.
                 $value = (string) self::toDecimal($value)->strippedOfTrailingZeros();
+                $stored = array_key_exists($value, $decimals) ? $decimals[$value] : $value;
+            } else {
+                $key = match (true) {
+                    is_bool($value) => (int) $value,
+                    is_string($value) => mb_strtolower($value),
+                    is_float($value) => (string) self::toDecimal($value)->strippedOfTrailingZeros(),
+                    default => $value,
+                };
+                $stored = array_key_exists($key, $lookup) ? $lookup[$key] : $value;
             }
-
-            $key = match (true) {
-                is_bool($value) => (int) $value,
-                is_string($value) => mb_strtolower($value),
-                is_float($value) => (string) self::toDecimal($value)->strippedOfTrailingZeros(),
-                default => $value,
-            };
-            $stored = array_key_exists($key, $lookup) ? $lookup[$key] : $value;
 
             // A map that stores text stores every value as text, so numbers and booleans become exact text.
             return match (true) {
@@ -881,9 +892,15 @@ class AllowedField
             );
         }
 
-        $this->storageConversion = static function (bool|float|int|string $value) use (
-            $multiplier,
-        ): int|string {
+        $this->storageConversion = static function (
+            bool|float|int|string $value,
+            null|string $type,
+        ) use ($multiplier): bool|float|int|string {
+            // Array positions with another type keep their value.
+            if (! in_array($type, ['integer', 'numeric', 'decimal'], true)) {
+                return $value;
+            }
+
             $result = self::toDecimal($value)->multipliedBy($multiplier)->strippedOfTrailingZeros();
 
             if ($result->getScale() !== 0) {
@@ -920,11 +937,12 @@ class AllowedField
 
     /**
      * Convert a validated cast value for an adapter, without changing the AST.
+     * Array fields convert each item with the rules of its index.
      */
-    public function toStorage(bool|float|int|string $value): bool|float|int|string
+    public function toStorage(bool|float|int|string $value, int $index = 0): bool|float|int|string
     {
         return $this->storageConversion instanceof Closure
-            ? ($this->storageConversion)($value)
+            ? ($this->storageConversion)($value, $this->storageType($index))
             : $value;
     }
 
@@ -1085,5 +1103,48 @@ class AllowedField
                 'Text match modes require a string field or shared string item type.',
             );
         }
+    }
+
+    /**
+     * Read a map key as canonical decimal text, or null when it is not a decimal number.
+     */
+    private function decimalKey(int|string $key): null|string
+    {
+        if (is_int($key)) {
+            return (string) $key;
+        }
+
+        if (preg_match('/^[+-]?(?:\d+\.?\d*|\.\d+)$/D', $key) !== 1) {
+            return null;
+        }
+
+        return (string) BigDecimal::of($key)->strippedOfTrailingZeros();
+    }
+
+    /**
+     * Check whether the field, or any array item rule, has the decimal type.
+     */
+    private function hasDecimalItems(): bool
+    {
+        if (! $this->expectsArray) {
+            return $this->rules->getType() === 'decimal';
+        }
+
+        return array_any(
+            [$this->itemRules, ...$this->indexItemRules],
+            static fn (AllowedFieldItemRules $rules): bool => $rules->getType() === 'decimal',
+        );
+    }
+
+    /**
+     * Get the type a storage conversion sees: the field type, or the item type at an array index.
+     */
+    private function storageType(int $index): null|string
+    {
+        if (! $this->expectsArray) {
+            return $this->rules->getType();
+        }
+
+        return ($this->indexItemRules[$index] ?? null)?->getType() ?? $this->itemRules->getType();
     }
 }

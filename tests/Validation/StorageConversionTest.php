@@ -6,6 +6,7 @@ use HosmelQ\SearchSyntaxParser\Exception\InvalidFieldOperatorException;
 use HosmelQ\SearchSyntaxParser\Exception\InvalidFieldValueException;
 use HosmelQ\SearchSyntaxParser\SearchParser;
 use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
+use HosmelQ\SearchSyntaxParser\Validation\AllowedFieldItemRules;
 
 it('scales numeric values exactly into integers or decimal strings', function (
     AllowedField $field,
@@ -215,6 +216,62 @@ it('matches decimal values against map keys by value without trailing zeros', fu
         ->and($number->toStorage('10.50'))->toBe('10.5')
         ->and(SearchParser::query('amount:7.0,1.50')->allowedFields([$text])->build()['values'])
         ->toBe(['seven', 'half']);
+});
+
+it('matches decimal keys written with trailing zeros and rejects keys equal by value', function (): void {
+    $field = AllowedField::decimal('amount', 0, 2)->map(['1.50' => 'half', '-7' => 'minus']);
+
+    expect($field->toStorage('1.50'))->toBe('half')
+        ->and($field->toStorage('1.5'))->toBe('half')
+        ->and($field->toStorage('-7.00'))->toBe('minus')
+        ->and(SearchParser::query('amount:@half')->allowedFields([
+            AllowedField::decimal('amount', 0, 2)->alias('@half', 1.5)->map(['1.50' => 'half']),
+        ])->build()['value'])->toBe('half')
+        ->and(AllowedField::string('code')->map(['1.5' => 'a', '1.50' => 'b'])->toStorage('1.50'))
+        ->toBe('b')
+        ->and(
+            fn (): AllowedField
+                => AllowedField::decimal('amount', 0, 2)->map(['1.5' => 'a', '1.50' => 'b']),
+        )
+        ->toThrow(
+            InvalidArgumentException::class,
+            'Storage map keys of a decimal field must be unique by value.',
+        )
+        ->and(
+            fn (): AllowedField
+                => AllowedField::decimal('amount', 0, 2)->map([7 => 'a', '7.0' => 'b']),
+        )
+        ->toThrow(InvalidArgumentException::class, 'unique by value');
+});
+
+it('converts array items with the rules of their position', function (): void {
+    $mapped = AllowedField::array('amount')
+        ->each(fn (AllowedFieldItemRules $rules): AllowedFieldItemRules => $rules->decimal(0, 2))
+        ->at(0, fn (AllowedFieldItemRules $rules): AllowedFieldItemRules => $rules->string())
+        ->map([7 => 'seven']);
+    $scaled = AllowedField::array('price')
+        ->each(fn (AllowedFieldItemRules $rules): AllowedFieldItemRules => $rules->numeric())
+        ->scale(100)
+        ->at(0, fn (AllowedFieldItemRules $rules): AllowedFieldItemRules => $rules->string());
+
+    expect(SearchParser::query('amount:7.00,7.00')->allowedFields([$mapped])->build()['values'])
+        ->toBe(['7.00', 'seven'])
+        ->and($mapped->toStorage('7.00'))->toBe('7.00')
+        ->and($mapped->toStorage('7.00', 1))->toBe('seven')
+        ->and(SearchParser::query('price:2.5,1.5')->allowedFields([$scaled])->build()['values'])
+        ->toBe(['2.5', 150]);
+});
+
+it('rejects decimal text with a trailing newline before any conversion', function (): void {
+    $field = AllowedField::decimal('amount', 0, 2)->map([7 => 'seven']);
+
+    expect($field->validate("7.00\n"))->toBeFalse()
+        ->and(AllowedField::decimal('amount', 0, 2)->scale(100)->validate("7.00\n"))->toBeFalse()
+        ->and(
+            fn (): mixed
+                => SearchParser::query("amount:\"7.00\n\"")->allowedFields([$field])->build(),
+        )
+        ->toThrow(InvalidFieldValueException::class);
 });
 
 it('keeps number storage for maps without strings and other conversions', function (): void {
