@@ -202,6 +202,21 @@ it('stores every value as exact text when the map stores a string', function ():
         ->toBe(['0', 'pending']);
 });
 
+it('matches decimal values against map keys by value without trailing zeros', function (): void {
+    $text = AllowedField::decimal('amount', 0, 2)->map([7 => 'seven', '1.5' => 'half']);
+    $number = AllowedField::decimal('amount', 0, 2)->map([7 => 70]);
+
+    expect($text->toStorage('7.0'))->toBe('seven')
+        ->and($text->toStorage('7.00'))->toBe('seven')
+        ->and($text->toStorage('1.50'))->toBe('half')
+        ->and($text->toStorage('10.50'))->toBe('10.5')
+        ->and($text->toStorage('-0.0'))->toBe('0')
+        ->and($number->toStorage('7.00'))->toBe(70)
+        ->and($number->toStorage('10.50'))->toBe('10.5')
+        ->and(SearchParser::query('amount:7.0,1.50')->allowedFields([$text])->build()['values'])
+        ->toBe(['seven', 'half']);
+});
+
 it('keeps number storage for maps without strings and other conversions', function (): void {
     $quantity = AllowedField::integer('quantity')->map([99 => 10]);
 

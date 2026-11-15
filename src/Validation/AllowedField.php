@@ -745,10 +745,21 @@ class AllowedField
         }
 
         $text = array_filter($lookup, is_string(...)) !== [];
+        $decimal = (
+            $this->expectsArray
+            ? $this->itemRules->getType()
+            : $this->rules->getType()
+        ) === 'decimal';
         $this->storageConversion = static function (bool|float|int|string $value) use (
+            $decimal,
             $lookup,
             $text,
         ): bool|float|int|string {
+            // Decimal text compares by value, so 7.0 and 1.50 match the keys 7 and '1.5'.
+            if ($decimal && is_string($value)) {
+                $value = (string) self::toDecimal($value)->strippedOfTrailingZeros();
+            }
+
             $key = match (true) {
                 is_bool($value) => (int) $value,
                 is_string($value) => mb_strtolower($value),
