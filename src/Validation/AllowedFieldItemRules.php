@@ -89,7 +89,14 @@ final class AllowedFieldItemRules
             throw ParseException::tokenizationFailed();
         }
 
-        return $decimal === 1 ? (float) $value : $value;
+        if ($decimal !== 1) {
+            return $value;
+        }
+
+        $float = (float) $value;
+
+        // A decimal beyond the float range stays text, like an overflowing integer.
+        return is_finite($float) ? $float : $value;
     }
 
     /**

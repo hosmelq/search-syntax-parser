@@ -387,6 +387,16 @@ it('compares numeric-looking strings by value on untyped fields', function (stri
     '99999999999999999999',
 ]);
 
+it('keeps decimals beyond the float range as text', function (): void {
+    $huge = str_repeat('9', 310).'.0';
+
+    expect(AllowedFieldItemRules::infer($huge, false))->toBe($huge)
+        ->and(AllowedFieldItemRules::infer('-'.$huge, false))->toBe('-'.$huge)
+        ->and(SearchParser::query('amount:'.$huge)->allowedFields([
+            new AllowedField('amount')->map([7 => 'seven']),
+        ])->build()['value'])->toBe($huge);
+});
+
 it('does not mistake a regex failure for a non-decimal value', function (): void {
     $limit = ini_get('pcre.backtrack_limit');
 

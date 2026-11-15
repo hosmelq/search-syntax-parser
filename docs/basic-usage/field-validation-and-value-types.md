@@ -81,7 +81,7 @@ assert(SearchParser::query('metrics.views:2')->allowedFields([
 
 Untyped field values infer booleans from `true` and `false`, case-insensitively. Whole numbers without leading zeros that fit in a PHP integer become integers. Complete decimal literals such as `12.50` and `-0.5` become floats. Quoted values stay strings.
 
-Leading-zero identifiers (`01234`), overflowing integers, exponent notation (`1e5`), and incomplete decimals (`5.` and `.5`) stay strings. This inference applies to string entries in `allowedFields()`, `new AllowedField(...)`, and callback fields. Standalone terms always preserve their text. Wildcard patterns have explicit nodes rather than scalar values.
+Leading-zero identifiers (`01234`), overflowing integers, decimals beyond the float range, exponent notation (`1e5`), and incomplete decimals (`5.` and `.5`) stay strings. This inference applies to string entries in `allowedFields()`, `new AllowedField(...)`, and callback fields. Standalone terms always preserve their text. Wildcard patterns have explicit nodes rather than scalar values.
 
 ## Typed fields
 
