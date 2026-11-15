@@ -12,9 +12,12 @@ use Closure;
 use HosmelQ\SearchSyntaxParser\AST\Node\ComparisonNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\InNode;
 use HosmelQ\SearchSyntaxParser\Exception\InvalidFieldOperatorException;
+use HosmelQ\SearchSyntaxParser\Support\Decimal;
 use InvalidArgumentException;
+use JsonSerializable;
+use Override;
 
-class Field
+class Field implements JsonSerializable
 {
     /**
      * @var null|bool|float|int|non-empty-list<bool|float|int|string>|string
@@ -488,6 +491,16 @@ class Field
     }
 
     /**
+     * @internal
+     *
+     * @return null|array{format: null|string, partial: bool, time: bool}
+     */
+    public function getDateOptions(): null|array
+    {
+        return ($this->expectsArray ? $this->itemRules : $this->rules)->getDateOptions();
+    }
+
+    /**
      * @return null|bool|float|int|non-empty-list<bool|float|int|string>|string
      */
     public function getDefault(): null|array|bool|float|int|string
@@ -519,6 +532,14 @@ class Field
     /**
      * @internal
      */
+    public function getValueType(): null|string
+    {
+        return ($this->expectsArray ? $this->itemRules : $this->rules)->getType();
+    }
+
+    /**
+     * @internal
+     */
     public function hasAlias(string $token): bool
     {
         return array_key_exists($token, $this->aliases);
@@ -536,6 +557,18 @@ class Field
         return isset($this->indexItemRules[$index])
             ? $this->indexItemRules[$index]->hasCastType($value, $this->itemRules)
             : $this->itemRules->hasCastType($value);
+    }
+
+    /**
+     * @internal
+     */
+    public function hasCustomDateFormat(): bool
+    {
+        return array_any(
+            [$this->rules, $this->itemRules, ...$this->indexItemRules],
+            static fn (FieldItemRules $rules): bool
+                => ($rules->getDateOptions()['format'] ?? null) !== null,
+        );
     }
 
     public function hasDefault(): bool
@@ -584,6 +617,64 @@ class Field
     public function isText(): bool
     {
         return $this->rules->getType() === 'string';
+    }
+
+    /**
+     * @return array{
+     *     aliases: list<string>,
+     *     clauses: list<string>,
+     *     date: null|array{format: null|string, partial: bool, time: bool},
+     *     directive: bool,
+     *     items: null|array{
+     *         date: null|array{format: null|string, partial: bool, time: bool},
+     *         names: null|list<string>,
+     *         type: null|string,
+     *         values: null|list<mixed>,
+     *     },
+     *     match: null|string,
+     *     name: string,
+     *     names: null|list<string>,
+     *     operators: list<string>,
+     *     pattern: bool,
+     *     type: null|string,
+     *     values: null|list<mixed>,
+     * }
+     */
+    #[Override]
+    public function jsonSerialize(): array
+    {
+        $operators = ['=', '!=', '>', '>=', '<', '<='];
+        $clauses = ['exists', 'lists', 'ranges'];
+
+        if (in_array($this->getValueType(), [null, 'string'], true)) {
+            $clauses[] = 'wildcards';
+        }
+
+        return [
+            'aliases' => array_map(strval(...), array_keys($this->aliases)),
+            'clauses' => $this->directive ? [] : array_values(array_diff(
+                $clauses,
+                array_keys($this->disabledClauses),
+            )),
+            'date' => $this->expectsArray ? null : $this->rules->getDateOptions(),
+            'directive' => $this->directive,
+            'items' => $this->expectsArray ? [
+                'date' => $this->itemRules->getDateOptions(),
+                'names' => $this->itemRules->getNames(),
+                'type' => $this->itemRules->getType(),
+                'values' => $this->itemRules->getValues(),
+            ] : null,
+            'match' => $this->getValueType() === 'string' ? $this->textMatch->value : null,
+            'name' => $this->name,
+            'names' => $this->expectsArray ? null : $this->rules->getNames(),
+            'operators' => $this->directive ? ['='] : array_values(array_intersect(
+                $operators,
+                $this->operators ?? $operators,
+            )),
+            'pattern' => $this->pattern,
+            'type' => $this->expectsArray ? 'array' : $this->rules->getType(),
+            'values' => $this->expectsArray ? null : $this->rules->getValues(),
+        ];
     }
 
     /**
@@ -652,13 +743,13 @@ class Field
             null|string $type,
         ) use ($decimals, $lookup, $text): bool|float|int|string {
             if ($type === 'decimal' && ! is_bool($value)) {
-                $value = (string) self::toDecimal($value)->strippedOfTrailingZeros();
+                $value = (string) Decimal::from($value)->strippedOfTrailingZeros();
                 $stored = array_key_exists($value, $decimals) ? $decimals[$value] : $value;
             } else {
                 $key = match (true) {
                     is_bool($value) => (int) $value,
                     is_string($value) => mb_strtolower($value),
-                    is_float($value) => (string) self::toDecimal($value)->strippedOfTrailingZeros(),
+                    is_float($value) => (string) Decimal::from($value)->strippedOfTrailingZeros(),
                     default => $value,
                 };
                 $stored = array_key_exists($key, $lookup) ? $lookup[$key] : $value;
@@ -667,7 +758,7 @@ class Field
             return match (true) {
                 ! $text, is_string($stored) => $stored,
                 is_bool($stored) => $stored ? '1' : '0',
-                is_float($stored) => (string) self::toDecimal($stored)->strippedOfTrailingZeros(),
+                is_float($stored) => (string) Decimal::from($stored)->strippedOfTrailingZeros(),
                 default => (string) $stored,
             };
         };
@@ -762,7 +853,7 @@ class Field
                 return $value;
             }
 
-            $result = self::toDecimal($value)->multipliedBy($multiplier)->strippedOfTrailingZeros();
+            $result = Decimal::from($value)->multipliedBy($multiplier)->strippedOfTrailingZeros();
 
             if ($result->getScale() !== 0) {
                 return (string) $result;
@@ -886,24 +977,6 @@ class Field
         $this->textMatch = TextMatch::Words;
 
         return $this;
-    }
-
-    private static function toDecimal(bool|float|int|string $value): BigDecimal
-    {
-        if (! is_float($value)) {
-            return BigDecimal::of(mb_trim((string) $value, " \t\n\r\v\f"));
-        }
-
-        // json_encode() writes the shortest round-trip text only with serialize_precision -1.
-        $precision = ini_set('serialize_precision', '-1');
-
-        try {
-            return BigDecimal::of(json_encode($value, JSON_THROW_ON_ERROR));
-        } finally {
-            if ($precision !== false) {
-                ini_set('serialize_precision', $precision);
-            }
-        }
     }
 
     private function assertNoStorageConversion(): void

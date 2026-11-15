@@ -1,7 +1,7 @@
 ---
 title: "Error Handling"
 description: "Handle query failures with structured reasons and parameters, and locate invalid input using Unicode character positions."
-weight: 6
+weight: 7
 ---
 
 Catch `SearchSyntaxException` to handle query errors. It exposes `getReason()`, `getParameters()`, and `getPosition()`:

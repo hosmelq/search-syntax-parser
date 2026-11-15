@@ -397,6 +397,43 @@ The result is `1042`; `tryCast('coffee')` returns null. Array fields validate on
 
 `isText()` identifies a scalar string field. `comparesText($value)` also requires a stored string value. A numeric field mapped to strings still uses typed equality rather than substring matching; `storesText()` describes storage separately.
 
+## Describe fields
+
+`Field` implements `JsonSerializable`. Export public search metadata for autocomplete without parsing a query:
+
+```php
+use HosmelQ\SearchSyntaxParser\SearchParser;
+use HosmelQ\SearchSyntaxParser\Validation\Field;
+
+$parser = SearchParser::query('')->allowedFields([
+    Field::in('status', ['open', 'closed'])->operators('=', '!=')->withoutRanges(),
+    Field::string('title', 'product_title')->contains(),
+    'reference',
+]);
+
+$json = json_encode($parser->getAllowedFields(), JSON_THROW_ON_ERROR);
+$description = $parser->getAllowedFields()['status']->jsonSerialize();
+```
+
+`$description['values']` is `['open', 'closed']`, `$description['operators']` is `['=', '!=']`, and `$description['clauses']` is `['exists', 'lists']`. `getAllowedFields()` returns definitions keyed by public name, including string declarations normalized to `Field` objects. Each description has these keys in alphabetical order:
+
+| Key | Value |
+| --- | --- |
+| `aliases` | Alias tokens, without their results or closures. |
+| `clauses` | `exists`, `lists`, and `ranges`, plus `wildcards` for string, untyped, or callback values, including shared array items. Disabled forms are excluded. |
+| `date` | `{format, partial, time}` for a scalar date field; null otherwise. `format` is the custom format or null, `partial` reflects `allowPartialDates()`, and `time` is false after `withoutTime()`. |
+| `directive` | Whether the field is a directive. |
+| `items` | Shared `each()` rules as `{date, names, type, values}` for an array field; null otherwise. Each key has the same meaning as on a scalar field. |
+| `match` | `exact`, `prefix`, `contains`, or `words` for strings and shared string items; null otherwise. |
+| `name` | The public name, including dynamic `.*` patterns. |
+| `names` | Enum case names, lowercased, in the order of `values`; null otherwise. The parser accepts them as well as the backing values. |
+| `operators` | Allowed comparisons in the order `=`, `!=`, `>`, `>=`, `<`, `<=`; all six unless restricted. |
+| `pattern` | Whether the field has a dynamic `.*` name. |
+| `type` | `array`, `boolean`, `date`, `decimal`, `in`, `integer`, `numeric`, `string`, `ulid`, or `uuid`; null for untyped or callback fields. Enums use `in`. |
+| `values` | Configured `in()` values or enum backing values; null otherwise. Array member values belong to `items.values`. |
+
+Directives report only `operators: ["="]` and no clause forms. `map()` and `scale()` remove `wildcards` from the advertised forms. Descriptions do not include internal names, storage conversions, key rules, validators, size limits, defaults, ignored values, or positional `at()` rules. Alias closures are not called.
+
 ## Extend field definitions
 
 Factories use late static binding and fluent methods return `static`, so subclasses can add methods and retain chaining. The constructor is final; add custom configuration through methods.

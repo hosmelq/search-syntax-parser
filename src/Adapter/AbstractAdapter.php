@@ -13,17 +13,6 @@ abstract readonly class AbstractAdapter implements QueryAdapterInterface, Visito
 
     protected function getInternalFieldName(string $field): string
     {
-        if (is_null($this->searchParser)) {
-            return $field;
-        }
-
-        $allowedField = $this->searchParser->getAllowedField($field);
-
-        if ($allowedField?->isPattern() === true) {
-            return mb_substr($allowedField->getInternalName(), 0, -1)
-                .mb_substr($field, mb_strlen($allowedField->getName()) - 1);
-        }
-
-        return $allowedField?->getInternalName() ?? $field;
+        return $this->searchParser?->getInternalFieldName($field) ?? $field;
     }
 }

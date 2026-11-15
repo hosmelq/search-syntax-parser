@@ -6,7 +6,7 @@ weight: 1
 
 Search Syntax Parser turns search text into a syntax tree. Queries can contain words, field comparisons, boolean groups, lists, ranges, and wildcard patterns. Field rules decide which names and values are allowed, how values are cast, and which defaults apply.
 
-The package runs on PHP without a framework. It returns structured arrays or normalized query text, and provides a clause compiler for adapters that execute searches.
+The package runs on PHP without a framework. It returns structured arrays or normalized query text, provides a clause compiler for adapters that execute searches, and filters records in memory with `Query\Matcher`. Field and sort definitions can be exported as JSON for autocomplete.
 
 ## Quick start
 
@@ -34,4 +34,5 @@ No fields are allowed until you configure them. Bare words work without field ru
 - [Query syntax](basic-usage/query-syntax) covers the forms a search can contain.
 - [Field validation](basic-usage/field-validation-and-value-types) configures types, aliases, and storage values.
 - [Directives and sorting](basic-usage/directives-and-sorting) keeps query settings separate from filters.
+- [Matching records](basic-usage/matching-records) filters arrays and objects in memory.
 - [Compiling clauses](advanced-usage/compiling-clauses) prepares filters for a backend adapter.

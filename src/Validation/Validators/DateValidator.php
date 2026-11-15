@@ -21,6 +21,14 @@ final readonly class DateValidator implements ValidatorInterface
         private bool $withoutTime = false,
     ) {}
 
+    /**
+     * @internal
+     */
+    public function getFormat(): null|string
+    {
+        return $this->format;
+    }
+
     public function withoutTime(): self
     {
         if ($this->format !== null) {

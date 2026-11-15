@@ -214,11 +214,57 @@ final class FieldItemRules
     /**
      * @internal
      *
+     * @return null|array{format: null|string, partial: bool, time: bool}
+     */
+    public function getDateOptions(): null|array
+    {
+        if ($this->type !== 'date') {
+            return null;
+        }
+
+        $format = null;
+
+        foreach ($this->validators as $validator) {
+            if ($validator instanceof DateValidator) {
+                $format ??= $validator->getFormat();
+            }
+        }
+
+        return [
+            'format' => $format,
+            'partial' => $this->partialDates,
+            'time' => ! $this->withoutTime,
+        ];
+    }
+
+    /**
+     * @internal
+     *
+     * @return null|list<string>
+     */
+    public function getNames(): null|array
+    {
+        return $this->caseNames === [] ? null : array_keys($this->caseNames);
+    }
+
+    /**
+     * @internal
+     *
      * @return null|'boolean'|'date'|'decimal'|'in'|'integer'|'numeric'|'string'|'ulid'|'uuid'
      */
     public function getType(): null|string
     {
         return $this->type;
+    }
+
+    /**
+     * @internal
+     *
+     * @return null|list<mixed>
+     */
+    public function getValues(): null|array
+    {
+        return $this->type === 'in' ? $this->values : null;
     }
 
     /**

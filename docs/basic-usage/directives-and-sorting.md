@@ -103,3 +103,24 @@ $text = $parser->build('string');
 The result is `trashed:only AND sort:created-desc`. Reapply the same declarations when parsing this text.
 
 Default settings and ignored mentions are omitted. Parsing the serialized text with defaults can therefore restore a default that an ignored directive originally suppressed.
+
+## Describe available settings
+
+`AllowedSort` implements `JsonSerializable` and exports its public `name` and default `direction`. Internal names stay private. `getAllowedSorts()` returns the configured sort definitions; `getAllowedFields()` returns field definitions keyed by public name, including directives and normalized string declarations.
+
+```php
+use HosmelQ\SearchSyntaxParser\SearchParser;
+use HosmelQ\SearchSyntaxParser\Sorting\AllowedSort;
+use HosmelQ\SearchSyntaxParser\Validation\Field;
+
+$parser = SearchParser::query('')
+    ->allowedFields([Field::in('mode', ['active', 'all'])->directive()])
+    ->allowedSorts([AllowedSort::field('created', 'created_at')->defaultDirection('desc')]);
+
+$json = json_encode([
+    'fields' => $parser->getAllowedFields(),
+    'sorts' => $parser->getAllowedSorts(),
+], JSON_THROW_ON_ERROR);
+```
+
+The `created` sort serializes as `{"direction":"desc","name":"created"}`. These accessors describe configuration without parsing. See [field descriptions](field-validation-and-value-types#describe-fields) for the field export keys.

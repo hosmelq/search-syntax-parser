@@ -247,6 +247,14 @@ class SearchParser
     }
 
     /**
+     * @return array<string, Field>
+     */
+    public function getAllowedFields(): array
+    {
+        return $this->allowedFields;
+    }
+
+    /**
      * @return array<string, AllowedSort>
      */
     public function getAllowedSorts(): array
@@ -265,6 +273,21 @@ class SearchParser
     public function getDirectives(): array
     {
         return $this->settings['directives'] ?? [];
+    }
+
+    /**
+     * @internal
+     */
+    public function getInternalFieldName(string $field): string
+    {
+        $allowedField = $this->getAllowedField($field);
+
+        if ($allowedField?->isPattern() === true) {
+            return mb_substr($allowedField->getInternalName(), 0, -1)
+                .mb_substr($field, mb_strlen($allowedField->getName()) - 1);
+        }
+
+        return $allowedField?->getInternalName() ?? $field;
     }
 
     public function getSort(): null|Sort

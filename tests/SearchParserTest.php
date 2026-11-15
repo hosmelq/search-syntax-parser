@@ -1115,3 +1115,23 @@ it('validates defaults with the complete collection and internal field name', fu
     expect(SearchParser::query('')->allowedFields([$field, $callback])->build()['left']['values'])
         ->toBe($values);
 });
+
+it('exposes normalized field definitions by their public names without parsing', function (): void {
+    $title = Field::string('title', 'private_title')->contains();
+    $parser = SearchParser::query('unknown:invalid')->allowedFields(['status', $title]);
+    $fields = $parser->getAllowedFields();
+
+    expect(array_keys($fields))->toBe(['status', 'title'])
+        ->and($fields['status'])->toBeInstanceOf(Field::class)
+        ->and($fields['title'])->toBe($title)
+        ->and(
+            json_decode(
+                json_encode($fields, JSON_THROW_ON_ERROR),
+                true,
+                flags: JSON_THROW_ON_ERROR,
+            )['status']['name'],
+        )->toBe(
+            'status',
+        )
+        ->and(new SearchParser()->getAllowedFields())->toBeEmpty();
+});

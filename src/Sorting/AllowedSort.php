@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace HosmelQ\SearchSyntaxParser\Sorting;
 
 use InvalidArgumentException;
+use JsonSerializable;
+use Override;
 
-final class AllowedSort
+final class AllowedSort implements JsonSerializable
 {
     /**
      * @var 'asc'|'desc'
@@ -58,5 +60,14 @@ final class AllowedSort
     public function getName(): string
     {
         return $this->name;
+    }
+
+    /**
+     * @return array{direction: 'asc'|'desc', name: string}
+     */
+    #[Override]
+    public function jsonSerialize(): array
+    {
+        return ['direction' => $this->direction, 'name' => $this->name];
     }
 }

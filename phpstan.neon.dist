@@ -7,6 +7,8 @@ parameters:
     - identifier: theCodingMachineSafe.function
     # Native DateTimeImmutable constructors throw on invalid input; Safe is not a runtime dependency.
     - identifier: theCodingMachineSafe.class
-      path: src/Date/DateValue.php
+      paths:
+        - src/Date/DateValue.php
+        - src/Query/Matcher.php
   paths:
     - src
