@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
-use HosmelQ\SearchSyntaxParser\Validation\AllowedFieldItemRules;
+use HosmelQ\SearchSyntaxParser\Validation\Field;
+use HosmelQ\SearchSyntaxParser\Validation\FieldItemRules;
 use HosmelQ\SearchSyntaxParser\Validation\Validators\InValidator;
 
 it('rejects ambiguous allowed string values when configured', function (array $values): void {
-    expect(fn (): AllowedField => AllowedField::in('status', $values))
+    expect(fn (): Field => Field::in('status', $values))
         ->toThrow(InvalidArgumentException::class)
-        ->and(fn (): AllowedFieldItemRules => new AllowedFieldItemRules()->in($values))
+        ->and(fn (): FieldItemRules => new FieldItemRules()->in($values))
         ->toThrow(InvalidArgumentException::class);
 })->with([[['open', 'OPEN']], [['Été', 'été']], [['same', 'same']], [['', '']]]);
 

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
+use HosmelQ\SearchSyntaxParser\Validation\Field;
 use HosmelQ\SearchSyntaxParser\Validation\Validators\SizeValidator;
 
 it('rejects arrays with the wrong size', function (
@@ -15,7 +15,7 @@ it('rejects arrays with the wrong size', function (
 })->with(['too few' => [2, [1]], 'too many' => [2, [1, 2, 3]]]);
 
 it('rejects non-finite configuration bounds', function (float $bound): void {
-    AllowedField::numeric('p')->size($bound);
+    Field::numeric('p')->size($bound);
 })->throws(InvalidArgumentException::class, 'Size bounds must be finite.')->with([INF, -INF, NAN]);
 
 it('rejects numbers that differ from the required size', function (

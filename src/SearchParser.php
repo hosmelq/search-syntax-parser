@@ -19,7 +19,7 @@ use HosmelQ\SearchSyntaxParser\Exception\ParseException;
 use HosmelQ\SearchSyntaxParser\Parser\Parser;
 use HosmelQ\SearchSyntaxParser\Sorting\AllowedSort;
 use HosmelQ\SearchSyntaxParser\Sorting\Sort;
-use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
+use HosmelQ\SearchSyntaxParser\Validation\Field;
 use InvalidArgumentException;
 
 class SearchParser
@@ -30,7 +30,7 @@ class SearchParser
     private array $adapters = [];
 
     /**
-     * @var array<string, AllowedField>
+     * @var array<string, Field>
      */
     private array $allowedFields = [];
 
@@ -57,7 +57,7 @@ class SearchParser
     private int $lengthLimit = 10_000;
 
     /**
-     * @var list<AllowedField>
+     * @var list<Field>
      */
     private array $patternFields = [];
 
@@ -92,7 +92,7 @@ class SearchParser
     }
 
     /**
-     * @param list<AllowedField|string> $fields
+     * @param list<Field|string> $fields
      */
     public function allowedFields(array $fields): self
     {
@@ -104,7 +104,7 @@ class SearchParser
         $this->patternFields = [];
 
         foreach ($fields as $field) {
-            $field = is_string($field) ? new AllowedField($field) : $field;
+            $field = is_string($field) ? new Field($field) : $field;
             $this->allowedFields[$field->getName()] = $field;
         }
 
@@ -117,7 +117,7 @@ class SearchParser
             }
         }
 
-        usort($this->patternFields, static fn (AllowedField $left, AllowedField $right): int
+        usort($this->patternFields, static fn (Field $left, Field $right): int
             => mb_strlen($right->getName()) <=> mb_strlen($left->getName()));
 
         return $this;
@@ -221,7 +221,7 @@ class SearchParser
         return $this;
     }
 
-    public function getAllowedField(string $field): null|AllowedField
+    public function getAllowedField(string $field): null|Field
     {
         if (isset($this->allowedFields[$field])) {
             return $this->allowedFields[$field];
@@ -427,7 +427,7 @@ class SearchParser
     {
         $allowed = $this->getAllowedField($field);
 
-        if ($allowed instanceof AllowedField) {
+        if ($allowed instanceof Field) {
             if ($allowed->expectsArray()) {
                 return $allowed->validate(is_array($value) ? $value : [$value]);
             }
@@ -453,11 +453,11 @@ class SearchParser
     }
 
     /**
-     * @param list<AllowedField|string> $fields
+     * @param list<Field|string> $fields
      */
     private function assertSortNotReserved(array $fields): void
     {
-        if (array_any($fields, static fn (AllowedField|string $field): bool
+        if (array_any($fields, static fn (Field|string $field): bool
             => mb_strtolower(is_string($field) ? $field : $field->getName()) === 'sort')) {
             throw new InvalidArgumentException(
                 "Field 'sort' is reserved when sorts are configured.",
@@ -466,7 +466,7 @@ class SearchParser
     }
 
     private function castDefault(
-        AllowedField $field,
+        Field $field,
         bool|float|int|string $value,
         int $index,
     ): bool|float|int|string {

@@ -7,7 +7,7 @@ use HosmelQ\SearchSyntaxParser\Adapter\StringAdapter;
 use HosmelQ\SearchSyntaxParser\AST\Node\UnaryOperatorNode;
 use HosmelQ\SearchSyntaxParser\AST\Visitor\NegationNormalFormTransformer;
 use HosmelQ\SearchSyntaxParser\SearchParser;
-use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
+use HosmelQ\SearchSyntaxParser\Validation\Field;
 
 it('does not change parser output until explicitly applied and preserves source metadata', function (): void {
     $original = SearchParser::query('  NOT price:>10 OR status:!=open')->allowAnyField()->parse();
@@ -25,9 +25,9 @@ it('does not change parser output until explicitly applied and preserves source 
 
 it('keeps defaults recognisable when a hand-built negation contains them', function (): void {
     $ast = SearchParser::query('a:1')->allowedFields([
-        AllowedField::integer('a'),
-        AllowedField::string('st')->default(null),
-        AllowedField::string('k')->default('x'),
+        Field::integer('a'),
+        Field::string('st')->default(null),
+        Field::string('k')->default('x'),
     ])->parse();
     $node = new NegationNormalFormTransformer()->transform(new UnaryOperatorNode('NOT', $ast));
 
@@ -85,9 +85,9 @@ it('preserves default origin and omission during normalization', function (): vo
     $original = SearchParser::query('NOT (price:>10 OR status:!=open)')
         ->allowAnyField()
         ->allowedFields([
-            AllowedField::string('region')->default('north'),
-            AllowedField::array('tags')->default(['one', 'two']),
-            AllowedField::string('deleted')->default(null),
+            Field::string('region')->default('north'),
+            Field::array('tags')->default(['one', 'two']),
+            Field::string('deleted')->default(null),
         ])
         ->parse();
     $node = new NegationNormalFormTransformer()->transform($original);
@@ -132,8 +132,8 @@ it('retains set complement semantics for missing and multi-valued fields', funct
         return $node['operator'] === '!=' ? ! $positive : $positive;
     };
     $original = SearchParser::query($query)->allowedFields([
-        AllowedField::numeric('price')->nullable(),
-        AllowedField::array('tag')->nullable(),
+        Field::numeric('price')->nullable(),
+        Field::array('tag')->nullable(),
     ])->parse();
     $normalized = new NegationNormalFormTransformer()->transform($original);
 

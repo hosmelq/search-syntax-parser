@@ -23,7 +23,7 @@ use HosmelQ\SearchSyntaxParser\Validation\Validators\UlidValidator;
 use HosmelQ\SearchSyntaxParser\Validation\Validators\UuidValidator;
 use InvalidArgumentException;
 
-final class AllowedFieldItemRules
+final class FieldItemRules
 {
     /**
      * @var array<string, int|string>

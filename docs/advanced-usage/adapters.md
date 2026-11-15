@@ -61,10 +61,10 @@ With a parser, the array adapter uses internal field names and applies `toStorag
 
 ```php
 use HosmelQ\SearchSyntaxParser\SearchParser;
-use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
+use HosmelQ\SearchSyntaxParser\Validation\Field;
 
 $parser = SearchParser::query('price:10.50')->allowedFields([
-    AllowedField::decimal('price', 2, internalName: 'price_cents')->scale(100),
+    Field::decimal('price', 2, internalName: 'price_cents')->scale(100),
 ]);
 
 $filters = $parser->build();
@@ -81,10 +81,10 @@ Pass the parser to an adapter when the tree needs field metadata:
 ```php
 use HosmelQ\SearchSyntaxParser\Adapter\ArrayAdapter;
 use HosmelQ\SearchSyntaxParser\SearchParser;
-use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
+use HosmelQ\SearchSyntaxParser\Validation\Field;
 
 $parser = SearchParser::query('title:Coffee')->allowedFields([
-    AllowedField::string('title', 'product_title')->prefix(),
+    Field::string('title', 'product_title')->prefix(),
 ]);
 
 $filters = new ArrayAdapter($parser)->build($parser->parse());

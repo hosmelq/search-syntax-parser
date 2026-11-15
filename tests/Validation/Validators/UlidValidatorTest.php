@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 use HosmelQ\SearchSyntaxParser\Exception\InvalidFieldValueException;
 use HosmelQ\SearchSyntaxParser\SearchParser;
-use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
+use HosmelQ\SearchSyntaxParser\Validation\Field;
 
 it('rejects malformed ULIDs', function (string $value): void {
-    SearchParser::query('id:"'.$value.'"')->allowedFields([AllowedField::ulid('id')])->parse();
+    SearchParser::query('id:"'.$value.'"')->allowedFields([Field::ulid('id')])->parse();
 })->throws(InvalidFieldValueException::class)->with([
     ['8ZZZZZZZZZZZZZZZZZZZZZZZZZ'],
     ['01ARZ3NDEKTSV4RRFFQ69G5FAI'],

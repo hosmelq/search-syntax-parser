@@ -14,7 +14,7 @@ use HosmelQ\SearchSyntaxParser\AST\Node\InNode;
 use HosmelQ\SearchSyntaxParser\Exception\InvalidFieldOperatorException;
 use InvalidArgumentException;
 
-class AllowedField
+class Field
 {
     /**
      * @var null|bool|float|int|non-empty-list<bool|float|int|string>|string
@@ -31,17 +31,17 @@ class AllowedField
     protected array $ignored = [];
 
     /**
-     * @var array<int, AllowedFieldItemRules>
+     * @var array<int, FieldItemRules>
      */
     protected array $indexItemRules = [];
 
     protected string $internalName;
 
-    protected AllowedFieldItemRules $itemRules;
+    protected FieldItemRules $itemRules;
 
     protected bool $nullable = false;
 
-    protected AllowedFieldItemRules $rules;
+    protected FieldItemRules $rules;
 
     /**
      * @var array<string, bool|Closure|float|int|string>
@@ -93,8 +93,8 @@ class AllowedField
             throw new InvalidArgumentException('A pattern field internal name must end in ".*".');
         }
 
-        $this->rules = new AllowedFieldItemRules();
-        $this->itemRules = new AllowedFieldItemRules();
+        $this->rules = new FieldItemRules();
+        $this->itemRules = new FieldItemRules();
     }
 
     public static function array(string $name, null|string $internalName = null): static
@@ -360,11 +360,11 @@ class AllowedField
     }
 
     /**
-     * @param callable(AllowedFieldItemRules $rules): (AllowedFieldItemRules|void) $callback
+     * @param callable(FieldItemRules $rules): (FieldItemRules|void) $callback
      */
     public function at(int $index, callable $callback): static
     {
-        $rules = $this->indexItemRules[$index] ??= new AllowedFieldItemRules();
+        $rules = $this->indexItemRules[$index] ??= new FieldItemRules();
 
         $callback($rules);
 
@@ -469,7 +469,7 @@ class AllowedField
     }
 
     /**
-     * @param callable(AllowedFieldItemRules $rules): (AllowedFieldItemRules|void) $callback
+     * @param callable(FieldItemRules $rules): (FieldItemRules|void) $callback
      */
     public function each(callable $callback): static
     {
@@ -828,7 +828,7 @@ class AllowedField
 
             if (! $this->itemRules->validate($item, $this->internalName, $length)
                 || (
-                    $indexRules instanceof AllowedFieldItemRules
+                    $indexRules instanceof FieldItemRules
                     && ! $indexRules->validate($item, $this->internalName, $length)
                 )) {
                 return false;
@@ -919,7 +919,7 @@ class AllowedField
 
         if ($rules->getType() !== 'string' || ($this->expectsArray && array_any(
             $this->indexItemRules,
-            static fn (AllowedFieldItemRules $item): bool
+            static fn (FieldItemRules $item): bool
                 => $item->getType() !== null && $item->getType() !== 'string',
         ))) {
             throw new InvalidArgumentException(
@@ -949,7 +949,7 @@ class AllowedField
 
         return array_any(
             [$this->itemRules, ...$this->indexItemRules],
-            static fn (AllowedFieldItemRules $rules): bool => $rules->getType() === 'decimal',
+            static fn (FieldItemRules $rules): bool => $rules->getType() === 'decimal',
         );
     }
 

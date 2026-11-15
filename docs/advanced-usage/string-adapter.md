@@ -43,10 +43,10 @@ Explicit quotes are preserved on terms, comparison values, and list items. Typed
 
 ```php
 use HosmelQ\SearchSyntaxParser\SearchParser;
-use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
+use HosmelQ\SearchSyntaxParser\Validation\Field;
 
 $text = SearchParser::query('title:mug,"cup"')->allowedFields([
-    AllowedField::string('title')->prefix(),
+    Field::string('title')->prefix(),
 ])->build('string');
 ```
 

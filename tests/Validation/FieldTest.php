@@ -10,12 +10,12 @@ use HosmelQ\SearchSyntaxParser\Exception\InvalidFieldValueException;
 use HosmelQ\SearchSyntaxParser\SearchParser;
 use HosmelQ\SearchSyntaxParser\Tests\Fixtures\PriorityLevel;
 use HosmelQ\SearchSyntaxParser\Tests\Fixtures\PublicationStatus;
-use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
-use HosmelQ\SearchSyntaxParser\Validation\AllowedFieldItemRules;
+use HosmelQ\SearchSyntaxParser\Validation\Field;
+use HosmelQ\SearchSyntaxParser\Validation\FieldItemRules;
 use HosmelQ\SearchSyntaxParser\Validation\TextMatch;
 
 it('compares numeric-looking strings by value on untyped fields', function (string $value): void {
-    SearchParser::query('age:'.$value)->allowedFields([new AllowedField('age')->max(100)])->build();
+    SearchParser::query('age:'.$value)->allowedFields([new Field('age')->max(100)])->build();
 })->throws(InvalidFieldValueException::class)->with([
     '150',
     '0150',
@@ -26,25 +26,25 @@ it('compares numeric-looking strings by value on untyped fields', function (stri
 
 it('disables every comparison operator when the configured subset is empty', function (): void {
     SearchParser::query('status:active')->allowedFields([
-        AllowedField::string('status')->operators(),
+        Field::string('status')->operators(),
     ])->parse();
 })->throws(InvalidFieldOperatorException::class, "Operator '=' is not allowed for field 'status'.");
 
 it('does not cast alias results to satisfy field types', function (): void {
     SearchParser::query('x:token')->allowedFields([
-        AllowedField::string('x')->alias('token', 7),
+        Field::string('x')->alias('token', 7),
     ])->parse();
 })->throws(InvalidFieldValueException::class);
 
 it('points array fields to item rules for partial dates', function (): void {
-    expect(fn (): AllowedField => AllowedField::array('dates')->allowPartialDates())->toThrow(
+    expect(fn (): Field => Field::array('dates')->allowPartialDates())->toThrow(
         InvalidArgumentException::class,
         'On array fields, allow partial dates on the each() or at() date rules.',
     );
 });
 
 it('propagates configuration errors instead of hiding them', function (): void {
-    $field = new AllowedField('id')->alias('bad', static fn (): array => []);
+    $field = new Field('id')->alias('bad', static fn (): array => []);
 
     expect(fn (): mixed => $field->tryCast('bad'))->toThrow(
         InvalidArgumentException::class,
@@ -54,35 +54,35 @@ it('propagates configuration errors instead of hiding them', function (): void {
 
 it('rejects a closure returned by an alias closure', function (): void {
     SearchParser::query('x:token')->allowedFields([
-        new AllowedField('x')->alias('token', static fn (): Closure => static fn (): int => 1),
+        new Field('x')->alias('token', static fn (): Closure => static fn (): int => 1),
     ])->parse();
 })->throws(InvalidArgumentException::class);
 
 it('rejects a negative minimum wildcard length', function (): void {
-    AllowedField::string('name')->minWildcardLength(-1);
+    Field::string('name')->minWildcardLength(-1);
 })->throws(InvalidArgumentException::class);
 
 it('rejects a second storage conversion', function (): void {
-    expect(fn (): AllowedField => AllowedField::numeric('amount')->scale(100)->map([1 => 2]))
+    expect(fn (): Field => Field::numeric('amount')->scale(100)->map([1 => 2]))
         ->toThrow(InvalidArgumentException::class, 'A field accepts only one storage conversion.');
 });
 
 it('rejects alias closures returning nonscalar values', function (mixed $value): void {
     SearchParser::query('x:token')->allowedFields([
-        new AllowedField('x')->alias('token', static fn (): mixed => $value),
+        new Field('x')->alias('token', static fn (): mixed => $value),
     ])->parse();
 })->throws(InvalidArgumentException::class)->with([null, [[]], [(object) []]]);
 
 it('rejects alias tokens that contain wildcards', function (): void {
-    AllowedField::integer('owner')->alias('a*', 5);
+    Field::integer('owner')->alias('a*', 5);
 })->throws(InvalidArgumentException::class, 'A value alias token cannot contain a wildcard.');
 
 it('rejects an internal name without a pattern suffix', function (): void {
-    AllowedField::string('meta.*', 'attributes');
+    Field::string('meta.*', 'attributes');
 })->throws(InvalidArgumentException::class);
 
 it('rejects array item probes outside collection shared or positional rules', function (): void {
-    $field = AllowedField::array('tuple')
+    $field = Field::array('tuple')
         ->max(2)
         ->each(fn ($rules) => $rules->numeric()->min(0))
         ->at(1, fn ($rules) => $rules->integer()->max(10));
@@ -90,15 +90,15 @@ it('rejects array item probes outside collection shared or positional rules', fu
     expect($field->tryCast('-1'))->toBeNull()
         ->and($field->tryCast('2.5', index: 1))->toBeNull()
         ->and($field->tryCast('11', index: 1))->toBeNull()
-        ->and(AllowedField::array('tags')->size(2)->tryCast('tag'))->toBeNull();
+        ->and(Field::array('tags')->size(2)->tryCast('tag'))->toBeNull();
 });
 
 it('rejects array values outside index-specific and combined rules', function (): void {
-    $tuple = AllowedField::array('tuple')
+    $tuple = Field::array('tuple')
         ->size(2)
-        ->each(fn ($rules): AllowedFieldItemRules => $rules->string())
-        ->at(0, fn ($rules): AllowedFieldItemRules => $rules->size(3))
-        ->at(1, fn ($rules): AllowedFieldItemRules => $rules->max(3));
+        ->each(fn ($rules): FieldItemRules => $rules->string())
+        ->at(0, fn ($rules): FieldItemRules => $rules->size(3))
+        ->at(1, fn ($rules): FieldItemRules => $rules->max(3));
 
     expect($tuple->validate(['abcd', 'x']))->toBeFalse()
         ->and($tuple->validate(['abc', 'abcd']))->toBeFalse();
@@ -109,12 +109,12 @@ it('rejects collection and pattern directive declarations and non-scalar default
 ): void {
     $configure();
 })->throws(InvalidArgumentException::class)->with([
-    fn (): AllowedField => AllowedField::array('mode')->directive(),
-    fn (): AllowedField => AllowedField::string('meta.*')->keys('/.*/')->directive(),
-    fn (): AllowedField => AllowedField::string('mode')->directive()->default(null),
-    fn (): AllowedField => AllowedField::string('mode')->directive()->default(['only']),
-    fn (): AllowedField => AllowedField::string('mode')->default(null)->directive(),
-    fn (): AllowedField => AllowedField::string('mode')->default(['only'])->directive(),
+    fn (): Field => Field::array('mode')->directive(),
+    fn (): Field => Field::string('meta.*')->keys('/.*/')->directive(),
+    fn (): Field => Field::string('mode')->directive()->default(null),
+    fn (): Field => Field::string('mode')->directive()->default(['only']),
+    fn (): Field => Field::string('mode')->default(null)->directive(),
+    fn (): Field => Field::string('mode')->default(['only'])->directive(),
 ]);
 
 it('rejects dates without time on other types, custom formats and array fields', function (
@@ -122,28 +122,28 @@ it('rejects dates without time on other types, custom formats and array fields',
 ): void {
     $configure();
 })->throws(InvalidArgumentException::class)->with([
-    fn (): AllowedField => AllowedField::string('value')->withoutTime(),
-    fn (): AllowedField => AllowedField::array('value')->withoutTime(),
-    fn (): AllowedField => AllowedField::date('value', 'Y-m-d')->withoutTime(),
-    fn (): AllowedFieldItemRules => new AllowedFieldItemRules()->withoutTime(),
-    fn (): AllowedFieldItemRules => new AllowedFieldItemRules()->date('Y-m-d')->withoutTime(),
-    fn (): AllowedFieldItemRules => new AllowedFieldItemRules()->date()->withoutTime()->string(),
-    fn (): AllowedFieldItemRules
-        => new AllowedFieldItemRules()->date()->withoutTime()->date('Y-m-d'),
+    fn (): Field => Field::string('value')->withoutTime(),
+    fn (): Field => Field::array('value')->withoutTime(),
+    fn (): Field => Field::date('value', 'Y-m-d')->withoutTime(),
+    fn (): FieldItemRules => new FieldItemRules()->withoutTime(),
+    fn (): FieldItemRules => new FieldItemRules()->date('Y-m-d')->withoutTime(),
+    fn (): FieldItemRules => new FieldItemRules()->date()->withoutTime()->string(),
+    fn (): FieldItemRules
+        => new FieldItemRules()->date()->withoutTime()->date('Y-m-d'),
 ]);
 
 it('rejects decimal item maxima regardless of rule order', function (
     string $scope,
     bool $sizeFirst,
 ): void {
-    $configure = function (AllowedFieldItemRules $rules) use ($sizeFirst): void {
+    $configure = function (FieldItemRules $rules) use ($sizeFirst): void {
         if ($sizeFirst) {
             $rules->max(100)->decimal(2);
         } else {
             $rules->decimal(2)->max(100);
         }
     };
-    $field = AllowedField::array('values');
+    $field = Field::array('values');
 
     $scope === 'each' ? $field->each($configure) : $field->at(0, $configure);
 
@@ -159,25 +159,25 @@ it('rejects decimal map keys equal by value in any configuration order', functio
     "Storage map keys of decimal field 'amount' must be unique by value.",
 )->with(
     [
-        fn (): AllowedField
-            => AllowedField::decimal('amount', 0, 2)->map(['1.5' => 'a', '1.50' => 'b']),
-        fn (): AllowedField => AllowedField::decimal('amount', 0, 2)->map([7 => 'a', '7.0' => 'b']),
-        fn (): AllowedField => AllowedField::array('amount')
+        fn (): Field
+            => Field::decimal('amount', 0, 2)->map(['1.5' => 'a', '1.50' => 'b']),
+        fn (): Field => Field::decimal('amount', 0, 2)->map([7 => 'a', '7.0' => 'b']),
+        fn (): Field => Field::array('amount')
             ->map(['1.5' => 'a', '1.50' => 'b'])
             ->each(
-                fn (AllowedFieldItemRules $rules): AllowedFieldItemRules => $rules->decimal(0, 2),
+                fn (FieldItemRules $rules): FieldItemRules => $rules->decimal(0, 2),
             ),
-        fn (): AllowedField => AllowedField::array('amount')
+        fn (): Field => Field::array('amount')
             ->map(['1.5' => 'a', '1.50' => 'b'])
             ->at(
                 1,
-                fn (AllowedFieldItemRules $rules): AllowedFieldItemRules => $rules->decimal(0, 2),
+                fn (FieldItemRules $rules): FieldItemRules => $rules->decimal(0, 2),
             ),
     ],
 );
 
 it('rejects defaults on pattern fields including null defaults', function (mixed $value): void {
-    AllowedField::string('meta.*')->keys('/^.+$/D')->default($value);
+    Field::string('meta.*')->keys('/^.+$/D')->default($value);
 })->throws(InvalidArgumentException::class, 'cannot have defaults')->with([
     null,
     'blue',
@@ -188,12 +188,12 @@ it('rejects empty and wildcard keys even when any field is allowed', function (
     string $query,
 ): void {
     expect(fn (): mixed => SearchParser::query($query)->allowAnyField()->allowedFields([
-        AllowedField::string('meta.*')->keys(static fn (string $key): bool => true),
+        Field::string('meta.*')->keys(static fn (string $key): bool => true),
     ])->build())->toThrow(InvalidFieldException::class);
 })->with(['meta.:x', 'meta.*:x', 'meta.a*b:x']);
 
 it('rejects ignored values during direct validation', function (): void {
-    $field = AllowedField::integer('count')->ignore('N/A', null);
+    $field = Field::integer('count')->ignore('N/A', null);
 
     expect($field->validate('N/A'))->toBeFalse()->and($field->validate(null))->toBeFalse();
 });
@@ -201,7 +201,7 @@ it('rejects ignored values during direct validation', function (): void {
 it('rejects incompatible item type changes after enabling a text mode', function (
     bool $positional,
 ): void {
-    $field = AllowedField::array('x')->each(fn ($rules) => $rules->string())->prefix();
+    $field = Field::array('x')->each(fn ($rules) => $rules->string())->prefix();
 
     if ($positional) {
         $field->at(0, fn ($rules) => $rules->integer());
@@ -211,54 +211,54 @@ it('rejects incompatible item type changes after enabling a text mode', function
 })->throws(InvalidArgumentException::class)->with([false, true]);
 
 it('rejects invalid array items under each rule', function (): void {
-    $arrayWithLimits = AllowedField::array('keywords')
+    $arrayWithLimits = Field::array('keywords')
         ->max(2)
-        ->each(fn ($rules): AllowedFieldItemRules => $rules->string()->max(5));
+        ->each(fn ($rules): FieldItemRules => $rules->string()->max(5));
 
     expect($arrayWithLimits->validate(['a', 'b', 'c']))->toBeFalse()
         ->and($arrayWithLimits->validate(['aaaaaa']))->toBeFalse()
         ->and($arrayWithLimits->validate('not-array'))->toBeFalse();
 
-    $booleanRulesField = AllowedField::array('values')
-        ->each(fn ($rules): AllowedFieldItemRules => $rules->boolean());
+    $booleanRulesField = Field::array('values')
+        ->each(fn ($rules): FieldItemRules => $rules->boolean());
 
     expect($booleanRulesField->validate(['x']))->toBeFalse();
 
-    $callbackRulesField = AllowedField::array('values')
+    $callbackRulesField = Field::array('values')
         ->each(
-            fn ($rules): AllowedFieldItemRules
+            fn ($rules): FieldItemRules
                 => $rules->callback(fn ($value): bool => is_int($value)),
         );
 
     expect($callbackRulesField->validate(['x']))->toBeFalse();
 
-    $decimalRulesField = AllowedField::array('values')
-        ->each(fn ($rules): AllowedFieldItemRules => $rules->decimal(2));
+    $decimalRulesField = Field::array('values')
+        ->each(fn ($rules): FieldItemRules => $rules->decimal(2));
 
     expect($decimalRulesField->validate(['1']))->toBeFalse();
 
-    $inRulesField = AllowedField::array('values')
-        ->each(fn ($rules): AllowedFieldItemRules => $rules->in(['A', 'B', '1']));
+    $inRulesField = Field::array('values')
+        ->each(fn ($rules): FieldItemRules => $rules->in(['A', 'B', '1']));
 
     expect($inRulesField->validate(['C']))->toBeFalse();
 
-    $integerRulesField = AllowedField::array('values')
-        ->each(fn ($rules): AllowedFieldItemRules => $rules->integer()->min(0)->max(10));
+    $integerRulesField = Field::array('values')
+        ->each(fn ($rules): FieldItemRules => $rules->integer()->min(0)->max(10));
 
     expect($integerRulesField->validate(['x']))->toBeFalse();
 
-    $numericBetweenField = AllowedField::array('values')
-        ->each(fn ($rules): AllowedFieldItemRules => $rules->numeric()->between(1, 2));
+    $numericBetweenField = Field::array('values')
+        ->each(fn ($rules): FieldItemRules => $rules->numeric()->between(1, 2));
 
     expect($numericBetweenField->validate([3]))->toBeFalse();
 });
 
 it('rejects invalid date and enum array items', function (): void {
-    $dates = AllowedField::array('values')->each(
-        fn (AllowedFieldItemRules $rules): AllowedFieldItemRules => $rules->date(),
+    $dates = Field::array('values')->each(
+        fn (FieldItemRules $rules): FieldItemRules => $rules->date(),
     );
-    $enums = AllowedField::array('values')->each(
-        fn (AllowedFieldItemRules $rules): AllowedFieldItemRules
+    $enums = Field::array('values')->each(
+        fn (FieldItemRules $rules): FieldItemRules
             => $rules->enum(PublicationStatus::class),
     );
 
@@ -275,7 +275,7 @@ it('rejects invalid date and enum array items', function (): void {
 });
 
 it('rejects invalid defaults immediately', function (mixed $default): void {
-    AllowedField::string('status')->default($default);
+    Field::string('status')->default($default);
 })->throws(InvalidArgumentException::class)->with([
     'empty list' => [[]],
     'associative array' => [['x' => 'value']],
@@ -287,30 +287,30 @@ it('rejects invalid defaults immediately', function (mixed $default): void {
 ]);
 
 it('rejects invalid regexes and key rules on exact fields', function (): void {
-    expect(fn (): AllowedField => AllowedField::string('meta.*')->keys('/['))->toThrow(
+    expect(fn (): Field => Field::string('meta.*')->keys('/['))->toThrow(
         InvalidArgumentException::class,
     )
-        ->and(fn (): AllowedField => AllowedField::string('meta.color')->keys('/^.+$/D'))->toThrow(
+        ->and(fn (): Field => Field::string('meta.color')->keys('/^.+$/D'))->toThrow(
             InvalidArgumentException::class,
         );
 });
 
 it('rejects invalid typed probes without throwing a query error', function (
-    AllowedField $field,
+    Field $field,
     string $value,
 ): void {
     expect($field->tryCast($value))->toBeNull();
 })->with([
-    [AllowedField::integer('id'), 'abc'],
-    [AllowedField::integer('id'), '1.5'],
-    [AllowedField::integer('id')->min(1), '0'],
-    [AllowedField::decimal('price', 2), '2.5'],
-    [AllowedField::in('status', ['open', 'closed']), 'invalid'],
-    [AllowedField::date('date'), '2025-02-30'],
+    [Field::integer('id'), 'abc'],
+    [Field::integer('id'), '1.5'],
+    [Field::integer('id')->min(1), '0'],
+    [Field::decimal('price', 2), '2.5'],
+    [Field::in('status', ['open', 'closed']), 'invalid'],
+    [Field::date('date'), '2025-02-30'],
 ]);
 
 it('rejects invalid values for dynamic field patterns', function (): void {
-    $field = AllowedField::integer('metrics.*', 'counters.*')
+    $field = Field::integer('metrics.*', 'counters.*')
         ->keys(fn (string $key): bool => in_array($key, ['views', 'likes'], true))
         ->alias('all', 2)
         ->min(1)
@@ -328,7 +328,7 @@ it('rejects leading field wildcards with their external field and character posi
     $parser = SearchParser::query($query);
 
     $configured
-        ? $parser->allowedFields([AllowedField::string('name', 'full_name')])
+        ? $parser->allowedFields([Field::string('name', 'full_name')])
         : $parser->allowAnyField();
 
     try {
@@ -361,15 +361,15 @@ it('rejects leading wildcards on whole-word fields in either configuration order
     "Whole-word field 'body' cannot allow leading wildcards.",
 )->with(
     [
-        fn (): AllowedField => AllowedField::string('body')->words()->allowLeadingWildcards(),
-        fn (): AllowedField => AllowedField::string('body')->allowLeadingWildcards()->words(),
+        fn (): Field => Field::string('body')->words()->allowLeadingWildcards(),
+        fn (): Field => Field::string('body')->allowLeadingWildcards()->words(),
     ],
 );
 
 it('rejects negated wildcard patterns when wildcards are disabled', function (string $query): void {
     try {
         SearchParser::query($query)
-            ->allowedFields([AllowedField::string('x')->withoutWildcards()])
+            ->allowedFields([Field::string('x')->withoutWildcards()])
             ->parse();
     } catch (InvalidFieldOperatorException $invalidFieldOperatorException) {
         expect($invalidFieldOperatorException->getParameters())->toBe([
@@ -387,9 +387,9 @@ it('rejects numeric values above the maximum regardless of their text length', f
     string $type,
 ): void {
     $field = match ($type) {
-        'integer' => AllowedField::integer('value'),
-        'numeric' => AllowedField::numeric('value'),
-        'decimal' => AllowedField::decimal('value', 2),
+        'integer' => Field::integer('value'),
+        'numeric' => Field::numeric('value'),
+        'decimal' => Field::decimal('value', 2),
     };
     $value = $type === 'decimal' ? '150.00' : '150';
 
@@ -401,9 +401,7 @@ it('rejects other patterns on whole-word fields at the pattern', function (
     int $position,
 ): void {
     try {
-        SearchParser::query($query)
-            ->allowedFields([AllowedField::string('body')->words()])
-            ->parse();
+        SearchParser::query($query)->allowedFields([Field::string('body')->words()])->parse();
 
         test()->fail('Expected a whole-word wildcard error.');
     } catch (InvalidFieldOperatorException $invalidFieldOperatorException) {
@@ -423,12 +421,12 @@ it('rejects other patterns on whole-word fields at the pattern', function (
 
 it('rejects quoted aliases and invalid alias results', function (): void {
     $id = 7;
-    $field = AllowedField::integer('id')->min(5)->alias('@me', static function () use (&$id): int {
+    $field = Field::integer('id')->min(5)->alias('@me', static function () use (&$id): int {
         return $id;
     });
 
     expect($field->tryCast('@me', quoted: true))->toBeNull()
-        ->and(AllowedField::string('code')->alias('token', 7)->tryCast('token'))->toBeNull();
+        ->and(Field::string('code')->alias('token', 7)->tryCast('token'))->toBeNull();
 
     $id = 3;
 
@@ -442,7 +440,7 @@ it('rejects restricted comparisons and clauses at their operator or value start'
     string $message,
     array $parameters,
 ): void {
-    $field = AllowedField::integer('status', 'internal_status')->alias(
+    $field = Field::integer('status', 'internal_status')->alias(
         '@me',
         static function (): never {
             throw new LogicException('The alias must not run for a disallowed clause.');
@@ -569,16 +567,16 @@ it('rejects restricted comparisons and clauses at their operator or value start'
 ]);
 
 it('rejects scaling non-numeric field types and invalid factors when configured', function (): void {
-    expect(fn (): AllowedField => AllowedField::string('value')->scale(100))->toThrow(
+    expect(fn (): Field => Field::string('value')->scale(100))->toThrow(
         InvalidArgumentException::class,
     )
-        ->and(fn (): AllowedField => AllowedField::integer('value')->scale('invalid'))->toThrow(
+        ->and(fn (): Field => Field::integer('value')->scale('invalid'))->toThrow(
             InvalidArgumentException::class,
         );
 });
 
 it('rejects storage map keys that collide ignoring case', function (): void {
-    expect(fn (): AllowedField => AllowedField::string('priority')->map(['high' => 3, 'HIGH' => 4]))
+    expect(fn (): Field => Field::string('priority')->map(['high' => 3, 'HIGH' => 4]))
         ->toThrow(
             InvalidArgumentException::class,
             'Storage map keys must be unique ignoring case.',
@@ -586,30 +584,30 @@ it('rejects storage map keys that collide ignoring case', function (): void {
 });
 
 it('rejects text modes on fields without a string cast type', function (
-    AllowedField $field,
+    Field $field,
     string $mode,
 ): void {
     $field->$mode();
 })->throws(InvalidArgumentException::class)->with([
-    new AllowedField('x'), AllowedField::integer('x'), AllowedField::numeric('x'),
-    AllowedField::decimal('x', 2), AllowedField::boolean('x'), AllowedField::date('x'),
-    AllowedField::in('x', ['text']), AllowedField::uuid('x'), AllowedField::ulid('x'),
-    AllowedField::array('x'),
-    AllowedField::array('x')->at(0, fn ($rules) => $rules->string()),
-    AllowedField::array('x')->each(fn ($rules) => $rules->integer()),
-    AllowedField::array('x')
+    new Field('x'), Field::integer('x'), Field::numeric('x'),
+    Field::decimal('x', 2), Field::boolean('x'), Field::date('x'),
+    Field::in('x', ['text']), Field::uuid('x'), Field::ulid('x'),
+    Field::array('x'),
+    Field::array('x')->at(0, fn ($rules) => $rules->string()),
+    Field::array('x')->each(fn ($rules) => $rules->integer()),
+    Field::array('x')
         ->each(fn ($rules) => $rules->string())
         ->at(0, fn ($rules) => $rules->integer()),
 ])->with(['prefix', 'contains', 'words']);
 
 it('rejects times at calendar date array positions', function (): void {
-    $tuple = AllowedField::array('dates')
+    $tuple = Field::array('dates')
         ->at(
             0,
-            fn (AllowedFieldItemRules $rules): AllowedFieldItemRules
+            fn (FieldItemRules $rules): FieldItemRules
                 => $rules->date()->withoutTime(),
         )
-        ->at(1, fn (AllowedFieldItemRules $rules): AllowedFieldItemRules => $rules->date());
+        ->at(1, fn (FieldItemRules $rules): FieldItemRules => $rules->date());
 
     expect(fn (): null|NodeInterface => SearchParser::query('dates:now,today')
         ->allowedFields([$tuple])
@@ -618,31 +616,31 @@ it('rejects times at calendar date array positions', function (): void {
 });
 
 it('rejects unknown configured operators', function (string $operator): void {
-    AllowedField::string('status')->operators('=', $operator);
+    Field::string('status')->operators('=', $operator);
 })->throws(InvalidArgumentException::class)->with(['LIKE', '==', ':', '', 'AND']);
 
 it('rejects unsupported sizes without a TypeError', function (string $rule): void {
     $field = match ($rule) {
-        'min' => AllowedField::boolean('flag')->min(0),
-        'max' => AllowedField::boolean('flag')->max(1),
-        'between' => AllowedField::boolean('flag')->between(0, 1),
-        'size' => AllowedField::boolean('flag')->size(1),
+        'min' => Field::boolean('flag')->min(0),
+        'max' => Field::boolean('flag')->max(1),
+        'between' => Field::boolean('flag')->between(0, 1),
+        'size' => Field::boolean('flag')->size(1),
     };
 
     SearchParser::query('flag:true')->allowedFields([$field])->build();
 })->throws(InvalidFieldValueException::class)->with(['min', 'max', 'between', 'size']);
 
 it('rejects user values outside bounds before storage conversion', function (): void {
-    $field = AllowedField::integer('amount')->max(10)->ignore('all', 0)->scale(100)->default('5');
+    $field = Field::integer('amount')->max(10)->ignore('all', 0)->scale(100)->default('5');
 
     expect(fn (): mixed => SearchParser::query('amount:11')->allowedFields([$field])->build())
         ->toThrow(InvalidFieldValueException::class);
 });
 
 it('rejects values outside index bounds using the shared item type', function (): void {
-    $field = AllowedField::array('values')
-        ->at(0, fn (AllowedFieldItemRules $rules): AllowedFieldItemRules => $rules->max(100))
-        ->each(fn (AllowedFieldItemRules $rules): AllowedFieldItemRules => $rules->decimal(2));
+    $field = Field::array('values')
+        ->at(0, fn (FieldItemRules $rules): FieldItemRules => $rules->max(100))
+        ->each(fn (FieldItemRules $rules): FieldItemRules => $rules->decimal(2));
 
     expect(
         fn (): mixed => SearchParser::query('values:150.00')->allowedFields([$field])->build(),
@@ -652,9 +650,9 @@ it('rejects values outside index bounds using the shared item type', function ()
 });
 
 it('rejects values outside shared bounds using the effective item type', function (): void {
-    $decimal = AllowedField::array('values')
-        ->each(fn (AllowedFieldItemRules $rules): AllowedFieldItemRules => $rules->max(180))
-        ->at(0, fn (AllowedFieldItemRules $rules): AllowedFieldItemRules => $rules->decimal(0, 6));
+    $decimal = Field::array('values')
+        ->each(fn (FieldItemRules $rules): FieldItemRules => $rules->max(180))
+        ->at(0, fn (FieldItemRules $rules): FieldItemRules => $rules->decimal(0, 6));
 
     expect(
         fn (): mixed => SearchParser::query('values:999.5')->allowedFields([$decimal])->build(),
@@ -669,7 +667,7 @@ it('rejects wildcard patterns below their Unicode length minimum', function (
     int $position,
 ): void {
     $parser = SearchParser::query($query)->allowedFields([
-        AllowedField::string('name')->allowLeadingWildcards()->minWildcardLength($minimum),
+        Field::string('name')->allowLeadingWildcards()->minWildcardLength($minimum),
     ]);
 
     try {
@@ -695,7 +693,7 @@ it('rejects wildcard patterns below their Unicode length minimum', function (
 it('reports the typed name for pattern operator failures', function (): void {
     try {
         SearchParser::query('meta.color:*blue')->allowedFields([
-            AllowedField::string('meta.*')->keys('/^[a-z]+$/D'),
+            Field::string('meta.*')->keys('/^[a-z]+$/D'),
         ])->parse();
 
         test()->fail('Expected a leading wildcard error.');
@@ -710,34 +708,34 @@ it('reports the typed name for pattern operator failures', function (): void {
 
 it('retains withoutWildcards when leading patterns are enabled', function (): void {
     SearchParser::query('name:*son')->allowedFields([
-        AllowedField::string('name')->allowLeadingWildcards()->withoutWildcards(),
+        Field::string('name')->allowLeadingWildcards()->withoutWildcards(),
     ])->parse();
 })->throws(InvalidFieldOperatorException::class, 'Wildcards are not allowed');
 
 it('treats a key closure result other than true as a rejection', function (): void {
-    $field = AllowedField::string('meta.*')->keys(static fn (string $key): int => 1);
+    $field = Field::string('meta.*')->keys(static fn (string $key): int => 1);
 
     expect(fn (): mixed => SearchParser::query('meta.color:red')->allowedFields([$field])->build())
         ->toThrow(InvalidFieldException::class);
 });
 
 it('accepts array values within index-specific and combined rules', function (): void {
-    $tuple = AllowedField::array('tuple')
+    $tuple = Field::array('tuple')
         ->size(2)
-        ->each(fn ($rules): AllowedFieldItemRules => $rules->string())
-        ->at(0, fn ($rules): AllowedFieldItemRules => $rules->size(3))
-        ->at(1, fn ($rules): AllowedFieldItemRules => $rules->max(3));
+        ->each(fn ($rules): FieldItemRules => $rules->string())
+        ->at(0, fn ($rules): FieldItemRules => $rules->size(3))
+        ->at(1, fn ($rules): FieldItemRules => $rules->max(3));
 
     expect($tuple->validate(['abc', 'xy']))->toBeTrue();
 
-    $missingIndexField = AllowedField::array('pair')
-        ->at(1, fn ($rules): AllowedFieldItemRules => $rules->string()->max(3));
+    $missingIndexField = Field::array('pair')
+        ->at(1, fn ($rules): FieldItemRules => $rules->string()->max(3));
 
     expect($missingIndexField->validate([123]))->toBeTrue();
 });
 
 it('accepts only word prefixes as patterns on whole-word fields', function (): void {
-    $body = AllowedField::string('body')->words();
+    $body = Field::string('body')->words();
 
     expect(SearchParser::query('body:coff*')->allowedFields([$body])->parse()->getSegments())
         ->toBe(['coff', ''])
@@ -752,7 +750,7 @@ it('accepts only word prefixes as patterns on whole-word fields', function (): v
         ->toBe(['coff', ''])
         ->and(
             SearchParser::query('body:co*ee')
-                ->allowedFields([AllowedField::string('body')])
+                ->allowedFields([Field::string('body')])
                 ->parse()
                 ->getSegments(),
         )
@@ -760,42 +758,42 @@ it('accepts only word prefixes as patterns on whole-word fields', function (): v
 });
 
 it('accepts valid array items under each rule', function (): void {
-    $arrayWithLimits = AllowedField::array('keywords')
+    $arrayWithLimits = Field::array('keywords')
         ->max(2)
-        ->each(fn ($rules): AllowedFieldItemRules => $rules->string()->max(5));
+        ->each(fn ($rules): FieldItemRules => $rules->string()->max(5));
 
     expect($arrayWithLimits->validate(['aa', 'bbb']))->toBeTrue();
 
-    $booleanRulesField = AllowedField::array('values')
-        ->each(fn ($rules): AllowedFieldItemRules => $rules->boolean());
+    $booleanRulesField = Field::array('values')
+        ->each(fn ($rules): FieldItemRules => $rules->boolean());
 
     expect($booleanRulesField->validate([1, '0', true]))->toBeTrue();
 
-    $callbackRulesField = AllowedField::array('values')
+    $callbackRulesField = Field::array('values')
         ->each(
-            fn ($rules): AllowedFieldItemRules
+            fn ($rules): FieldItemRules
                 => $rules->callback(fn ($value): bool => is_int($value)),
         );
 
     expect($callbackRulesField->validate([1, 2]))->toBeTrue();
 
-    $decimalRulesField = AllowedField::array('values')
-        ->each(fn ($rules): AllowedFieldItemRules => $rules->decimal(2));
+    $decimalRulesField = Field::array('values')
+        ->each(fn ($rules): FieldItemRules => $rules->decimal(2));
 
     expect($decimalRulesField->validate(['1.23']))->toBeTrue();
 
-    $inRulesField = AllowedField::array('values')
-        ->each(fn ($rules): AllowedFieldItemRules => $rules->in(['A', 'B', '1']));
+    $inRulesField = Field::array('values')
+        ->each(fn ($rules): FieldItemRules => $rules->in(['A', 'B', '1']));
 
     expect($inRulesField->validate(['A', '1']))->toBeTrue();
 
-    $integerRulesField = AllowedField::array('values')
-        ->each(fn ($rules): AllowedFieldItemRules => $rules->integer()->min(0)->max(10));
+    $integerRulesField = Field::array('values')
+        ->each(fn ($rules): FieldItemRules => $rules->integer()->min(0)->max(10));
 
     expect($integerRulesField->validate([5]))->toBeTrue();
 
-    $numericBetweenField = AllowedField::array('values')
-        ->each(fn ($rules): AllowedFieldItemRules => $rules->numeric()->between(1, 2));
+    $numericBetweenField = Field::array('values')
+        ->each(fn ($rules): FieldItemRules => $rules->numeric()->between(1, 2));
 
     expect($numericBetweenField->validate([1.5]))->toBeTrue();
 });
@@ -803,14 +801,14 @@ it('accepts valid array items under each rule', function (): void {
 it('allows all six comparison operators when configured', function (string $operator): void {
     $queryOperator = $operator === '=' ? '' : $operator;
     $node = SearchParser::query('status:'.$queryOperator.'5')
-        ->allowedFields([AllowedField::integer('status')->operators($operator)])
+        ->allowedFields([Field::integer('status')->operators($operator)])
         ->parse();
 
     expect($node->getOperator())->toBe($operator)->and($node->getValue())->toBe(5);
 })->with(['=', '!=', '>', '>=', '<', '<=']);
 
 it('allows text matching on arrays with shared string rules', function (): void {
-    $field = AllowedField::array('tags')
+    $field = Field::array('tags')
         ->each(fn ($rules) => $rules->string())
         ->at(1, fn ($rules) => $rules->max(10))
         ->contains();
@@ -820,7 +818,7 @@ it('allows text matching on arrays with shared string rules', function (): void 
 });
 
 it('applies pattern value casts validation aliases ignores and storage conversions', function (): void {
-    $field = AllowedField::integer('metrics.*', 'counters.*')
+    $field = Field::integer('metrics.*', 'counters.*')
         ->keys(fn (string $key): bool => in_array($key, ['views', 'likes'], true))
         ->alias('all', 2)
         ->min(1)
@@ -848,7 +846,7 @@ it('applies pattern value casts validation aliases ignores and storage conversio
 it('calls aliases without arguments at parse time on every parse', function (): void {
     $userId = 7;
     $calls = [];
-    $field = AllowedField::integer('owner')->alias(
+    $field = Field::integer('owner')->alias(
         '@me',
         static function (...$arguments) use (&$userId, &$calls): int {
             $calls[] = $arguments;
@@ -870,7 +868,7 @@ it('casts item strings, booleans and membership values', function (
     string $query,
     array $expected,
 ): void {
-    $field = AllowedField::array('values')->each($configure);
+    $field = Field::array('values')->each($configure);
 
     expect(
         SearchParser::query('values:'.$query)->allowedFields([$field])->parse()->getValues(),
@@ -879,33 +877,33 @@ it('casts item strings, booleans and membership values', function (
     );
 })->with([
     [
-        fn (AllowedFieldItemRules $rules): AllowedFieldItemRules => $rules->string()->max(4),
+        fn (FieldItemRules $rules): FieldItemRules => $rules->string()->max(4),
         '123,true',
         ['123', 'true'],
     ],
     [
-        fn (AllowedFieldItemRules $rules): AllowedFieldItemRules => $rules->boolean(),
+        fn (FieldItemRules $rules): FieldItemRules => $rules->boolean(),
         'true,0',
         [true, false],
     ],
     [
-        fn (AllowedFieldItemRules $rules): AllowedFieldItemRules => $rules->in(['01', 2]),
+        fn (FieldItemRules $rules): FieldItemRules => $rules->in(['01', 2]),
         '01,2',
         ['01', 2],
     ],
 ]);
 
 it('casts negative tuple items with their index rules', function (): void {
-    $field = AllowedField::array('location')
+    $field = Field::array('location')
         ->size(2)
         ->at(
             0,
-            fn (AllowedFieldItemRules $rules): AllowedFieldItemRules
+            fn (FieldItemRules $rules): FieldItemRules
                 => $rules->numeric()->between(-90, 90),
         )
         ->at(
             1,
-            fn (AllowedFieldItemRules $rules): AllowedFieldItemRules
+            fn (FieldItemRules $rules): FieldItemRules
                 => $rules->numeric()->between(-180, 180),
         );
 
@@ -920,7 +918,7 @@ it('casts negative tuple items with their index rules', function (): void {
 });
 
 it('configures nullability explicitly', function (): void {
-    $field = new AllowedField('status');
+    $field = new Field('status');
 
     expect($field)->isNullable()->toBeFalse()
         ->and($field->nullable())->isNullable()->toBeTrue()
@@ -928,14 +926,14 @@ it('configures nullability explicitly', function (): void {
 });
 
 it('converts array items with the rules of their position', function (): void {
-    $mapped = AllowedField::array('amount')
-        ->each(fn (AllowedFieldItemRules $rules): AllowedFieldItemRules => $rules->decimal(0, 2))
-        ->at(0, fn (AllowedFieldItemRules $rules): AllowedFieldItemRules => $rules->string())
+    $mapped = Field::array('amount')
+        ->each(fn (FieldItemRules $rules): FieldItemRules => $rules->decimal(0, 2))
+        ->at(0, fn (FieldItemRules $rules): FieldItemRules => $rules->string())
         ->map([7 => 'seven']);
-    $scaled = AllowedField::array('price')
-        ->each(fn (AllowedFieldItemRules $rules): AllowedFieldItemRules => $rules->numeric())
+    $scaled = Field::array('price')
+        ->each(fn (FieldItemRules $rules): FieldItemRules => $rules->numeric())
         ->scale(100)
-        ->at(0, fn (AllowedFieldItemRules $rules): AllowedFieldItemRules => $rules->string());
+        ->at(0, fn (FieldItemRules $rules): FieldItemRules => $rules->string());
 
     expect(SearchParser::query('amount:7.00,7.00')->allowedFields([$mapped])->build()['values'])
         ->toBe(['7.00', 'seven'])
@@ -950,7 +948,7 @@ it('counts literal Unicode characters across all wildcard segments', function (
     int $minimum,
 ): void {
     $parser = SearchParser::query($query)->allowedFields([
-        AllowedField::string('name')->allowLeadingWildcards()->minWildcardLength($minimum),
+        Field::string('name')->allowLeadingWildcards()->minWildcardLength($minimum),
     ]);
 
     expect($parser->parse())->not->toBeNull();
@@ -962,7 +960,7 @@ it('counts literal Unicode characters across all wildcard segments', function (
 ]);
 
 it('ignores and validates user values before storage conversion including defaults', function (): void {
-    $field = AllowedField::integer('amount')->max(10)->ignore('all', 0)->scale(100)->default('5');
+    $field = Field::integer('amount')->max(10)->ignore('all', 0)->scale(100)->default('5');
 
     expect(SearchParser::query('amount:ALL,5,0')->allowedFields([$field])->build()['values'])->toBe(
         [500],
@@ -978,7 +976,7 @@ it('ignores strings case-insensitively before validation in every value context'
     string $query,
     null|string $expected,
 ): void {
-    $field = AllowedField::in('status', ['open', 'closed'])->ignore('ÉTÉ');
+    $field = Field::in('status', ['open', 'closed'])->ignore('ÉTÉ');
 
     expect(SearchParser::query($query)->allowedFields([$field])->build('string'))->toBe($expected);
 })->with([
@@ -989,9 +987,9 @@ it('ignores strings case-insensitively before validation in every value context'
 ]);
 
 it('inherits shared item types when index rules only constrain size', function (): void {
-    $field = AllowedField::array('values')
-        ->at(0, fn (AllowedFieldItemRules $rules): AllowedFieldItemRules => $rules->max(100))
-        ->each(fn (AllowedFieldItemRules $rules): AllowedFieldItemRules => $rules->decimal(2));
+    $field = Field::array('values')
+        ->at(0, fn (FieldItemRules $rules): FieldItemRules => $rules->max(100))
+        ->each(fn (FieldItemRules $rules): FieldItemRules => $rules->decimal(2));
 
     expect(
         SearchParser::query('values:50.00')->allowedFields([$field])->parse()->getValue(),
@@ -1004,7 +1002,7 @@ it('keeps field subclasses through factories and fluent configuration', function
     string $factory,
     array $arguments,
 ): void {
-    $prototype = new class ('field') extends AllowedField {
+    $prototype = new class ('field') extends Field {
         public function packageMethod(): string
         {
             return $this->getInternalName();
@@ -1047,7 +1045,7 @@ it('keeps item size rules independent of type rule order', function (
     string $sizeRule,
 ): void {
     foreach ([true, false] as $sizeFirst) {
-        $configure = function (AllowedFieldItemRules $rules) use (
+        $configure = function (FieldItemRules $rules) use (
             $type,
             $sizeRule,
             $sizeFirst,
@@ -1078,7 +1076,7 @@ it('keeps item size rules independent of type rule order', function (
                 $setSize();
             }
         };
-        $field = AllowedField::array('values');
+        $field = Field::array('values');
 
         $scope === 'each' ? $field->each($configure) : $field->at(0, $configure);
 
@@ -1099,7 +1097,7 @@ it('keeps item size rules independent of type rule order', function (
     ->with(['min', 'max', 'between', 'size']);
 
 it('keeps non-string ignore values strict and alias tokens case-sensitive', function (): void {
-    $field = new AllowedField('value')->ignore(0, false, 'all')->alias('ALL', 42);
+    $field = new Field('value')->ignore(0, false, 'all')->alias('ALL', 42);
 
     expect($field->isIgnored('0'))->toBeFalse()
         ->and($field->isIgnored(0.0))->toBeFalse()
@@ -1112,17 +1110,17 @@ it('keeps non-string ignore values strict and alias tokens case-sensitive', func
 });
 
 it('keeps number storage for maps without strings and other conversions', function (): void {
-    $quantity = AllowedField::integer('quantity')->map([99 => 10]);
+    $quantity = Field::integer('quantity')->map([99 => 10]);
 
     expect($quantity->storesText())->toBeFalse()
         ->and($quantity->toStorage(99))->toBe(10)
         ->and($quantity->toStorage(5))->toBe(5)
-        ->and(AllowedField::numeric('amount')->scale(100)->storesText())->toBeFalse()
-        ->and(AllowedField::string('name')->storesText())->toBeFalse();
+        ->and(Field::numeric('amount')->scale(100)->storesText())->toBeFalse()
+        ->and(Field::string('name')->storesText())->toBeFalse();
 });
 
 it('maps canonical cast values and preserves ordinal comparisons', function (): void {
-    $field = AllowedField::in('priority', ['low', 'normal', 'high'])->map([
+    $field = Field::in('priority', ['low', 'normal', 'high'])->map([
         'low' => 1,
         'normal' => 2,
         'high' => 3,
@@ -1148,7 +1146,7 @@ it('matches aliases exactly and only in unquoted field values', function (
     string $query,
     string $value,
 ): void {
-    $field = AllowedField::string('x')->alias('yes', 'resolved');
+    $field = Field::string('x')->alias('yes', 'resolved');
 
     expect(SearchParser::query($query)->allowedFields([$field])->parse()->getValue())->toBe($value);
 })->with([
@@ -1157,22 +1155,22 @@ it('matches aliases exactly and only in unquoted field values', function (
 ]);
 
 it('matches decimal keys written with trailing zeros', function (): void {
-    $field = AllowedField::decimal('amount', 0, 2)->map(['1.50' => 'half', '-7' => 'minus']);
+    $field = Field::decimal('amount', 0, 2)->map(['1.50' => 'half', '-7' => 'minus']);
 
     expect($field->toStorage('1.50'))->toBe('half')
         ->and($field->toStorage('1.5'))->toBe('half')
         ->and($field->toStorage('-7.00'))->toBe('minus')
         ->and(SearchParser::query('amount:@half')->allowedFields([
-            AllowedField::decimal('amount', 0, 2)->alias('@half', 1.5)->map(['1.50' => 'half']),
+            Field::decimal('amount', 0, 2)->alias('@half', 1.5)->map(['1.50' => 'half']),
         ])->build()['value'])->toBe('half')
         ->and(SearchParser::query('code:1.50')->allowedFields([
-            AllowedField::string('code')->map(['1.5' => 'a', '1.50' => 'b']),
+            Field::string('code')->map(['1.5' => 'a', '1.50' => 'b']),
         ])->build()['value'])->toBe('b');
 });
 
 it('matches decimal values against map keys by value without trailing zeros', function (): void {
-    $text = AllowedField::decimal('amount', 0, 2)->map([7 => 'seven', '1.5' => 'half']);
-    $number = AllowedField::decimal('amount', 0, 2)->map([7 => 70]);
+    $text = Field::decimal('amount', 0, 2)->map([7 => 'seven', '1.5' => 'half']);
+    $number = Field::decimal('amount', 0, 2)->map([7 => 70]);
 
     expect($text->toStorage('7.0'))->toBe('seven')
         ->and($text->toStorage('7.00'))->toBe('seven')
@@ -1186,7 +1184,7 @@ it('matches decimal values against map keys by value without trailing zeros', fu
 });
 
 it('matches fractional map keys from the exact float value', function (): void {
-    $field = AllowedField::numeric('level')->map(['1.5' => 'half', 1 => 'one']);
+    $field = Field::numeric('level')->map(['1.5' => 'half', 1 => 'one']);
 
     expect($field->toStorage(1.5))->toBe('half')
         ->and($field->toStorage(1.0))->toBe('one')
@@ -1196,8 +1194,8 @@ it('matches fractional map keys from the exact float value', function (): void {
 it('matches ignored values strictly after casting and alias resolution', function (): void {
     $fields = [
         'title',
-        AllowedField::integer('age')->alias('@all', 0)->min(1)->ignore(0),
-        new AllowedField('code')->ignore(0),
+        Field::integer('age')->alias('@all', 0)->min(1)->ignore(0),
+        new Field('code')->ignore(0),
     ];
 
     expect(SearchParser::query('title:x age:"0" age:@all')->allowedFields($fields)->build('string'))
@@ -1216,16 +1214,16 @@ it('matches ignored values strictly after casting and alias resolution', functio
 });
 
 it('matches ignored values strictly and validates nullability separately', function (): void {
-    $field = AllowedField::integer('count')->ignore('N/A', null);
+    $field = Field::integer('count')->ignore('N/A', null);
 
     expect($field->isIgnored('N/A'))->toBeTrue()
         ->and($field->isIgnored(null))->toBeTrue()
         ->and($field->isIgnored(0))->toBeFalse()
-        ->and(AllowedField::integer('count')->nullable()->validate(null))->toBeTrue();
+        ->and(Field::integer('count')->nullable()->validate(null))->toBeTrue();
 });
 
 it('matches storage map keys ignoring case for strings', function (): void {
-    $field = AllowedField::string('priority')->map(['High' => 3, 1 => 'one']);
+    $field = Field::string('priority')->map(['High' => 3, 1 => 'one']);
 
     expect($field->toStorage('HIGH'))->toBe('3')
         ->and($field->toStorage('high'))->toBe('3')
@@ -1238,9 +1236,9 @@ it('measures numeric types numerically for every size rule', function (
     string $rule,
 ): void {
     $field = match ($type) {
-        'integer' => AllowedField::integer('value'),
-        'numeric' => AllowedField::numeric('value'),
-        'decimal' => AllowedField::decimal('value', 2),
+        'integer' => Field::integer('value'),
+        'numeric' => Field::numeric('value'),
+        'decimal' => Field::decimal('value', 2),
     };
     $field = match ($rule) {
         'min' => $field->min(100),
@@ -1254,7 +1252,7 @@ it('measures numeric types numerically for every size rule', function (
 })->with(['integer', 'numeric', 'decimal'])->with(['min', 'between', 'size']);
 
 it('measures numeric-looking strings by character length', function (string $rule): void {
-    $field = AllowedField::string('code');
+    $field = Field::string('code');
     $field = match ($rule) {
         'min' => $field->min(3),
         'max' => $field->max(3),
@@ -1268,7 +1266,7 @@ it('measures numeric-looking strings by character length', function (string $rul
 })->with(['min', 'max', 'between', 'size']);
 
 it('permits literal asterisks and existence when wildcard patterns are disabled', function (): void {
-    $field = AllowedField::string('status')->withoutWildcards()->operators('!=');
+    $field = Field::string('status')->withoutWildcards()->operators('!=');
 
     expect(SearchParser::query('status:!="*"')->allowedFields([$field])->parse()->getValue())->toBe(
         '*',
@@ -1284,7 +1282,7 @@ it('permits literal asterisks and existence when wildcard patterns are disabled'
 });
 
 it('probes array items with collection shared and positional rules', function (): void {
-    $field = AllowedField::array('tuple')
+    $field = Field::array('tuple')
         ->max(2)
         ->each(fn ($rules) => $rules->numeric()->min(0))
         ->at(1, fn ($rules) => $rules->integer()->max(10));
@@ -1293,23 +1291,23 @@ it('probes array items with collection shared and positional rules', function ()
 });
 
 it('probes valid typed values', function (
-    AllowedField $field,
+    Field $field,
     string $value,
     mixed $expected,
 ): void {
     expect($field->tryCast($value))->toBe($expected);
 })->with([
-    [AllowedField::integer('id')->min(1), '1042', 1_042],
-    [AllowedField::numeric('price'), '2.5', 2.5],
-    [AllowedField::decimal('price', 2), '2.50', '2.50'],
-    [AllowedField::boolean('active'), 'false', false],
-    [AllowedField::integer('count'), '0', 0],
-    [AllowedField::string('title'), '', ''],
-    [AllowedField::string('code')->size(3), '123', '123'],
-    [AllowedField::enum('priority', PriorityLevel::class), '2', 2],
-    [AllowedField::date('date'), '2024-02-29', '2024-02-29'],
+    [Field::integer('id')->min(1), '1042', 1_042],
+    [Field::numeric('price'), '2.5', 2.5],
+    [Field::decimal('price', 2), '2.50', '2.50'],
+    [Field::boolean('active'), 'false', false],
+    [Field::integer('count'), '0', 0],
+    [Field::string('title'), '', ''],
+    [Field::string('code')->size(3), '123', '123'],
+    [Field::enum('priority', PriorityLevel::class), '2', 2],
+    [Field::date('date'), '2024-02-29', '2024-02-29'],
     [
-        AllowedField::callback(
+        Field::callback(
             'id',
             fn ($value, $name): bool => $name === 'stored_id' && $value === 42,
             'stored_id',
@@ -1320,7 +1318,7 @@ it('probes valid typed values', function (
 ]);
 
 it('resolves aliases before applying shared and per-index array validation', function (): void {
-    $field = AllowedField::array('x')
+    $field = Field::array('x')
         ->alias('yes', true)
         ->alias('@me', 7)
         ->at(0, static fn ($rules) => $rules->boolean())
@@ -1335,7 +1333,7 @@ it('resolves aliases before applying shared and per-index array validation', fun
 it('resolves scalar aliases without casting their result', function (
     bool|float|int|string $value,
 ): void {
-    $field = new AllowedField('x')->alias('token', $value);
+    $field = new Field('x')->alias('token', $value);
 
     expect(SearchParser::query('x:token')->allowedFields([$field])->parse()->getValue())->toBe(
         $value,
@@ -1344,21 +1342,21 @@ it('resolves scalar aliases without casting their result', function (
 
 it('resolves unquoted aliases without recasting', function (): void {
     $id = 7;
-    $field = AllowedField::integer('id')->min(5)->alias('@me', static function () use (&$id): int {
+    $field = Field::integer('id')->min(5)->alias('@me', static function () use (&$id): int {
         return $id;
     });
 
     expect($field->tryCast('@me'))->toBe(7)
-        ->and(new AllowedField('code')->tryCast('42', quoted: true))->toBe('42');
+        ->and(new Field('code')->tryCast('42', quoted: true))->toBe('42');
 });
 
 it('returns the configured mode without a node', function (): void {
-    expect(AllowedField::string('name')->getTextMatch())->toBe(TextMatch::Exact)
-        ->and(AllowedField::string('name')->words()->getTextMatch())->toBe(TextMatch::Words);
+    expect(Field::string('name')->getTextMatch())->toBe(TextMatch::Exact)
+        ->and(Field::string('name')->words()->getTextMatch())->toBe(TextMatch::Words);
 });
 
 it('scales array items with a numeric shared type', function (): void {
-    $field = AllowedField::array('prices')->each(fn ($rules) => $rules->numeric())->scale(100);
+    $field = Field::array('prices')->each(fn ($rules) => $rules->numeric())->scale(100);
 
     expect(SearchParser::query('prices:1.5,2')->allowedFields([$field])->build()['values'])->toBe([
         150,
@@ -1370,7 +1368,7 @@ it('scales floats exactly whatever serialize_precision is', function (): void {
     $previous = ini_set('serialize_precision', '17');
 
     try {
-        expect(AllowedField::numeric('amount')->scale(10)->toStorage(0.1))->toBe(1)
+        expect(Field::numeric('amount')->scale(10)->toStorage(0.1))->toBe(1)
             ->and(ini_get('serialize_precision'))->toBe('17');
     } finally {
         ini_set('serialize_precision', $previous === false ? '-1' : $previous);
@@ -1378,22 +1376,22 @@ it('scales floats exactly whatever serialize_precision is', function (): void {
 });
 
 it('scales floats without precision loss and keeps oversized integers as text', function (): void {
-    $amount = AllowedField::numeric('amount')->scale(100);
+    $amount = Field::numeric('amount')->scale(100);
 
     expect($amount->toStorage(1_234_567_890_123.45))->toBe(123_456_789_012_345)
         ->and($amount->toStorage(0.123_456_789_012_345))->toBe('12.3456789012345')
-        ->and(AllowedField::decimal('price', 0, 2)->scale(100)->toStorage('99999999999999999999'))
+        ->and(Field::decimal('price', 0, 2)->scale(100)->toStorage('99999999999999999999'))
         ->toBe('9999999999999999999900');
 });
 
 it('scales numeric text that validation accepts with surrounding whitespace', function (): void {
     expect(SearchParser::query('amount:@seven')->allowedFields([
-        AllowedField::numeric('amount')->alias('@seven', ' 7 ')->scale(100),
+        Field::numeric('amount')->alias('@seven', ' 7 ')->scale(100),
     ])->build()['value'])->toBe(700);
 });
 
 it('scales numeric values exactly into integers or decimal strings', function (
-    AllowedField $field,
+    Field $field,
     string $input,
     int|string $expected,
 ): void {
@@ -1402,23 +1400,23 @@ it('scales numeric values exactly into integers or decimal strings', function (
     expect($parser->build()['value'])->toBe($expected)
         ->and($field->toStorage($parser->parse()->getValue()))->toBe($expected);
 })->with([
-    [AllowedField::decimal('value', 2)->scale(100), '10.50', 1_050],
-    [AllowedField::decimal('value', 2)->scale('0.1'), '10.50', '1.05'],
-    [AllowedField::integer('value')->scale('0.5'), '3', '1.5'],
-    [AllowedField::integer('value')->scale('0.5'), '4', 2],
-    [AllowedField::numeric('value')->scale(100), '0.29', 29],
-    [AllowedField::numeric('value')->scale('1e2'), '-10.5', -1_050],
-    [AllowedField::integer('value')->scale(0), '100', 0],
-    [AllowedField::decimal('value', 2)->scale('0.00001'), '0.01', '0.0000001'],
+    [Field::decimal('value', 2)->scale(100), '10.50', 1_050],
+    [Field::decimal('value', 2)->scale('0.1'), '10.50', '1.05'],
+    [Field::integer('value')->scale('0.5'), '3', '1.5'],
+    [Field::integer('value')->scale('0.5'), '4', 2],
+    [Field::numeric('value')->scale(100), '0.29', 29],
+    [Field::numeric('value')->scale('1e2'), '-10.5', -1_050],
+    [Field::integer('value')->scale(0), '100', 0],
+    [Field::decimal('value', 2)->scale('0.00001'), '0.01', '0.0000001'],
 ]);
 
 it('sizes shared item rules by the effective item type', function (): void {
-    $decimal = AllowedField::array('values')
-        ->each(fn (AllowedFieldItemRules $rules): AllowedFieldItemRules => $rules->max(180))
-        ->at(0, fn (AllowedFieldItemRules $rules): AllowedFieldItemRules => $rules->decimal(0, 6));
-    $string = AllowedField::array('values')
-        ->each(fn (AllowedFieldItemRules $rules): AllowedFieldItemRules => $rules->max(3))
-        ->at(0, fn (AllowedFieldItemRules $rules): AllowedFieldItemRules => $rules->string());
+    $decimal = Field::array('values')
+        ->each(fn (FieldItemRules $rules): FieldItemRules => $rules->max(180))
+        ->at(0, fn (FieldItemRules $rules): FieldItemRules => $rules->decimal(0, 6));
+    $string = Field::array('values')
+        ->each(fn (FieldItemRules $rules): FieldItemRules => $rules->max(3))
+        ->at(0, fn (FieldItemRules $rules): FieldItemRules => $rules->string());
 
     expect(
         SearchParser::query('values:179.5')->allowedFields([$decimal])->parse()->getValue(),
@@ -1433,8 +1431,8 @@ it('sizes shared item rules by the effective item type', function (): void {
 });
 
 it('stores default values and makes null defaults nullable', function (): void {
-    $fieldWithNullDefault = new AllowedField('status')->default(null);
-    $fieldWithDefault = new AllowedField('status')->default('DRAFT');
+    $fieldWithNullDefault = new Field('status')->default(null);
+    $fieldWithDefault = new Field('status')->default('DRAFT');
 
     expect($fieldWithNullDefault)
         ->hasDefault()->toBeTrue()
@@ -1447,9 +1445,9 @@ it('stores default values and makes null defaults nullable', function (): void {
 });
 
 it('stores every value as exact text when the map stores a string', function (): void {
-    $level = AllowedField::numeric('level')->map([7 => 'seven']);
-    $tier = AllowedField::integer('tier')->map([1 => 'pending', 2 => 20]);
-    $flag = AllowedField::boolean('flag')->map([1 => 'on']);
+    $level = Field::numeric('level')->map([7 => 'seven']);
+    $tier = Field::integer('tier')->map([1 => 'pending', 2 => 20]);
+    $flag = Field::boolean('flag')->map([1 => 'on']);
 
     expect($level->storesText())->toBeTrue()
         ->and($level->toStorage(7))->toBe('seven')
@@ -1465,15 +1463,15 @@ it('stores every value as exact text when the map stores a string', function ():
 });
 
 it('supports date and enum item rules in each and at', function (): void {
-    $field = AllowedField::array('values')
+    $field = Field::array('values')
         ->each(
-            fn (AllowedFieldItemRules $rules): AllowedFieldItemRules
+            fn (FieldItemRules $rules): FieldItemRules
                 => $rules->callback(fn (): bool => true),
         )
-        ->at(0, fn (AllowedFieldItemRules $rules): AllowedFieldItemRules => $rules->date('d/m/Y'))
+        ->at(0, fn (FieldItemRules $rules): FieldItemRules => $rules->date('d/m/Y'))
         ->at(
             1,
-            fn (AllowedFieldItemRules $rules): AllowedFieldItemRules
+            fn (FieldItemRules $rules): FieldItemRules
                 => $rules->enum(PriorityLevel::class),
         );
 
@@ -1483,11 +1481,11 @@ it('supports date and enum item rules in each and at', function (): void {
         ['29/02/2024', 2],
     );
 
-    $dates = AllowedField::array('values')->each(
-        fn (AllowedFieldItemRules $rules): AllowedFieldItemRules => $rules->date(),
+    $dates = Field::array('values')->each(
+        fn (FieldItemRules $rules): FieldItemRules => $rules->date(),
     );
-    $enums = AllowedField::array('values')->each(
-        fn (AllowedFieldItemRules $rules): AllowedFieldItemRules
+    $enums = Field::array('values')->each(
+        fn (FieldItemRules $rules): FieldItemRules
             => $rules->enum(PublicationStatus::class),
     );
 
@@ -1506,16 +1504,16 @@ it('supports date and enum item rules in each and at', function (): void {
 });
 
 it('supports dates without time on shared and positional array item rules', function (): void {
-    $shared = AllowedField::array('dates')->each(
-        fn (AllowedFieldItemRules $rules): AllowedFieldItemRules => $rules->date()->withoutTime(),
+    $shared = Field::array('dates')->each(
+        fn (FieldItemRules $rules): FieldItemRules => $rules->date()->withoutTime(),
     );
-    $tuple = AllowedField::array('dates')
+    $tuple = Field::array('dates')
         ->at(
             0,
-            fn (AllowedFieldItemRules $rules): AllowedFieldItemRules
+            fn (FieldItemRules $rules): FieldItemRules
                 => $rules->date()->withoutTime(),
         )
-        ->at(1, fn (AllowedFieldItemRules $rules): AllowedFieldItemRules => $rules->date());
+        ->at(1, fn (FieldItemRules $rules): FieldItemRules => $rules->date());
 
     expect(
         SearchParser::query('dates:today,2024-03-15')
@@ -1532,7 +1530,7 @@ it('supports UUID and ULID shared and positional item rules and defaults', funct
     string $type,
     string $value,
 ): void {
-    $field = AllowedField::array('ids')
+    $field = Field::array('ids')
         ->each(fn ($rules) => $rules->$type())
         ->at(1, fn ($rules) => $rules->$type())
         ->default([$value, $value]);
@@ -1557,11 +1555,11 @@ it('supports UUID and ULID shared and positional item rules and defaults', funct
 ]);
 
 it('uses index types before shared item types and inference', function (): void {
-    $typed = AllowedField::array('values')
-        ->each(fn (AllowedFieldItemRules $rules): AllowedFieldItemRules => $rules->integer())
-        ->at(0, fn (AllowedFieldItemRules $rules): AllowedFieldItemRules => $rules->string());
-    $untyped = AllowedField::array('values')
-        ->at(1, fn (AllowedFieldItemRules $rules): AllowedFieldItemRules => $rules->string());
+    $typed = Field::array('values')
+        ->each(fn (FieldItemRules $rules): FieldItemRules => $rules->integer())
+        ->at(0, fn (FieldItemRules $rules): FieldItemRules => $rules->string());
+    $untyped = Field::array('values')
+        ->at(1, fn (FieldItemRules $rules): FieldItemRules => $rules->string());
 
     expect(SearchParser::query('values:1,2')->allowedFields([$typed])->parse()->getValues())->toBe([
         '1',
@@ -1578,7 +1576,7 @@ it('uses index types before shared item types and inference', function (): void 
 });
 
 it('uses only the last configured text match mode', function (): void {
-    $field = AllowedField::string('title')->prefix()->contains()->words()->prefix();
+    $field = Field::string('title')->prefix()->contains()->words()->prefix();
 
     expect(SearchParser::query('title:mug')->allowedFields([$field])->build()['match'])->toBe(
         'prefix',

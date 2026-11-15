@@ -4,7 +4,7 @@ description: "Validate collections and tuples with shared item rules, position-s
 weight: 3
 ---
 
-Use `AllowedField::array()` when a field accepts a collection of values. Apply size rules to the collection, then use `each()` or `at()` to configure its items.
+Use `Field::array()` when a field accepts a collection of values. Apply size rules to the collection, then use `each()` or `at()` to configure its items.
 
 ## Validate every item
 
@@ -12,12 +12,12 @@ Pass a callback to `each()` to apply the same rules to every value:
 
 ```php
 use HosmelQ\SearchSyntaxParser\SearchParser;
-use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
-use HosmelQ\SearchSyntaxParser\Validation\AllowedFieldItemRules;
+use HosmelQ\SearchSyntaxParser\Validation\Field;
+use HosmelQ\SearchSyntaxParser\Validation\FieldItemRules;
 
 $filters = SearchParser::query('tags:alpha,beta')->allowedFields([
-    AllowedField::array('tags')->max(5)->each(
-        fn (AllowedFieldItemRules $rules): AllowedFieldItemRules => $rules->string()->max(10),
+    Field::array('tags')->max(5)->each(
+        fn (FieldItemRules $rules): FieldItemRules => $rules->string()->max(10),
     ),
 ])->build();
 ```
@@ -29,11 +29,11 @@ A single value such as `tags:alpha` is validated as a one-item collection. Its s
 Item rules support scalar types, callbacks, and size constraints. For example, accept full dates, partial dates, and relative expressions with:
 
 ```php
-use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
-use HosmelQ\SearchSyntaxParser\Validation\AllowedFieldItemRules;
+use HosmelQ\SearchSyntaxParser\Validation\Field;
+use HosmelQ\SearchSyntaxParser\Validation\FieldItemRules;
 
-$dates = AllowedField::array('dates')->each(
-    fn (AllowedFieldItemRules $rules): AllowedFieldItemRules => $rules->date()->allowPartialDates(),
+$dates = Field::array('dates')->each(
+    fn (FieldItemRules $rules): FieldItemRules => $rules->date()->allowPartialDates(),
 );
 ```
 
@@ -45,13 +45,13 @@ Use `at()` for a zero-based position. This example accepts a latitude and longit
 
 ```php
 use HosmelQ\SearchSyntaxParser\SearchParser;
-use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
-use HosmelQ\SearchSyntaxParser\Validation\AllowedFieldItemRules;
+use HosmelQ\SearchSyntaxParser\Validation\Field;
+use HosmelQ\SearchSyntaxParser\Validation\FieldItemRules;
 
 $filters = SearchParser::query('location:37.7749,-122.4194')->allowedFields([
-    AllowedField::array('location')->size(2)
-        ->at(0, fn (AllowedFieldItemRules $rules): AllowedFieldItemRules => $rules->numeric()->between(-90, 90))
-        ->at(1, fn (AllowedFieldItemRules $rules): AllowedFieldItemRules => $rules->numeric()->between(-180, 180)),
+    Field::array('location')->size(2)
+        ->at(0, fn (FieldItemRules $rules): FieldItemRules => $rules->numeric()->between(-90, 90))
+        ->at(1, fn (FieldItemRules $rules): FieldItemRules => $rules->numeric()->between(-180, 180)),
 ])->build();
 ```
 
@@ -61,7 +61,7 @@ The two values become floats. A position's type overrides the shared `each()` ty
 
 Ignoring an item does not change which `at()` rule validates the remaining items. Their positions still refer to the original query, even though the resulting list is renumbered.
 
-`InNode::getPositions()` returns those written positions. Custom adapters must pass the corresponding position to `AllowedField::toStorage($value, $index)` when converting an item. The array adapter does this automatically. The clause compiler targets scalar field schemas and does not apply positional item rules.
+`InNode::getPositions()` returns those written positions. Custom adapters must pass the corresponding position to `Field::toStorage($value, $index)` when converting an item. The array adapter does this automatically. The clause compiler targets scalar field schemas and does not apply positional item rules.
 
 A list containing wildcards first removes ignored literal items and validates the remaining collection. It then expands into comparisons and wildcard leaves. Patterns are never removed by `ignore()`.
 

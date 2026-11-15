@@ -8,12 +8,12 @@ Call `default()` on an allowed field to add a filter when the query does not men
 
 ```php
 use HosmelQ\SearchSyntaxParser\SearchParser;
-use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
+use HosmelQ\SearchSyntaxParser\Validation\Field;
 
 $parser = SearchParser::query('coffee')->allowedFields([
-    AllowedField::string('status')->default('active'),
-    AllowedField::in('region', ['north', 'south'])->default(['north', 'south']),
-    AllowedField::string('deleted_at')->default(null),
+    Field::string('status')->default('active'),
+    Field::in('region', ['north', 'south'])->default(['north', 'south']),
+    Field::string('deleted_at')->default(null),
 ]);
 
 $filters = $parser->build();
@@ -32,7 +32,7 @@ $text = $parser->build('string');
 
 Scalars can be booleans, integers, floats, or strings. Empty, associative, or nested arrays, objects, and lists containing null are configuration errors. Pattern fields such as `meta.*` cannot have defaults; configure an exact field for a specific key.
 
-Strings follow the same aliases and casting as unquoted query values. For example, `AllowedField::integer('age')->default('18')` produces the integer `18`. Other scalar defaults must already have the type the field accepts. A string containing `*` stays literal text.
+Strings follow the same aliases and casting as unquoted query values. For example, `Field::integer('age')->default('18')` produces the integer `18`. Other scalar defaults must already have the type the field accepts. A string containing `*` stays literal text.
 
 When applied, defaults pass through the field's validation rules. An invalid default throws `InvalidArgumentException` naming the field. Scalar fields validate every member of a list. Array fields validate the whole collection and its shared and positional item rules. Null defaults skip value validation.
 
@@ -46,10 +46,10 @@ A clause removed by `ignore()` still counts as a reference:
 
 ```php
 use HosmelQ\SearchSyntaxParser\SearchParser;
-use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
+use HosmelQ\SearchSyntaxParser\Validation\Field;
 
 $parser = SearchParser::query('coffee status:ALL')->allowedFields([
-    AllowedField::string('status')->ignore('ALL')->default('active'),
+    Field::string('status')->ignore('ALL')->default('active'),
 ]);
 
 $text = $parser->build('string');
@@ -67,10 +67,10 @@ Generated nodes and their AND joins have null spans. A null span alone does not 
 
 ```php
 use HosmelQ\SearchSyntaxParser\SearchParser;
-use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
+use HosmelQ\SearchSyntaxParser\Validation\Field;
 
 $tree = SearchParser::query('coffee')->allowedFields([
-    AllowedField::string('status')->default('active'),
+    Field::string('status')->default('active'),
 ])->parse();
 
 $default = $tree->getRight();

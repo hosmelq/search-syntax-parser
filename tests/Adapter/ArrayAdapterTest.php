@@ -11,12 +11,12 @@ use HosmelQ\SearchSyntaxParser\AST\Node\RangeNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\TermNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\UnaryOperatorNode;
 use HosmelQ\SearchSyntaxParser\SearchParser;
-use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
-use HosmelQ\SearchSyntaxParser\Validation\AllowedFieldItemRules;
+use HosmelQ\SearchSyntaxParser\Validation\Field;
+use HosmelQ\SearchSyntaxParser\Validation\FieldItemRules;
 use HosmelQ\SearchSyntaxParser\Validation\TextMatch;
 
 it('allows existence and converts quoted literal asterisks', function (): void {
-    $field = AllowedField::string('value')->map(['*' => 1]);
+    $field = Field::string('value')->map(['*' => 1]);
 
     expect(SearchParser::query('value:*')->allowedFields([$field])->build()['type'])->toBe('exists')
         ->and(SearchParser::query('value:"*"')->allowedFields([$field])->build()['value'])->toBe(1);
@@ -75,9 +75,9 @@ it('builds complex query with precedence and grouping', function (): void {
 });
 
 it('converts list items with their written positions after ignored items are removed', function (): void {
-    $field = AllowedField::array('amount')
-        ->each(fn (AllowedFieldItemRules $rules): AllowedFieldItemRules => $rules->string())
-        ->at(0, fn (AllowedFieldItemRules $rules): AllowedFieldItemRules => $rules->decimal(0, 2))
+    $field = Field::array('amount')
+        ->each(fn (FieldItemRules $rules): FieldItemRules => $rules->string())
+        ->at(0, fn (FieldItemRules $rules): FieldItemRules => $rules->decimal(0, 2))
         ->ignore('0')
         ->map([7 => 'seven']);
     $ignored = SearchParser::query('amount:0,hello')->allowedFields([$field])->parse();
@@ -97,7 +97,7 @@ it('exposes effective text matches for comparisons and mixed quoted lists', func
     string $mode,
     TextMatch $expected,
 ): void {
-    $field = AllowedField::string('title')->$mode();
+    $field = Field::string('title')->$mode();
     $parser = SearchParser::query('title:mug,"cup",plate')->allowedFields([$field]);
     $list = $parser->parse();
 
@@ -115,7 +115,7 @@ it('exposes effective text matches for comparisons and mixed quoted lists', func
 ]);
 
 it('keeps default text values unquoted and explicit wildcard patterns independent', function (): void {
-    $field = AllowedField::string('title')->words()->default('mug');
+    $field = Field::string('title')->words()->default('mug');
     $parser = SearchParser::query('title:mu*,"cup"')->allowedFields([$field]);
 
     expect(SearchParser::query('')->allowedFields([$field])->build()['match'])->toBe('words')
@@ -125,7 +125,7 @@ it('keeps default text values unquoted and explicit wildcard patterns independen
 });
 
 it('keeps user values in the AST and string output while converting comparisons lists and ranges', function (): void {
-    $field = AllowedField::decimal('price', 2, internalName: 'unit_price')->max(11)->scale(100);
+    $field = Field::decimal('price', 2, internalName: 'unit_price')->max(11)->scale(100);
     $comparison = SearchParser::query('price:>10.50')->allowedFields([$field]);
     $list = SearchParser::query('price:5.00,"10.50"')->allowedFields([$field]);
     $range = SearchParser::query('price:[5.00 TO 10.50]')->allowedFields([$field]);
@@ -232,7 +232,7 @@ it('maps range node', function (): void {
 });
 
 it('maps shared array items and passes unmapped values through', function (): void {
-    $field = AllowedField::array('tags')
+    $field = Field::array('tags')
         ->each(fn ($rules) => $rules->string())
         ->map(['open' => false, 'closed' => 0]);
 
@@ -240,10 +240,10 @@ it('maps shared array items and passes unmapped values through', function (): vo
         SearchParser::query('tags:open,other,closed')->allowedFields([$field])->build()['values'],
     )
         ->toBe([false, 'other', 0])
-        ->and(AllowedField::boolean('flag')->map([0 => 'off', 1 => 'on'])->toStorage(false))->toBe(
+        ->and(Field::boolean('flag')->map([0 => 'off', 1 => 'on'])->toStorage(false))->toBe(
             'off',
         )
-        ->and(new AllowedField('value')->toStorage(1.5))->toBe(1.5);
+        ->and(new Field('value')->toStorage(1.5))->toBe(1.5);
 });
 
 it('maps term node', function (): void {

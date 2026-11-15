@@ -14,11 +14,11 @@ After [installing the package](installation), pass a query and its allowed field
 
 ```php
 use HosmelQ\SearchSyntaxParser\SearchParser;
-use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
+use HosmelQ\SearchSyntaxParser\Validation\Field;
 
 $parser = SearchParser::query('title:Coffee price:<10')->allowedFields([
-    AllowedField::string('title'),
-    AllowedField::numeric('price')->min(0),
+    Field::string('title'),
+    Field::numeric('price')->min(0),
 ]);
 
 $filters = $parser->build();

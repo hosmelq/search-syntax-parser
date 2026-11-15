@@ -15,9 +15,9 @@ Pass a field leaf directly from `parse()` to `compile()`. The compiler normalize
 ```php
 use HosmelQ\SearchSyntaxParser\Query\ClauseCompiler;
 use HosmelQ\SearchSyntaxParser\SearchParser;
-use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
+use HosmelQ\SearchSyntaxParser\Validation\Field;
 
-$field = AllowedField::decimal('price', 2)->scale(100)->nullable();
+$field = Field::decimal('price', 2)->scale(100)->nullable();
 $node = SearchParser::query('price:!=10.50')->allowedFields([$field])->parse();
 $clauses = new ClauseCompiler()->compile($field, $node);
 $clause = $clauses[0];
@@ -62,9 +62,9 @@ A `words()` field supplies `fullText` metadata for equality, list alternatives, 
 ```php
 use HosmelQ\SearchSyntaxParser\Query\ClauseCompiler;
 use HosmelQ\SearchSyntaxParser\SearchParser;
-use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
+use HosmelQ\SearchSyntaxParser\Validation\Field;
 
-$field = AllowedField::string('text')->words();
+$field = Field::string('text')->words();
 $node = SearchParser::query('text:"coffee ceramic",espresso')->allowedFields([$field])->parse();
 $clauses = new ClauseCompiler()->compile($field, $node);
 ```
@@ -82,12 +82,12 @@ Call `term()` once for each configured term field. Pass a bare `TermNode` or `Wi
 ```php
 use HosmelQ\SearchSyntaxParser\Query\ClauseCompiler;
 use HosmelQ\SearchSyntaxParser\SearchParser;
-use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
+use HosmelQ\SearchSyntaxParser\Validation\Field;
 
 $compiler = new ClauseCompiler();
 $node = SearchParser::query('coffee')->parse();
-$title = $compiler->term(AllowedField::string('title'), $node);
-$id = $compiler->term(AllowedField::integer('id'), $node);
+$title = $compiler->term(Field::string('title'), $node);
+$id = $compiler->term(Field::integer('id'), $node);
 ```
 
 `$title` is a LIKE clause with value `%coffee%`. `$id` is null because `coffee` is not an integer.

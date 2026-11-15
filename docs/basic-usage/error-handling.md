@@ -9,11 +9,11 @@ Catch `SearchSyntaxException` to handle query errors. It exposes `getReason()`, 
 ```php
 use HosmelQ\SearchSyntaxParser\Exception\SearchSyntaxException;
 use HosmelQ\SearchSyntaxParser\SearchParser;
-use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
+use HosmelQ\SearchSyntaxParser\Validation\Field;
 
 try {
     SearchParser::query('  age:old')->allowedFields([
-        AllowedField::integer('age', 'user_age'),
+        Field::integer('age', 'user_age'),
     ])->build();
 } catch (SearchSyntaxException $exception) {
     $reason = $exception->getReason()->value;

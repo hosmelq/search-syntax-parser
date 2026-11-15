@@ -4,15 +4,15 @@ declare(strict_types=1);
 
 use HosmelQ\SearchSyntaxParser\Exception\InvalidFieldValueException;
 use HosmelQ\SearchSyntaxParser\SearchParser;
-use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
+use HosmelQ\SearchSyntaxParser\Validation\Field;
 use HosmelQ\SearchSyntaxParser\Validation\Validators\DecimalValidator;
 
 it('rejects decimal text with a trailing newline before any conversion', function (): void {
-    $field = AllowedField::decimal('amount', 0, 2)->map([7 => 'seven']);
+    $field = Field::decimal('amount', 0, 2)->map([7 => 'seven']);
 
     expect($field->validate("7.00\n"))
         ->toBeFalse()
-        ->and(AllowedField::decimal('amount', 0, 2)->scale(100)->validate("7.00\n"))
+        ->and(Field::decimal('amount', 0, 2)->scale(100)->validate("7.00\n"))
         ->toBeFalse()
         ->and(
             fn (): mixed

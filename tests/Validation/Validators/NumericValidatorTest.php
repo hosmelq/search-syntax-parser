@@ -4,14 +4,14 @@ declare(strict_types=1);
 
 use HosmelQ\SearchSyntaxParser\Exception\InvalidFieldValueException;
 use HosmelQ\SearchSyntaxParser\SearchParser;
-use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
+use HosmelQ\SearchSyntaxParser\Validation\Field;
 use HosmelQ\SearchSyntaxParser\Validation\Validators\NumericValidator;
 
 it('rejects non-finite numeric values', function (): void {
     expect(
         fn (): mixed
             => SearchParser::query('amount:1e400')
-                ->allowedFields([AllowedField::numeric('amount')->scale(100)])
+                ->allowedFields([Field::numeric('amount')->scale(100)])
                 ->build(),
     )->toThrow(
         InvalidFieldValueException::class,

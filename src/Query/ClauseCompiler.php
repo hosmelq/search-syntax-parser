@@ -15,7 +15,7 @@ use HosmelQ\SearchSyntaxParser\AST\Visitor\NegationNormalFormTransformer;
 use HosmelQ\SearchSyntaxParser\Exception\InvalidFieldOperatorException;
 use HosmelQ\SearchSyntaxParser\Support\FullText;
 use HosmelQ\SearchSyntaxParser\Support\LikePattern;
-use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
+use HosmelQ\SearchSyntaxParser\Validation\Field;
 use HosmelQ\SearchSyntaxParser\Validation\TextMatch;
 
 final readonly class ClauseCompiler
@@ -27,7 +27,7 @@ final readonly class ClauseCompiler
      * @return list<Clause>
      */
     public function compile(
-        AllowedField $field,
+        Field $field,
         ComparisonNode|ExistsNode|InNode|RangeNode|WildcardNode $node,
         bool $negated = false,
     ): array {
@@ -68,7 +68,7 @@ final readonly class ClauseCompiler
      * Combine eligible fields with OR, or AND when negated; no matches means false, or true when negated.
      */
     public function term(
-        AllowedField $field,
+        Field $field,
         TermNode|WildcardNode $node,
         bool $negated = false,
     ): null|Clause {
@@ -139,7 +139,7 @@ final readonly class ClauseCompiler
     }
 
     private function clause(
-        AllowedField $field,
+        Field $field,
         ComparisonNode|ExistsNode|InNode|RangeNode|WildcardNode $node,
         bool $negated,
     ): Clause {

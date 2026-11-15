@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
+use HosmelQ\SearchSyntaxParser\Validation\Field;
 use HosmelQ\SearchSyntaxParser\Validation\Validators\MaxValidator;
 
 it('rejects arrays above the maximum size', function (
@@ -15,7 +15,7 @@ it('rejects arrays above the maximum size', function (
 })->with(['too many' => [2, [1, 2, 3]]]);
 
 it('rejects non-finite configuration bounds', function (float $bound): void {
-    AllowedField::numeric('p')->max($bound);
+    Field::numeric('p')->max($bound);
 })->throws(InvalidArgumentException::class, 'Size bounds must be finite.')->with([INF, -INF, NAN]);
 
 it('rejects numbers above the maximum', function (

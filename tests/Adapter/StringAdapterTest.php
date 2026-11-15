@@ -11,8 +11,8 @@ use HosmelQ\SearchSyntaxParser\AST\Node\UnaryOperatorNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\WildcardNode;
 use HosmelQ\SearchSyntaxParser\SearchParser;
 use HosmelQ\SearchSyntaxParser\Sorting\AllowedSort;
-use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
-use HosmelQ\SearchSyntaxParser\Validation\AllowedFieldItemRules;
+use HosmelQ\SearchSyntaxParser\Validation\Field;
+use HosmelQ\SearchSyntaxParser\Validation\FieldItemRules;
 
 it('refuses field names the query syntax cannot express', function (string $name): void {
     new StringAdapter()->build(new ComparisonNode($name, '=', 'x'));
@@ -33,8 +33,8 @@ it('rejects wildcard segments that the grammar cannot express', function (array 
 it('appends directives before the typed sort and groups an OR filter root', function (): void {
     $parser = SearchParser::query('sort:created-desc limit:25 mode:only (coffee OR tea)')
         ->allowedFields([
-            AllowedField::string('mode')->directive(),
-            AllowedField::integer('limit')->directive(),
+            Field::string('mode')->directive(),
+            Field::integer('limit')->directive(),
         ])
         ->allowedSorts(['created']);
 
@@ -44,7 +44,7 @@ it('appends directives before the typed sort and groups an OR filter root', func
 });
 
 it('keeps a minus before dots bare when the parser reads it as literal text', function (): void {
-    $fields = static fn (): array => [AllowedField::string('p')->prefix()];
+    $fields = static fn (): array => [Field::string('p')->prefix()];
     $parser = SearchParser::query('p:-..5')->allowedFields($fields());
 
     expect($parser->build('string'))->toBe('p:-..5')
@@ -126,9 +126,9 @@ it('omits every default clause while preserving explicit filters', function (
 ): void {
     $parser = SearchParser::query($query)->allowedFields([
         'title',
-        AllowedField::string('status')->default('open'),
-        AllowedField::array('tags')->default(['a', 'b']),
-        AllowedField::string('deleted')->default(null),
+        Field::string('status')->default('open'),
+        Field::array('tags')->default(['a', 'b']),
+        Field::string('deleted')->default(null),
     ]);
 
     expect($parser->build('string'))->toBe($expected);
@@ -180,7 +180,7 @@ it('parses compact bounds like bracket ranges and serializes them with brackets'
 ]);
 
 it('preserves external field names with every field node', function (string $query): void {
-    $field = AllowedField::string('name', 'full_name');
+    $field = Field::string('name', 'full_name');
     $parser = SearchParser::query($query)->allowedFields([$field]);
     $text = $parser->build('string');
 
@@ -193,7 +193,7 @@ it('preserves field value quotes through parsing and string serialization', func
     bool $quoted,
     string $text,
 ): void {
-    $parser = SearchParser::query($query)->allowedFields([AllowedField::string('title')]);
+    $parser = SearchParser::query($query)->allowedFields([Field::string('title')]);
 
     expect($parser->parse()->isQuoted())->toBe($quoted)
         ->and($parser->build()['quoted'])->toBe($quoted)
@@ -206,7 +206,7 @@ it('preserves field value quotes through parsing and string serialization', func
 ]);
 
 it('preserves non-exact modes when serializing numeric-looking strings and keyword values', function (): void {
-    $field = AllowedField::string('title')->prefix();
+    $field = Field::string('title')->prefix();
     $parser = SearchParser::query('title:123,true,AND,=5')->allowedFields([$field]);
     $text = $parser->build('string');
 
@@ -252,7 +252,7 @@ it('preserves quoted terms in array output and string round trips', function (
 ]);
 
 it('quotes comparison values that equal an alias token so they stay literal', function (): void {
-    $fields = static fn (): array => [AllowedField::integer('level')->alias('7', 9)];
+    $fields = static fn (): array => [Field::integer('level')->alias('7', 9)];
     $parser = SearchParser::query('level:"7"')->allowedFields($fields());
 
     expect($parser->parse()->getValue())->toBe(7)
@@ -279,8 +279,8 @@ it('quotes programmatic terms whose text needs literal syntax', function (string
 
 it('renders typed settings without any filter tree and omits defaults', function (): void {
     $parser = SearchParser::query('sort:created mode:only')->allowedFields([
-        AllowedField::string('mode')->directive(),
-        AllowedField::boolean('archived')->directive()->default(false),
+        Field::string('mode')->directive(),
+        Field::boolean('archived')->directive()->default(false),
     ])->allowedSorts(['created']);
 
     expect($parser->build('string'))->toBe('mode:only AND sort:created-asc')
@@ -291,10 +291,10 @@ it('renders typed settings without any filter tree and omits defaults', function
 
 it('round trips date expression text and quotes unchanged', function (string $query): void {
     $fields = [
-        AllowedField::date('created')->allowPartialDates(),
-        AllowedField::date('due'),
-        AllowedField::array('dates')->each(
-            fn (AllowedFieldItemRules $rules): AllowedFieldItemRules
+        Field::date('created')->allowPartialDates(),
+        Field::date('due'),
+        Field::array('dates')->each(
+            fn (FieldItemRules $rules): FieldItemRules
                 => $rules->date()->allowPartialDates(),
         ),
     ];
@@ -312,7 +312,7 @@ it('round trips date expression text and quotes unchanged', function (string $qu
 ]);
 
 it('round trips directives whose public names become numeric PHP array keys', function (): void {
-    $field = AllowedField::integer('123')->directive();
+    $field = Field::integer('123')->directive();
     $parser = SearchParser::query('123:7')->allowedFields([$field]);
     $text = $parser->build('string');
     $reparsed = SearchParser::query($text)->allowedFields([$field]);
@@ -327,11 +327,11 @@ it('round trips filters, scalar directives, and sorting in stable declaration or
 ): void {
     $configure = static fn (string $input): SearchParser
         => SearchParser::query($input)->allowedFields([
-            AllowedField::string('mode')->directive()->alias('mine', 'only')->default('without'),
-            AllowedField::integer('limit')->directive()->default(20),
-            AllowedField::boolean('archived')->directive()->default(false),
-            new AllowedField('value')->directive(),
-            AllowedField::string('status')->default('open'),
+            Field::string('mode')->directive()->alias('mine', 'only')->default('without'),
+            Field::integer('limit')->directive()->default(20),
+            Field::boolean('archived')->directive()->default(false),
+            new Field('value')->directive(),
+            Field::string('status')->default('open'),
         ])->allowedSorts([
             AllowedSort::field('created-at', 'created_at'),
             AllowedSort::field('updated-at', 'updated_at'),
@@ -386,7 +386,7 @@ it('round trips observable array output', function (string $query): void {
 
 it('round trips resolved directive values that also name aliases without resolving them again', function (): void {
     $calls = 0;
-    $field = AllowedField::integer('limit')->directive()->alias('25', 50)->alias(
+    $field = Field::integer('limit')->directive()->alias('25', 50)->alias(
         'mine',
         function () use (&$calls): int {
             $calls++;
@@ -421,7 +421,7 @@ it('separates unquoted values that would merge with a comparison operator', func
 ]);
 
 it('serializes alias tokens without running alias closures', function (): void {
-    $field = AllowedField::string('owner')->alias(
+    $field = Field::string('owner')->alias(
         'me',
         static fn (): never
             => throw new LogicException('Alias closures must not run while serializing.'),
@@ -444,11 +444,11 @@ it('writes unquoted values bare when the field reads them back unchanged', funct
     string $query,
 ): void {
     $fields = static fn (): array => [
-        AllowedField::string('title'),
-        AllowedField::string('name')->prefix(),
-        AllowedField::decimal('price', 0, 2),
-        AllowedField::in('status', ['1', '2', 'open']),
-        new AllowedField('code'),
+        Field::string('title'),
+        Field::string('name')->prefix(),
+        Field::decimal('price', 0, 2),
+        Field::in('status', ['1', '2', 'open']),
+        new Field('code'),
     ];
     $parser = SearchParser::query($query)->allowedFields($fields());
     $text = $parser->build('string');

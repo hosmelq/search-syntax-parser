@@ -8,7 +8,7 @@ use HosmelQ\SearchSyntaxParser\AST\Node\NodeInterface;
 use HosmelQ\SearchSyntaxParser\AST\Node\TermNode;
 use HosmelQ\SearchSyntaxParser\AST\Visitor\NodeTransformer;
 use HosmelQ\SearchSyntaxParser\SearchParser;
-use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
+use HosmelQ\SearchSyntaxParser\Validation\Field;
 
 it('allows one visit override to rewrite leaves anywhere in a tree', function (): void {
     $transformer = new class () extends NodeTransformer {
@@ -36,9 +36,9 @@ it('preserves the complete tree including spans quoted terms and default origins
         'NOT (price:>10 OR status:open,closed) title:[a TO z] tag:* title:mu* "coffee"',
     )
         ->allowAnyField()->allowedFields([
-            AllowedField::string('region')->default('north'),
-            AllowedField::array('labels')->default(['one', 'two']),
-            AllowedField::string('deleted')->default(null),
+            Field::string('region')->default('north'),
+            Field::array('labels')->default(['one', 'two']),
+            Field::string('deleted')->default(null),
         ])->parse();
     $transformed = new NodeTransformer()->transform($node);
 

@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Compile parsed inequalities with their complemented operators and preserve surrounding negation.
 - Use `SearchSyntaxException` and grouped error reasons for query errors.
 - Reject non-finite size bounds as configuration errors.
+- Rename `AllowedField` to `Field` and `AllowedFieldItemRules` to `FieldItemRules`.
 - Replace the lexer, mark lexer and parser classes as internal, and remove unused validation APIs.
 - Remove the doctrine/lexer, archtechx/enums, and thecodingmachine/safe runtime dependencies.
 - Align development tooling, reorganize tests, and remove the redundant framework CI job.

@@ -4,16 +4,16 @@ description: "Choose searchable fields, validate and cast their values, and conf
 weight: 2
 ---
 
-Pass field names or `AllowedField` definitions to `allowedFields()` before accepting field queries. Bare terms work without configuration; unknown fields throw `InvalidFieldException` with reason `field.not_allowed`.
+Pass field names or `Field` definitions to `allowedFields()` before accepting field queries. Bare terms work without configuration; unknown fields throw `InvalidFieldException` with reason `field.not_allowed`.
 
 ```php
 use HosmelQ\SearchSyntaxParser\SearchParser;
-use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
+use HosmelQ\SearchSyntaxParser\Validation\Field;
 
 $filters = SearchParser::query('age:25 status:ACTIVE')->allowedFields([
-    AllowedField::integer('age')->min(0),
-    AllowedField::in('status', ['active', 'draft']),
-    AllowedField::string('name')->max(100),
+    Field::integer('age')->min(0),
+    Field::in('status', ['active', 'draft']),
+    Field::string('name')->max(100),
 ])->build();
 ```
 
@@ -21,7 +21,7 @@ The age becomes the integer `25`, and the status becomes the canonical string `a
 
 ## Value inference
 
-A string entry in `allowedFields()`, `new AllowedField(...)`, or a callback field uses ordinary value inference:
+A string entry in `allowedFields()`, `new Field(...)`, or a callback field uses ordinary value inference:
 
 | Input | Value |
 | --- | --- |
@@ -54,10 +54,10 @@ Typed fields cast raw text even when it is quoted:
 
 ```php
 use HosmelQ\SearchSyntaxParser\SearchParser;
-use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
+use HosmelQ\SearchSyntaxParser\Validation\Field;
 
 $parser = SearchParser::query('price:"10.50"')->allowedFields([
-    AllowedField::decimal('price', 2)->max(100),
+    Field::decimal('price', 2)->max(100),
 ]);
 
 $value = $parser->parse()->getValue();
@@ -74,9 +74,9 @@ Bounds must be finite: `INF`, `-INF`, and `NAN` throw `InvalidArgumentException`
 Use `callback()` for application validation:
 
 ```php
-use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
+use HosmelQ\SearchSyntaxParser\Validation\Field;
 
-$rating = AllowedField::callback(
+$rating = Field::callback(
     'rating',
     fn (mixed $value, string $attribute): bool => is_int($value) && $value >= 1 && $value <= 5,
 );
@@ -92,10 +92,10 @@ Every factory accepts an internal name. Array output uses that name; the syntax 
 
 ```php
 use HosmelQ\SearchSyntaxParser\SearchParser;
-use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
+use HosmelQ\SearchSyntaxParser\Validation\Field;
 
 $parser = SearchParser::query('age:10')->allowedFields([
-    AllowedField::integer('age', 'user_age'),
+    Field::integer('age', 'user_age'),
 ]);
 
 $filters = $parser->build();
@@ -110,15 +110,15 @@ A name ending in `.*` declares a pattern. Configure `keys()` with a regular expr
 
 ```php
 use HosmelQ\SearchSyntaxParser\SearchParser;
-use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
+use HosmelQ\SearchSyntaxParser\Validation\Field;
 
-$metadata = AllowedField::string('meta.*', 'attributes.*')
+$metadata = Field::string('meta.*', 'attributes.*')
     ->keys('/^[a-z_]+$/D')
     ->prefix();
 
 $parser = SearchParser::query('meta.color:blue')->allowedFields([
     $metadata,
-    AllowedField::integer('meta.count', 'item_count'),
+    Field::integer('meta.count', 'item_count'),
 ]);
 
 $filters = $parser->build();
@@ -136,10 +136,10 @@ Use `alias()` for an exact, case-sensitive token. It resolves before casting and
 
 ```php
 use HosmelQ\SearchSyntaxParser\SearchParser;
-use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
+use HosmelQ\SearchSyntaxParser\Validation\Field;
 
 $userId = 42;
-$owner = AllowedField::integer('owner')->alias('@me', fn (): int => $userId);
+$owner = Field::integer('owner')->alias('@me', fn (): int => $userId);
 $node = SearchParser::query('owner:@me')->allowedFields([$owner])->parse();
 ```
 
@@ -153,11 +153,11 @@ Aliases apply to comparisons, list items, range bounds, and string defaults. Quo
 
 ```php
 use HosmelQ\SearchSyntaxParser\SearchParser;
-use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
+use HosmelQ\SearchSyntaxParser\Validation\Field;
 
 $text = SearchParser::query('title:coffee status:ALL')->allowedFields([
     'title',
-    AllowedField::in('status', ['active', 'draft'])->ignore('all'),
+    Field::in('status', ['active', 'draft'])->ignore('all'),
 ])->build('string');
 ```
 
@@ -173,9 +173,9 @@ Text fields match exactly by default. Call `prefix()`, `contains()`, or `words()
 
 ```php
 use HosmelQ\SearchSyntaxParser\SearchParser;
-use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
+use HosmelQ\SearchSyntaxParser\Validation\Field;
 
-$title = AllowedField::string('title')->prefix();
+$title = Field::string('title')->prefix();
 $parser = SearchParser::query('title:mug,"cup"')->allowedFields([$title]);
 $filters = $parser->build();
 ```
@@ -191,9 +191,9 @@ These modes need `string()` or an array field with shared `each()->string()` rul
 Use `operators()` to allow a subset of `=`, `!=`, `>`, `>=`, `<`, and `<=` for comparisons, lists, and patterns. Passing no arguments allows none; unknown operators are configuration errors.
 
 ```php
-use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
+use HosmelQ\SearchSyntaxParser\Validation\Field;
 
-$status = AllowedField::in('status', ['active', 'draft'])
+$status = Field::in('status', ['active', 'draft'])
     ->operators('=', '!=')
     ->withoutRanges()
     ->withoutWildcards()
@@ -204,12 +204,12 @@ Use `withoutLists()`, `withoutRanges()`, `withoutWildcards()`, and `withoutExist
 
 ## Restrict wildcard patterns
 
-Leading wildcards are rejected by default. `AllowedField::allowLeadingWildcards()` enables them for one field. The parser-level method applies to bare terms and unconfigured fields accepted by `allowAnyField()`; it does not override configured fields.
+Leading wildcards are rejected by default. `Field::allowLeadingWildcards()` enables them for one field. The parser-level method applies to bare terms and unconfigured fields accepted by `allowAnyField()`; it does not override configured fields.
 
 ```php
-use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
+use HosmelQ\SearchSyntaxParser\Validation\Field;
 
-$name = AllowedField::string('name')->allowLeadingWildcards()->minWildcardLength(3);
+$name = Field::string('name')->allowLeadingWildcards()->minWildcardLength(3);
 ```
 
 This accepts `name:*son*` and `name:s*on`. The minimum counts literal Unicode characters across all segments, excluding wildcard operators. Quoted literal stars count as text. Zero removes the minimum; a negative number is a configuration error. Ordinary values and `field:*` existence checks are unaffected.
@@ -224,9 +224,9 @@ Use `scale()` to multiply integer, numeric, or decimal values with exact decimal
 
 ```php
 use HosmelQ\SearchSyntaxParser\SearchParser;
-use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
+use HosmelQ\SearchSyntaxParser\Validation\Field;
 
-$price = AllowedField::decimal('price', 2)->max(20)->scale(100);
+$price = Field::decimal('price', 2)->max(20)->scale(100);
 $parser = SearchParser::query('price:10.50')->allowedFields([$price]);
 
 $value = $parser->parse()->getValue();
@@ -238,9 +238,9 @@ The AST value is `'10.50'`; the stored value is `1050`. Integral results use int
 Use `map()` to translate cast values to stored scalars:
 
 ```php
-use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
+use HosmelQ\SearchSyntaxParser\Validation\Field;
 
-$priority = AllowedField::in('priority', ['low', 'normal', 'high'])
+$priority = Field::in('priority', ['low', 'normal', 'high'])
     ->map(['low' => 1, 'normal' => 2, 'high' => 3]);
 ```
 
@@ -259,10 +259,10 @@ Storage conversions reject explicit wildcards because a pattern cannot be conver
 Without a custom format, `date()` accepts `YYYY-MM-DD`, ISO datetimes, and the relative expressions below. Datetimes use `YYYY-MM-DDTHH[:MM[:SS[.fraction]]][Z|±HH[:MM]]`. Calendar, time, and offset components must be valid; `T` and `Z` are uppercase.
 
 ```php
-use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
+use HosmelQ\SearchSyntaxParser\Validation\Field;
 
-$created = AllowedField::date('created');
-$birthday = AllowedField::date('birthday', 'd/m/Y');
+$created = Field::date('created');
+$birthday = Field::date('birthday', 'd/m/Y');
 ```
 
 A custom format must parse without warnings or errors and format back to exactly the input. Dates stay strings in the AST and both built-in adapters. Size rules keep their ordinary behavior; they do not compare calendar dates.
@@ -361,7 +361,7 @@ This day begins at 01:00 and ends at 00:00 the next day, lasting 23 hours. Relat
 
 ```php
 use HosmelQ\SearchSyntaxParser\SearchParser;
-use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
+use HosmelQ\SearchSyntaxParser\Validation\Field;
 
 enum Status: string
 {
@@ -370,7 +370,7 @@ enum Status: string
 }
 
 $value = SearchParser::query('status:DRAFT')->allowedFields([
-    AllowedField::enum('status', Status::class),
+    Field::enum('status', Status::class),
 ])->parse()->getValue();
 ```
 
@@ -387,9 +387,9 @@ Both accept either letter case, require strings, and work in `each()` and `at()`
 Adapters can call `tryCast($value, quoted: false, index: 0)` to resolve aliases, cast, and validate a candidate. Invalid input returns null. Valid `false`, `0`, and empty strings remain distinct from failure:
 
 ```php
-use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
+use HosmelQ\SearchSyntaxParser\Validation\Field;
 
-$id = AllowedField::integer('id')->min(1);
+$id = Field::integer('id')->min(1);
 $value = $id->tryCast('1042');
 ```
 

@@ -22,8 +22,8 @@ use HosmelQ\SearchSyntaxParser\Lexer\SearchLexer;
 use HosmelQ\SearchSyntaxParser\Lexer\Tokens;
 use HosmelQ\SearchSyntaxParser\Lexer\TokenType;
 use HosmelQ\SearchSyntaxParser\SearchParser;
-use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
-use HosmelQ\SearchSyntaxParser\Validation\AllowedFieldItemRules;
+use HosmelQ\SearchSyntaxParser\Validation\Field;
+use HosmelQ\SearchSyntaxParser\Validation\FieldItemRules;
 
 /**
  * @internal
@@ -68,7 +68,7 @@ class Parser
     /**
      * Raw settings are resolved only after placement has been checked across every ancestor.
      *
-     * @var array<int|string, array{value: string, quoted: bool, start: int, valueIndex: int, allowed: null|AllowedField}>
+     * @var array<int|string, array{value: string, quoted: bool, start: int, valueIndex: int, allowed: null|Field}>
      */
     private array $settings = [];
 
@@ -146,7 +146,7 @@ class Parser
         foreach ($this->settings as $name => $setting) {
             $allowed = $setting['allowed'];
 
-            if (! $allowed instanceof AllowedField) {
+            if (! $allowed instanceof Field) {
                 continue;
             }
 
@@ -166,7 +166,7 @@ class Parser
 
     private function assertPattern(
         string $field,
-        null|AllowedField $allowed,
+        null|Field $allowed,
         string $pattern,
         bool $quoted,
         int $start,
@@ -176,7 +176,7 @@ class Parser
         $leading = $quoted ? mb_strlen($pattern) === 1 : str_starts_with($pattern, '*');
         $prefix = ! $leading && ($quoted || ! str_contains(mb_rtrim($pattern, '*'), '*'));
 
-        if ($allowed instanceof AllowedField) {
+        if ($allowed instanceof Field) {
             $allowed->assertWildcardAllowed(
                 $leading,
                 mb_strlen($pattern) - ($quoted ? 1 : mb_substr_count($pattern, '*')),
@@ -406,7 +406,7 @@ class Parser
             $this->referencedFields[$field] = true;
         }
 
-        $rules = $allowed instanceof AllowedField && $allowed->hasUsageRules() ? $allowed : null;
+        $rules = $allowed instanceof Field && $allowed->hasUsageRules() ? $allowed : null;
 
         if ($rules?->isDirective() === true) {
             return $this->parseSetting($field, $start, $allowed);
@@ -453,7 +453,7 @@ class Parser
         $valueAt = ($this->tokens->types[$scan] ?? null) === TokenType::Minus ? $scan + 1 : $scan;
 
         if (
-            $rules instanceof AllowedField
+            $rules instanceof Field
             || (
                 $this->hasStars
                 && (
@@ -578,7 +578,7 @@ class Parser
                 }
             }
 
-            if ($allowed instanceof AllowedField) {
+            if ($allowed instanceof Field) {
                 foreach ($values as $index => $item) {
                     if ($patterns[$index] === null && $allowed->isIgnored($item)) {
                         unset($values[$index], $quotes[$index]);
@@ -661,7 +661,7 @@ class Parser
     private function parseRange(
         string $field,
         int $start,
-        null|AllowedField $allowed,
+        null|Field $allowed,
         null|array $bounds = null,
     ): null|RangeNode {
         $valueIndex = $this->index;
@@ -724,7 +724,7 @@ class Parser
      */
     private function parseRangeBound(
         string $field,
-        null|AllowedField $allowed,
+        null|Field $allowed,
         null|string $value = null,
         null|int $position = null,
     ): null|bool|float|int|string {
@@ -737,7 +737,7 @@ class Parser
                 throw ParseException::invalidWildcardPattern($position);
             }
 
-            return $allowed?->cast($value, false) ?? AllowedFieldItemRules::infer($value, false);
+            return $allowed?->cast($value, false) ?? FieldItemRules::infer($value, false);
         }
 
         if (
@@ -762,7 +762,7 @@ class Parser
     /**
      * @phpstan-impure
      */
-    private function parseSetting(string $field, int $start, null|AllowedField $allowed): null
+    private function parseSetting(string $field, int $start, null|Field $allowed): null
     {
         if (! $this->settingsAllowed) {
             throw InvalidFieldOperatorException::directiveNotTopLevel(
@@ -877,7 +877,7 @@ class Parser
      */
     private function parseValue(
         string $field,
-        null|AllowedField $allowed,
+        null|Field $allowed,
         int $index = 0,
         bool $rangeChecked = false,
     ): bool|float|int|string {
@@ -929,7 +929,7 @@ class Parser
             ? $this->wildcardSegments($value, $type) : null;
 
         return $allowed?->cast($value, $quoted, $index)
-            ?? AllowedFieldItemRules::infer($value, $quoted);
+            ?? FieldItemRules::infer($value, $quoted);
     }
 
     private function position(null|int $index = null): int

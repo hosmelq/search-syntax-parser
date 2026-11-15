@@ -19,11 +19,11 @@ use HosmelQ\SearchSyntaxParser\Exception\InvalidFieldValueException;
 use HosmelQ\SearchSyntaxParser\Exception\ParseException;
 use HosmelQ\SearchSyntaxParser\Exception\SearchSyntaxException;
 use HosmelQ\SearchSyntaxParser\SearchParser;
-use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
-use HosmelQ\SearchSyntaxParser\Validation\AllowedFieldItemRules;
+use HosmelQ\SearchSyntaxParser\Validation\Field;
+use HosmelQ\SearchSyntaxParser\Validation\FieldItemRules;
 
 it('checks every pattern in a list before running aliases or validators', function (): void {
-    $field = AllowedField::string('name')->alias(
+    $field = Field::string('name')->alias(
         'first',
         static fn (): never => throw new LogicException('Aliases must not run.'),
     );
@@ -35,7 +35,7 @@ it('checks operator and clause restrictions before ignoring values', function (
     string $query,
     string $restriction,
 ): void {
-    $field = AllowedField::string('status')->alias('@all', static function (): never {
+    $field = Field::string('status')->alias('@all', static function (): never {
         throw new LogicException('Usage rules must run before aliases.');
     })->ignore('ALL', 'ALL*', '*');
 
@@ -61,7 +61,7 @@ it('counts ignored clauses and expanded list items toward input limits', functio
     string $query,
 ): void {
     SearchParser::query($query)->maxClauses(1)->allowedFields([
-        AllowedField::string('status')->ignore('ALL'),
+        Field::string('status')->ignore('ALL'),
     ])->parse();
 })->throws(ParseException::class, 'maximum of 1 clauses')->with([
     'status:ALL status:ALL',
@@ -71,7 +71,7 @@ it('counts ignored clauses and expanded list items toward input limits', functio
 
 it('does not allow leading free text patterns through a field opt in', function (): void {
     SearchParser::query('*son')->allowedFields([
-        AllowedField::string('name')->allowLeadingWildcards(),
+        Field::string('name')->allowLeadingWildcards(),
     ])->parse();
 })->throws(ParseException::class);
 
@@ -105,7 +105,7 @@ it('enforces directive placement and shape for sorts', function (
 
 it('keeps explicit usage restrictions ahead of directive aliases', function (): void {
     SearchParser::query('mode:@me')->allowedFields([
-        AllowedField::string('mode')->directive()->operators('!=')->alias(
+        Field::string('mode')->directive()->operators('!=')->alias(
             '@me',
             static function (): never {
                 throw new LogicException('Disallowed operators must not resolve aliases.');
@@ -119,9 +119,7 @@ it('positions field validation errors at the start of the value', function (
     int $position,
 ): void {
     try {
-        SearchParser::query($query)
-            ->allowedFields([AllowedField::integer('age', 'user_age')])
-            ->build();
+        SearchParser::query($query)->allowedFields([Field::integer('age', 'user_age')])->build();
 
         test()->fail('Expected a value error.');
     } catch (InvalidFieldValueException $invalidFieldValueException) {
@@ -139,7 +137,7 @@ it('positions field validation errors at the start of the value', function (
 ]);
 
 it('rejects a separated minus in relative values', function (): void {
-    $fields = [AllowedField::date('created')];
+    $fields = [Field::date('created')];
 
     expect(
         fn (): null|NodeInterface
@@ -154,7 +152,7 @@ it('rejects an exact wildcard outside exists and open bounds', function (string 
 it('rejects compact ranges before resolving aliases when ranges are disabled', function (): void {
     try {
         SearchParser::query('é x:first..5')->allowedFields([
-            AllowedField::integer('x')
+            Field::integer('x')
                 ->withoutRanges()
                 ->alias(
                     'first',
@@ -178,7 +176,7 @@ it('rejects compact ranges before resolving aliases when ranges are disabled', f
 
 it('rejects configured leading wildcards despite the global opt-in', function (): void {
     SearchParser::query('name:*son')->allowLeadingWildcards()->allowedFields([
-        AllowedField::string('name'),
+        Field::string('name'),
     ])->parse();
 })->throws(InvalidFieldOperatorException::class);
 
@@ -187,13 +185,13 @@ it('rejects directives below OR or negation before resolving aliases even if fil
     int $position,
 ): void {
     $parser = SearchParser::query($query)->allowedFields([
-        AllowedField::string('mode')->directive()->ignore('only')->alias(
+        Field::string('mode')->directive()->ignore('only')->alias(
             '@me',
             static function (): never {
                 throw new LogicException('Placement must be checked before resolving aliases.');
             },
         ),
-        AllowedField::string('status')->ignore('any'),
+        Field::string('status')->ignore('any'),
     ]);
 
     try {
@@ -233,15 +231,13 @@ it('rejects field patterns that fail validation of the original text', function 
     expect(
         fn (): mixed
                 => SearchParser::query('name:joe*')
-                    ->allowedFields([AllowedField::string('name')->max(3)])
+                    ->allowedFields([Field::string('name')->max(3)])
                     ->build(),
     )
         ->toThrow(InvalidFieldValueException::class)
         ->and(
             fn (): mixed
-                => SearchParser::query('age:2*')
-                    ->allowedFields([AllowedField::integer('age')])
-                    ->build(),
+                => SearchParser::query('age:2*')->allowedFields([Field::integer('age')])->build(),
         )
         ->toThrow(InvalidFieldValueException::class);
 });
@@ -298,10 +294,10 @@ it('rejects mixed clauses exceeding the clause limit', function (): void {
 });
 
 it('rejects mixed lists that fail array item or collection rules', function (): void {
-    $field = AllowedField::array('name')
+    $field = Field::array('name')
         ->size(2)
         ->each(
-            fn (AllowedFieldItemRules $rules): AllowedFieldItemRules => $rules->string()->max(3),
+            fn (FieldItemRules $rules): FieldItemRules => $rules->string()->max(3),
         );
 
     expect(
@@ -325,13 +321,13 @@ it('rejects nesting above the default limit', function (string $input): void {
 ]);
 
 it('rejects quoted asterisks as numeric range bounds', function (): void {
-    SearchParser::query('x:[* TO "*"]')->allowedFields([AllowedField::integer('x')])->parse();
+    SearchParser::query('x:[* TO "*"]')->allowedFields([Field::integer('x')])->parse();
 })->throws(InvalidFieldValueException::class);
 
 it('rejects repeated directives including an ignored first mention', function (): void {
     try {
         SearchParser::query('é mode:any AND (mode:only)')->allowedFields([
-            AllowedField::string('mode')->directive()->ignore('any')->default('without'),
+            Field::string('mode')->directive()->ignore('any')->default('without'),
         ])->parse();
 
         test()->fail('Expected a duplicate directive.');
@@ -372,8 +368,8 @@ it('rejects wildcard patterns on converted fields before resolving other values'
     bool $scale,
 ): void {
     $field = $scale
-        ? AllowedField::numeric('value')->scale(100)
-        : AllowedField::string('value')->map(['x' => 1]);
+        ? Field::numeric('value')->scale(100)
+        : Field::string('value')->map(['x' => 1]);
 
     $field->alias('@fail', static function (): never {
         throw new LogicException('Wildcard restrictions must run before alias resolution.');
@@ -420,7 +416,7 @@ it('reports character positions in the exact original input', function (
 ]);
 
 it('reports invalid wildcard usage instead of a disabled clause', function (
-    AllowedField $field,
+    Field $field,
     string $query,
 ): void {
     try {
@@ -433,10 +429,10 @@ it('reports invalid wildcard usage instead of a disabled clause', function (
 
     throw new RuntimeException('Expected a parse exception.');
 })->with([
-    'not equal with exists disabled' => [AllowedField::integer('age')->withoutExists(), 'age:!=*'],
-    'ordering with exists disabled' => [AllowedField::integer('age')->withoutExists(), 'age:>*'],
+    'not equal with exists disabled' => [Field::integer('age')->withoutExists(), 'age:!=*'],
+    'ordering with exists disabled' => [Field::integer('age')->withoutExists(), 'age:>*'],
     'bare list item with wildcards disabled' => [
-        AllowedField::string('n')->withoutWildcards(),
+        Field::string('n')->withoutWildcards(),
         'n:a,*',
     ],
 ]);
@@ -447,7 +443,7 @@ it('reports times on fields without time at the value in comparisons, lists and 
 ): void {
     try {
         SearchParser::query($query)->allowedFields([
-            AllowedField::date('due')->withoutTime(),
+            Field::date('due')->withoutTime(),
         ])->parse();
 
         test()->fail('Expected an invalid date value.');
@@ -468,7 +464,7 @@ it('requires a scalar equality directive before aliases or casting', function (
 ): void {
     try {
         SearchParser::query($clause)->allowedFields([
-            AllowedField::string('mode')->directive()->alias('@me', static function (): never {
+            Field::string('mode')->directive()->alias('@me', static function (): never {
                 throw new LogicException('Clause restrictions must precede alias resolution.');
             }),
         ])->parse();
@@ -499,7 +495,7 @@ it('still validates wildcard patterns whose text matches an ignored value', func
     string $query,
 ): void {
     SearchParser::query($query)->allowedFields([
-        AllowedField::integer('age')->ignore('ALL', 'ALL*'),
+        Field::integer('age')->ignore('ALL', 'ALL*'),
     ])->parse();
 })->throws(InvalidFieldValueException::class)->with(['age:ALL*', 'age:ALL,ALL*']);
 
@@ -538,7 +534,7 @@ it('throws on unexpected token after complete parse', function (): void {
 
 it('throws when any value in list fails validation', function (): void {
     $parser = SearchParser::query('age:1,foo')->allowedFields([
-        AllowedField::integer('age'),
+        Field::integer('age'),
     ]);
 
     $parser->build();
@@ -552,7 +548,7 @@ it('throws when field is not allowed', function (): void {
 
 it('throws when field value fails validation', function (): void {
     $parser = SearchParser::query('age:john')->allowedFields([
-        AllowedField::integer('age'),
+        Field::integer('age'),
     ]);
 
     $parser->build();
@@ -560,7 +556,7 @@ it('throws when field value fails validation', function (): void {
 
 it('throws when field value fails validation with operator (no colon)', function (): void {
     $parser = SearchParser::query('age>john')->allowedFields([
-        AllowedField::integer('age'),
+        Field::integer('age'),
     ]);
 
     $parser->build();
@@ -568,7 +564,7 @@ it('throws when field value fails validation with operator (no colon)', function
 
 it('validates alias results in every value context', function (string $query): void {
     SearchParser::query($query)->allowedFields([
-        AllowedField::integer('x')->min(10)->alias('@me', 7),
+        Field::integer('x')->min(10)->alias('@me', 7),
     ])->parse();
 })->throws(InvalidFieldValueException::class)->with([
     'x:@me',
@@ -579,9 +575,7 @@ it('validates alias results in every value context', function (string $query): v
 
 it('validates both compact bounds and reports their range start', function (string $query): void {
     try {
-        SearchParser::query($query)
-            ->allowedFields([AllowedField::integer('x')->between(1, 5)])
-            ->parse();
+        SearchParser::query($query)->allowedFields([Field::integer('x')->between(1, 5)])->parse();
 
         test()->fail('Expected an invalid bound error.');
     } catch (InvalidFieldValueException $invalidFieldValueException) {
@@ -592,9 +586,7 @@ it('validates both compact bounds and reports their range start', function (stri
 })->with(['é x:0..5', 'é x:1..6', 'é x:*..bad']);
 
 it('validates both range bounds with the field rules', function (string $input): void {
-    SearchParser::query($input)
-        ->allowedFields([AllowedField::integer('age')->min(0)->max(3)])
-        ->parse();
+    SearchParser::query($input)->allowedFields([Field::integer('age')->min(0)->max(3)])->parse();
 })->throws(InvalidFieldValueException::class)->with([
     'age:[abc TO xyz]', 'age:[abc TO 2]', 'age:[1 TO xyz]', 'age:[1 TO 5]', 'age:[-1 TO 2]',
 ]);
@@ -602,7 +594,7 @@ it('validates both range bounds with the field rules', function (string $input):
 it('validates directives at their value position', function (): void {
     try {
         SearchParser::query('é limit:zero')->allowedFields([
-            AllowedField::integer('limit')->directive()->min(1),
+            Field::integer('limit')->directive()->min(1),
         ])->parse();
 
         test()->fail('Expected an invalid directive value.');
@@ -615,7 +607,7 @@ it('validates directives at their value position', function (): void {
 });
 
 it('validates quoted asterisk range bounds as literal values', function (): void {
-    SearchParser::query('x:["*" TO 5]')->allowedFields([AllowedField::integer('x')])->parse();
+    SearchParser::query('x:["*" TO 5]')->allowedFields([Field::integer('x')])->parse();
 })->throws(InvalidFieldValueException::class);
 
 it('accepts a sort inside nested AND groups', function (): void {
@@ -628,7 +620,7 @@ it('accepts a sort inside nested AND groups', function (): void {
 it('accepts field patterns whose original text passes validation', function (): void {
     expect(
         SearchParser::query('name:jo*')
-            ->allowedFields([AllowedField::string('name')->max(3)])
+            ->allowedFields([Field::string('name')->max(3)])
             ->build()['segments'],
     )->toBe(['jo', '']);
 });
@@ -681,8 +673,8 @@ it('accepts quoted URLs and times', function (string $value): void {
 
 it('allows literal special characters and negative scalar directive values', function (): void {
     $parser = SearchParser::query('mode:"a*,b..c" offset:-3')->allowedFields([
-        AllowedField::string('mode')->directive(),
-        AllowedField::integer('offset')->directive(),
+        Field::string('mode')->directive(),
+        Field::integer('offset')->directive(),
     ]);
 
     $parser->parse();
@@ -705,7 +697,7 @@ it('bounds AND and OR spans by the surviving operands at both edges', function (
     int $offset,
     int $length,
 ): void {
-    $fields = [AllowedField::string('status')->ignore('ALL'), AllowedField::string('title')];
+    $fields = [Field::string('status')->ignore('ALL'), Field::string('title')];
     $span = SearchParser::query($query)->allowedFields($fields)->parse()->getSpan();
 
     expect($span?->offset)->toBe($offset)->and($span?->length)->toBe($length);
@@ -747,7 +739,7 @@ it('builds explicit wildcard patterns', function (
 
 it('casts and validates quoted range bounds', function (): void {
     $range = SearchParser::query('x:["1" TO "2"]')
-        ->allowedFields([AllowedField::integer('x')->between(1, 2)])
+        ->allowedFields([Field::integer('x')->between(1, 2)])
         ->parse();
 
     expect($range->getFrom())->toBe(1)->and($range->getTo())->toBe(2);
@@ -756,7 +748,7 @@ it('casts and validates quoted range bounds', function (): void {
 it('casts range bounds using the field type', function (): void {
     expect(
         SearchParser::query('price:[5.00 TO 10.50]')
-            ->allowedFields([AllowedField::decimal('price', 2)->max(11)])
+            ->allowedFields([Field::decimal('price', 2)->max(11)])
             ->build(),
     )->toBe(
         [
@@ -819,7 +811,7 @@ it('does not ignore wildcard patterns existence checks or bare terms', function 
     string $expected,
 ): void {
     expect(SearchParser::query($query)->allowedFields([
-        AllowedField::string('status')->ignore('ALL', 'ALL*', '*'),
+        Field::string('status')->ignore('ALL', 'ALL*', '*'),
     ])->build('string'))->toBe($expected);
 })->with([
     ['status:ALL*', 'status:ALL*'],
@@ -830,7 +822,7 @@ it('does not ignore wildcard patterns existence checks or bare terms', function 
 ]);
 
 it('does not validate ignored values in any scalar value context', function (string $query): void {
-    $field = AllowedField::callback('status', static function (): never {
+    $field = Field::callback('status', static function (): never {
         throw new LogicException('Ignored values must not be validated.');
     })->alias('@all', 'ALL')->ignore('ALL');
 
@@ -845,10 +837,10 @@ it('does not validate ignored values in any scalar value context', function (str
 ]);
 
 it('expands mixed lists that pass array item and collection rules', function (): void {
-    $field = AllowedField::array('name')
+    $field = Field::array('name')
         ->size(2)
         ->each(
-            fn (AllowedFieldItemRules $rules): AllowedFieldItemRules => $rules->string()->max(3),
+            fn (FieldItemRules $rules): FieldItemRules => $rules->string()->max(3),
         );
 
     expect(SearchParser::query('name:jo*,ann')->allowedFields([$field])->build()['operator'])->toBe(
@@ -899,7 +891,7 @@ it('expands mixed lists with the correct connective', function (
 
 it('extracts directives through nested AND groups while preserving filter semantics', function (): void {
     $parser = SearchParser::query('((mode:only AND coffee) AND (tea OR milk))')->allowedFields([
-        AllowedField::in('mode', ['only', 'without'])->directive(),
+        Field::in('mode', ['only', 'without'])->directive(),
     ]);
 
     expect($parser->build())->toBe(SearchParser::query('coffee AND (tea OR milk)')->build())
@@ -913,7 +905,7 @@ it('filters ignored list items while retaining an InNode even for one remaining 
     string $operator,
 ): void {
     $node = SearchParser::query($query)->allowedFields([
-        AllowedField::in('status', ['active', 'draft'])->ignore('ALL'),
+        Field::in('status', ['active', 'draft'])->ignore('ALL'),
     ])->parse();
 
     expect($node)->toBeInstanceOf(InNode::class)
@@ -932,7 +924,7 @@ it('filters literals from wildcard-expanded lists without ignoring patterns', fu
     string $expected,
 ): void {
     $parser = SearchParser::query($query)->allowedFields([
-        AllowedField::string('status')->ignore('ALL', 'act*'),
+        Field::string('status')->ignore('ALL', 'act*'),
     ]);
 
     expect($parser->build('string'))->toBe($expected)
@@ -966,7 +958,7 @@ it('handles ignored compact bounds exactly like ignored bracket bounds', functio
     bool $removed,
 ): void {
     $node = SearchParser::query($query)
-        ->allowedFields([AllowedField::integer('x')->ignore(0, 10)])
+        ->allowedFields([Field::integer('x')->ignore(0, 10)])
         ->parse();
 
     if ($removed) {
@@ -1005,7 +997,7 @@ it('keeps negation and surviving binary subtrees with their original spans', fun
     $query = 'NOT (status:ALL OR (title:x AND title:y))';
     $parser = SearchParser::query($query)->allowedFields([
         'title',
-        AllowedField::string('status')->ignore('ALL'),
+        Field::string('status')->ignore('ALL'),
     ]);
     $node = $parser->parse();
 
@@ -1019,7 +1011,7 @@ it('keeps ordinary text trailing and infix patterns quoted asterisks and exists 
     string $query,
 ): void {
     expect(SearchParser::query($query)->allowedFields([
-        AllowedField::string('name')->minWildcardLength(3),
+        Field::string('name')->minWildcardLength(3),
     ])->parse())->not->toBeNull();
 })->with(['name:son*', 'name:s*on', 'name:"*son"', 'name:"*"', 'name:*', 'name:x']);
 
@@ -1089,7 +1081,7 @@ it('keeps unquoted * range bounds open without casting or validating them', func
     null|int $to,
 ): void {
     expect(
-        SearchParser::query($query)->allowedFields([AllowedField::integer('x')->max(100)])->build(),
+        SearchParser::query($query)->allowedFields([Field::integer('x')->max(100)])->build(),
     )->toBe(
         [
             'field' => 'x',
@@ -1105,7 +1097,7 @@ it('keeps unquoted * range bounds open without casting or validating them', func
 ]);
 
 it('lexes relative dates in every field position', function (string $value): void {
-    $fields = [AllowedField::date('created')];
+    $fields = [Field::date('created')];
 
     foreach (['=', '!=', '>', '>=', '<', '<='] as $operator) {
         $written = $operator === '=' ? '' : $operator;
@@ -1130,7 +1122,7 @@ it('lexes relative dates in every field position', function (string $value): voi
 })->with(['-7d', '+3d', 'today', 'now-1h', 'ToMoRrOw+1M']);
 
 it('never resolves quoted aliases inside lists or either range bound', function (): void {
-    $field = AllowedField::string('x')->alias('yes', 'resolved');
+    $field = Field::string('x')->alias('yes', 'resolved');
 
     expect(SearchParser::query('x:"yes",yes')->allowedFields([$field])->parse()->getValues())
         ->toBe(['yes', 'resolved'])
@@ -1221,7 +1213,7 @@ it('parses in-list with not-equal operator', function (): void {
 });
 
 it('parses negative relative values in ranges', function (): void {
-    $fields = [AllowedField::date('created')];
+    $fields = [Field::date('created')];
     $range = SearchParser::query('created:[-30d TO now]')->allowedFields($fields)->parse();
 
     expect($range->getFrom())->toBe('-30d')->and($range->getTo())->toBe('now');
@@ -1329,7 +1321,7 @@ it('preserves literal text when either side is absent or the value is quoted', f
 ]);
 
 it('preserves quotes on cast scalar values', function (
-    AllowedField $field,
+    Field $field,
     string $query,
     string $expected,
 ): void {
@@ -1340,9 +1332,9 @@ it('preserves quotes on cast scalar values', function (
             $parser->build(),
         );
 })->with([
-    [AllowedField::integer('x'), 'x:"2"', 'x:"2"'],
-    [AllowedField::numeric('x'), 'x:"1.50"', 'x:"1.5"'],
-    [AllowedField::boolean('x'), 'x:"TRUE"', 'x:"true"'],
+    [Field::integer('x'), 'x:"2"', 'x:"2"'],
+    [Field::numeric('x'), 'x:"1.50"', 'x:"1.5"'],
+    [Field::boolean('x'), 'x:"TRUE"', 'x:"true"'],
 ]);
 
 it('removes ignored comparisons and simplifies boolean expressions without moving surviving spans', function (
@@ -1350,7 +1342,7 @@ it('removes ignored comparisons and simplifies boolean expressions without movin
 ): void {
     $parser = SearchParser::query($query)->allowedFields([
         'title',
-        AllowedField::in('status', ['active'])->ignore('ALL'),
+        Field::in('status', ['active'])->ignore('ALL'),
     ]);
     $node = $parser->parse();
 
@@ -1381,12 +1373,7 @@ it('removes ignored directives after casting and aliases and suppresses their de
     string $query,
 ): void {
     $parser = SearchParser::query($query)->allowedFields([
-        AllowedField::integer('limit')
-            ->directive()
-            ->min(1)
-            ->ignore(0)
-            ->alias('any', 0)
-            ->default(20),
+        Field::integer('limit')->directive()->min(1)->ignore(0)->alias('any', 0)->default(20),
     ]);
 
     expect($parser->build('string'))->toBeNull()
@@ -1397,7 +1384,7 @@ it('removes ignored directives after casting and aliases and suppresses their de
 it('removes ranges only when both bounds are ignored values', function (): void {
     expect(SearchParser::query('title:x AND age:[ALL TO ALL]')->allowedFields([
         'title',
-        AllowedField::integer('age')->ignore('ALL'),
+        Field::integer('age')->ignore('ALL'),
     ])->build('string'))->toBe('title:x');
 });
 
@@ -1409,7 +1396,7 @@ it('reserves TO only as the separator inside a range', function (): void {
 });
 
 it('resolves aliases in lists and range bounds', function (): void {
-    $field = AllowedField::integer('x')->alias('@me', 7)->alias('@max', static fn (): int => 10);
+    $field = Field::integer('x')->alias('@me', 7)->alias('@max', static fn (): int => 10);
     $list = SearchParser::query('x:@me,@max')->allowedFields([$field])->parse();
     $range = SearchParser::query('x:[@me TO @max]')->allowedFields([$field])->parse();
 
@@ -1419,7 +1406,7 @@ it('resolves aliases in lists and range bounds', function (): void {
 
 it('retains literal quotes in an expanded wildcard list', function (): void {
     $parser = SearchParser::query('title:all,mu*,"cup",plate')->allowedFields([
-        AllowedField::string('title')->ignore('all'),
+        Field::string('title')->ignore('all'),
     ]);
     $node = $parser->parse();
 
@@ -1430,7 +1417,7 @@ it('retains literal quotes in an expanded wildcard list', function (): void {
 
 it('retains per-item quotes while renumbering a list after ignored values', function (): void {
     $parser = SearchParser::query('title:all,mug,"cup",ALL,plate')->allowedFields([
-        AllowedField::string('title')->ignore('all'),
+        Field::string('title')->ignore('all'),
     ]);
     $node = $parser->parse();
 
@@ -1446,7 +1433,7 @@ it('retains per-item quotes while renumbering a list after ignored values', func
 
 it('scopes leading wildcard permission to the field or unconfigured input', function (): void {
     expect(SearchParser::query('name:*son')->allowedFields([
-        AllowedField::string('name')->allowLeadingWildcards(),
+        Field::string('name')->allowLeadingWildcards(),
     ])->parse()->getSegments())->toBe(['', 'son'])
         ->and(
             SearchParser::query('*son name:*son')
@@ -1493,7 +1480,7 @@ it('starts surviving AND and OR spans at the first remaining operand', function 
     int $offset,
     int $length,
 ): void {
-    $fields = [AllowedField::string('status')->ignore('ALL'), AllowedField::string('title')];
+    $fields = [Field::string('status')->ignore('ALL'), Field::string('title')];
     $ast = SearchParser::query($query)->allowedFields($fields)->parse();
     $node = $ast instanceof UnaryOperatorNode ? $ast->getOperand() : $ast;
 
@@ -1505,7 +1492,7 @@ it('starts surviving AND and OR spans at the first remaining operand', function 
 ]);
 
 it('supports partial dates in lists and both range bounds', function (): void {
-    $fields = [AllowedField::date('created')->allowPartialDates()];
+    $fields = [Field::date('created')->allowPartialDates()];
     $range = SearchParser::query('created:[2023 TO 2024-06]')->allowedFields($fields)->parse();
 
     expect(
@@ -1535,7 +1522,7 @@ it('turns ignored range bounds into open bounds without changing the range span'
     null|int $to,
 ): void {
     $node = SearchParser::query($query)->allowedFields([
-        AllowedField::integer('age')->between(1, 10)->ignore('ALL'),
+        Field::integer('age')->between(1, 10)->ignore('ALL'),
     ])->parse();
 
     expect($node->getFrom())->toBe($from)
@@ -1550,23 +1537,23 @@ it('turns ignored range bounds into open bounds without changing the range span'
 
 it('uses field rules for decimals partial dates relative dates and aliases', function (): void {
     expect(SearchParser::query('price:1.50..2.00')->allowedFields([
-        AllowedField::decimal('price', 2)->scale(100),
+        Field::decimal('price', 2)->scale(100),
     ])->build())->toBe(['field' => 'price', 'from' => 150, 'to' => 200, 'type' => 'range'])
         ->and(SearchParser::query('created:2024..2024-06')->allowedFields([
-            AllowedField::date('created')->allowPartialDates(),
+            Field::date('created')->allowPartialDates(),
         ])->parse()->getFrom())->toBe('2024')
         ->and(SearchParser::query('created:-30d..now')->allowedFields([
-            AllowedField::date('created'),
+            Field::date('created'),
         ])->parse()->getTo())->toBe('now')
         ->and(SearchParser::query('price:low..high')->allowedFields([
-            AllowedField::integer('price')->alias('low', 1)->alias('high', 5),
+            Field::integer('price')->alias('low', 1)->alias('high', 5),
         ])->parse()->getTo())->toBe(5);
 });
 
 it('validates array collections and items only after filtering ignored values', function (): void {
     $parser = SearchParser::query('tags:ALL,active,ALL')->allowedFields([
-        AllowedField::array('tags')->ignore('ALL')->size(1)->each(
-            fn (AllowedFieldItemRules $rules): AllowedFieldItemRules => $rules->in(['active']),
+        Field::array('tags')->ignore('ALL')->size(1)->each(
+            fn (FieldItemRules $rules): FieldItemRules => $rules->in(['active']),
         ),
     ]);
 
@@ -1574,15 +1561,15 @@ it('validates array collections and items only after filtering ignored values', 
 });
 
 it('validates remaining list items with the index rules of their written positions', function (): void {
-    $field = AllowedField::array('pair')
+    $field = Field::array('pair')
         ->ignore(0)
         ->at(
             0,
-            fn (AllowedFieldItemRules $rules): AllowedFieldItemRules => $rules->integer()->max(10),
+            fn (FieldItemRules $rules): FieldItemRules => $rules->integer()->max(10),
         )
         ->at(
             1,
-            fn (AllowedFieldItemRules $rules): AllowedFieldItemRules => $rules->integer()->min(100),
+            fn (FieldItemRules $rules): FieldItemRules => $rules->integer()->min(100),
         );
 
     expect(SearchParser::query('pair:0,200')->allowedFields([$field])->parse()->getValues())->toBe([

@@ -12,11 +12,11 @@ Call `directive()` on an exact scalar field:
 
 ```php
 use HosmelQ\SearchSyntaxParser\SearchParser;
-use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
+use HosmelQ\SearchSyntaxParser\Validation\Field;
 
 $parser = SearchParser::query('coffee trashed:ONLY limit:25')->allowedFields([
-    AllowedField::in('trashed', ['only', 'with', 'without'])->directive()->default('without'),
-    AllowedField::integer('limit')->directive()->min(1)->max(100),
+    Field::in('trashed', ['only', 'with', 'without'])->directive()->default('without'),
+    Field::integer('limit')->directive()->min(1)->max(100),
 ]);
 
 $filters = $parser->build();
@@ -91,10 +91,10 @@ The string adapter writes explicit directives in configuration order, followed b
 ```php
 use HosmelQ\SearchSyntaxParser\SearchParser;
 use HosmelQ\SearchSyntaxParser\Sorting\AllowedSort;
-use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
+use HosmelQ\SearchSyntaxParser\Validation\Field;
 
 $parser = SearchParser::query('sort:created-desc trashed:only')
-    ->allowedFields([AllowedField::string('trashed')->directive()->default('without')])
+    ->allowedFields([Field::string('trashed')->directive()->default('without')])
     ->allowedSorts([AllowedSort::field('created', 'created_at')]);
 
 $text = $parser->build('string');

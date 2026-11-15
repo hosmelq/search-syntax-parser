@@ -12,8 +12,8 @@ use HosmelQ\SearchSyntaxParser\Tests\Fixtures\OverlappingEnumTokens;
 use HosmelQ\SearchSyntaxParser\Tests\Fixtures\PriorityLevel;
 use HosmelQ\SearchSyntaxParser\Tests\Fixtures\PublicationStatus;
 use HosmelQ\SearchSyntaxParser\Tests\Fixtures\UnbackedStatus;
-use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
-use HosmelQ\SearchSyntaxParser\Validation\AllowedFieldItemRules;
+use HosmelQ\SearchSyntaxParser\Validation\Field;
+use HosmelQ\SearchSyntaxParser\Validation\FieldItemRules;
 use HosmelQ\SearchSyntaxParser\Validation\Validators\InValidator;
 
 it('does not mistake a regex failure for a non-decimal value', function (): void {
@@ -22,7 +22,7 @@ it('does not mistake a regex failure for a non-decimal value', function (): void
     ini_set('pcre.backtrack_limit', '2');
 
     try {
-        expect(fn (): bool|float|int|string => AllowedFieldItemRules::infer('1.25', false))
+        expect(fn (): bool|float|int|string => FieldItemRules::infer('1.25', false))
             ->toThrow(ParseException::class, 'Search query is too complex to tokenize.');
     } finally {
         ini_set('pcre.backtrack_limit', (string) $limit);
@@ -30,10 +30,10 @@ it('does not mistake a regex failure for a non-decimal value', function (): void
 });
 
 it('rejects enum rules without a backed enum', function (string $enum): void {
-    expect(fn (): AllowedField => AllowedField::enum('value', $enum))->toThrow(
+    expect(fn (): Field => Field::enum('value', $enum))->toThrow(
         InvalidArgumentException::class,
     )
-        ->and(fn (): AllowedFieldItemRules => new AllowedFieldItemRules()->enum($enum))->toThrow(
+        ->and(fn (): FieldItemRules => new FieldItemRules()->enum($enum))->toThrow(
             InvalidArgumentException::class,
         );
 })->with([UnbackedStatus::class, stdClass::class]);
@@ -41,46 +41,46 @@ it('rejects enum rules without a backed enum', function (string $enum): void {
 it('rejects enums whose backing values or names collide ignoring case', function (
     string $enum,
 ): void {
-    expect(fn (): AllowedField => AllowedField::enum('status', $enum))->toThrow(
+    expect(fn (): Field => Field::enum('status', $enum))->toThrow(
         InvalidArgumentException::class,
     )
-        ->and(fn (): AllowedFieldItemRules => new AllowedFieldItemRules()->enum($enum))->toThrow(
+        ->and(fn (): FieldItemRules => new FieldItemRules()->enum($enum))->toThrow(
             InvalidArgumentException::class,
         );
 })->with([AmbiguousEnumNames::class, AmbiguousEnumValues::class]);
 
 it('rejects invalid typed values instead of coercing them into valid ones', function (
-    AllowedField $field,
+    Field $field,
     string $value,
 ): void {
     SearchParser::query('field:'.$value)->allowedFields([$field])->build();
 })->throws(InvalidFieldValueException::class)->with([
-    [AllowedField::integer('field'), '01234'],
-    [AllowedField::integer('field'), '99999999999999999999'],
-    [AllowedField::integer('field'), '1e5'],
-    [AllowedField::integer('field'), '1.0'],
-    [AllowedField::decimal('field', 0), '1e2'],
-    [AllowedField::numeric('field'), 'abc'],
-    [AllowedField::decimal('field', 2), '1.5'],
-    [AllowedField::boolean('field'), 'yes'],
-    [AllowedField::boolean('field')->max(1), 'true'],
-    [AllowedField::in('field', ['01', '02']), '1'],
+    [Field::integer('field'), '01234'],
+    [Field::integer('field'), '99999999999999999999'],
+    [Field::integer('field'), '1e5'],
+    [Field::integer('field'), '1.0'],
+    [Field::decimal('field', 0), '1e2'],
+    [Field::numeric('field'), 'abc'],
+    [Field::decimal('field', 2), '1.5'],
+    [Field::boolean('field'), 'yes'],
+    [Field::boolean('field')->max(1), 'true'],
+    [Field::in('field', ['01', '02']), '1'],
 ]);
 
 it('rejects non-canonical members during validation without casting', function (): void {
-    $field = AllowedField::in('status', ['open', 'Été']);
+    $field = Field::in('status', ['open', 'Été']);
 
     expect($field->validate('OPEN'))->toBeFalse();
 });
 
 it('rejects partial dates at positions without the opt-in', function (): void {
-    $tuple = AllowedField::array('dates')
+    $tuple = Field::array('dates')
         ->at(
             0,
-            fn (AllowedFieldItemRules $rules): AllowedFieldItemRules
+            fn (FieldItemRules $rules): FieldItemRules
                 => $rules->date()->allowPartialDates(),
         )
-        ->at(1, fn (AllowedFieldItemRules $rules): AllowedFieldItemRules => $rules->date());
+        ->at(1, fn (FieldItemRules $rules): FieldItemRules => $rules->date());
 
     expect(
         fn (): null|NodeInterface
@@ -93,40 +93,40 @@ it('rejects partial-date configuration on other types and custom formats', funct
 ): void {
     $configure();
 })->throws(InvalidArgumentException::class)->with([
-    fn (): AllowedField => AllowedField::string('value')->allowPartialDates(),
-    fn (): AllowedField => AllowedField::integer('value')->allowPartialDates(),
-    fn (): AllowedField => AllowedField::array('value')->allowPartialDates(),
-    fn (): AllowedField => AllowedField::date('value', 'Y')->allowPartialDates(),
-    fn (): AllowedFieldItemRules => new AllowedFieldItemRules()->allowPartialDates(),
-    fn (): AllowedFieldItemRules => new AllowedFieldItemRules()->string()->allowPartialDates(),
-    fn (): AllowedFieldItemRules => new AllowedFieldItemRules()->date('Y')->allowPartialDates(),
-    fn (): AllowedFieldItemRules
-        => new AllowedFieldItemRules()->date()->allowPartialDates()->string(),
-    fn (): AllowedFieldItemRules
-        => new AllowedFieldItemRules()->date()->allowPartialDates()->date('Y'),
+    fn (): Field => Field::string('value')->allowPartialDates(),
+    fn (): Field => Field::integer('value')->allowPartialDates(),
+    fn (): Field => Field::array('value')->allowPartialDates(),
+    fn (): Field => Field::date('value', 'Y')->allowPartialDates(),
+    fn (): FieldItemRules => new FieldItemRules()->allowPartialDates(),
+    fn (): FieldItemRules => new FieldItemRules()->string()->allowPartialDates(),
+    fn (): FieldItemRules => new FieldItemRules()->date('Y')->allowPartialDates(),
+    fn (): FieldItemRules
+        => new FieldItemRules()->date()->allowPartialDates()->string(),
+    fn (): FieldItemRules
+        => new FieldItemRules()->date()->allowPartialDates()->date('Y'),
 ]);
 
 it('rejects times and non-opted-in partial dates', function (): void {
     foreach ([
-        AllowedField::date('due')->withoutTime()->allowPartialDates(),
-        AllowedField::date('due')->allowPartialDates()->withoutTime(),
+        Field::date('due')->withoutTime()->allowPartialDates(),
+        Field::date('due')->allowPartialDates()->withoutTime(),
     ] as $field) {
         expect($field->validate('now'))->toBeFalse();
     }
 
-    expect(AllowedField::date('due')->withoutTime()->validate('2024'))->toBeFalse();
+    expect(Field::date('due')->withoutTime()->validate('2024'))->toBeFalse();
 });
 
 it('rejects values outside an enum', function (): void {
     SearchParser::query('value:other')
-        ->allowedFields([AllowedField::enum('value', PublicationStatus::class)])
+        ->allowedFields([Field::enum('value', PublicationStatus::class)])
         ->build();
 })->throws(InvalidFieldValueException::class);
 
 it('accepts ULIDs within 128 bits and normalizes them to uppercase', function (
     string $value,
 ): void {
-    $field = AllowedField::ulid('id');
+    $field = Field::ulid('id');
 
     expect(
         SearchParser::query('id:"'.$value.'"')->allowedFields([$field])->parse()->getValue(),
@@ -140,7 +140,7 @@ it('accepts ULIDs within 128 bits and normalizes them to uppercase', function (
 ]);
 
 it('accepts UUIDs of any version and normalizes them to lowercase', function (string $value): void {
-    $field = AllowedField::uuid('id');
+    $field = Field::uuid('id');
 
     foreach ([$value, '"'.$value.'"'] as $input) {
         expect(
@@ -157,7 +157,7 @@ it('accepts UUIDs of any version and normalizes them to lowercase', function (st
 ]);
 
 it('canonicalizes case-insensitive shared and positional members', function (): void {
-    $field = AllowedField::array('status')
+    $field = Field::array('status')
         ->each(fn ($rules) => $rules->in(['open', 'closed']))
         ->at(1, fn ($rules) => $rules->in(['closed']));
 
@@ -171,7 +171,7 @@ it('casts backed enum values to their backing type', function (
     int|string $expected,
 ): void {
     $parser = SearchParser::query($query)->allowedFields([
-        AllowedField::enum('value', $enum, 'stored_value'),
+        Field::enum('value', $enum, 'stored_value'),
     ]);
 
     expect($parser->build())->toBe([
@@ -191,7 +191,7 @@ it('casts backed enum values to their backing type', function (
 ]);
 
 it('casts values according to the field schema regardless of quoting', function (
-    AllowedField $field,
+    Field $field,
     string $value,
     bool|float|int|string $expected,
 ): void {
@@ -203,34 +203,34 @@ it('casts values according to the field schema regardless of quoting', function 
         );
     }
 })->with([
-    [AllowedField::string('field'), '12345', '12345'],
-    [AllowedField::string('field'), 'true', 'true'],
-    [AllowedField::string('field')->max(3), '5', '5'],
-    [AllowedField::string('field')->size(2), '01', '01'],
-    [AllowedField::string('field')->size(4), 'José', 'José'],
-    [AllowedField::integer('field'), '123', 123],
-    [AllowedField::numeric('field'), '123', 123],
-    [AllowedField::numeric('field'), '1e5', 100_000.0],
-    [AllowedField::numeric('field'), '1.5', 1.5],
-    [AllowedField::decimal('field', 2), '10.50', '10.50'],
-    [AllowedField::decimal('field', 2), '5.00', '5.00'],
-    [AllowedField::boolean('field'), 'true', true],
-    [AllowedField::boolean('field'), 'TRUE', true],
-    [AllowedField::boolean('field'), '1', true],
-    [AllowedField::boolean('field'), 'false', false],
-    [AllowedField::boolean('field'), 'FALSE', false],
-    [AllowedField::boolean('field'), '0', false],
-    [AllowedField::in('field', ['01', '02']), '01', '01'],
-    [AllowedField::in('field', ['true', 'false']), 'true', 'true'],
-    [AllowedField::in('field', [1, 2, 3]), '2', 2],
-    [AllowedField::in('field', [1.5, 2.5]), '1.5', 1.5],
-    [AllowedField::in('field', [true, false]), '1', true],
+    [Field::string('field'), '12345', '12345'],
+    [Field::string('field'), 'true', 'true'],
+    [Field::string('field')->max(3), '5', '5'],
+    [Field::string('field')->size(2), '01', '01'],
+    [Field::string('field')->size(4), 'José', 'José'],
+    [Field::integer('field'), '123', 123],
+    [Field::numeric('field'), '123', 123],
+    [Field::numeric('field'), '1e5', 100_000.0],
+    [Field::numeric('field'), '1.5', 1.5],
+    [Field::decimal('field', 2), '10.50', '10.50'],
+    [Field::decimal('field', 2), '5.00', '5.00'],
+    [Field::boolean('field'), 'true', true],
+    [Field::boolean('field'), 'TRUE', true],
+    [Field::boolean('field'), '1', true],
+    [Field::boolean('field'), 'false', false],
+    [Field::boolean('field'), 'FALSE', false],
+    [Field::boolean('field'), '0', false],
+    [Field::in('field', ['01', '02']), '01', '01'],
+    [Field::in('field', ['true', 'false']), 'true', 'true'],
+    [Field::in('field', [1, 2, 3]), '2', 2],
+    [Field::in('field', [1.5, 2.5]), '1.5', 1.5],
+    [Field::in('field', [true, false]), '1', true],
 ]);
 
 it('combines dates without time with partial dates in either order', function (): void {
     foreach ([
-        AllowedField::date('due')->withoutTime()->allowPartialDates(),
-        AllowedField::date('due')->allowPartialDates()->withoutTime(),
+        Field::date('due')->withoutTime()->allowPartialDates(),
+        Field::date('due')->allowPartialDates()->withoutTime(),
     ] as $field) {
         expect($field->validate('2024'))->toBeTrue()->and($field->validate('2024-03'))->toBeTrue();
     }
@@ -263,15 +263,15 @@ it('infers untyped values conservatively', function (
 it('keeps decimals beyond the float range as text', function (): void {
     $huge = str_repeat('9', 310).'.0';
 
-    expect(AllowedFieldItemRules::infer($huge, false))->toBe($huge)
-        ->and(AllowedFieldItemRules::infer('-'.$huge, false))->toBe('-'.$huge)
+    expect(FieldItemRules::infer($huge, false))->toBe($huge)
+        ->and(FieldItemRules::infer('-'.$huge, false))->toBe('-'.$huge)
         ->and(SearchParser::query('amount:'.$huge)->allowedFields([
-            new AllowedField('amount')->map([7 => 'seven']),
+            new Field('amount')->map([7 => 'seven']),
         ])->build()['value'])->toBe($huge);
 });
 
 it('keeps the existing matching of non-string members', function (): void {
-    $field = AllowedField::in('value', [true, false, 2, 1.5]);
+    $field = Field::in('value', [true, false, 2, 1.5]);
 
     expect(
         SearchParser::query('value:TRUE,0,2,1.50')->allowedFields([$field])->parse()->getValues(),
@@ -279,7 +279,7 @@ it('keeps the existing matching of non-string members', function (): void {
 });
 
 it('matches boolean and float membership values by their inferred value', function (
-    AllowedField $field,
+    Field $field,
     string $value,
     bool|float|int|string $expected,
 ): void {
@@ -289,26 +289,26 @@ it('matches boolean and float membership values by their inferred value', functi
         $expected,
     );
 })->with([
-    [AllowedField::in('field', [true, false]), 'true', true],
-    [AllowedField::in('field', [true, false]), 'false', false],
-    [AllowedField::in('field', [true, false]), '0', false],
-    [AllowedField::in('field', [1.5, 2.0]), '2.0', 2.0],
-    [AllowedField::in('field', [1.5, 2.0]), '2', 2.0],
-    [AllowedField::in('field', [true, false, '']), '""', ''],
+    [Field::in('field', [true, false]), 'true', true],
+    [Field::in('field', [true, false]), 'false', false],
+    [Field::in('field', [true, false]), '0', false],
+    [Field::in('field', [1.5, 2.0]), '2.0', 2.0],
+    [Field::in('field', [1.5, 2.0]), '2', 2.0],
+    [Field::in('field', [true, false, '']), '""', ''],
 ]);
 
 it('opts in shared and positional date item rules separately', function (): void {
-    $shared = AllowedField::array('dates')->each(
-        fn (AllowedFieldItemRules $rules): AllowedFieldItemRules
+    $shared = Field::array('dates')->each(
+        fn (FieldItemRules $rules): FieldItemRules
             => $rules->date()->allowPartialDates(),
     );
-    $tuple = AllowedField::array('dates')
+    $tuple = Field::array('dates')
         ->at(
             0,
-            fn (AllowedFieldItemRules $rules): AllowedFieldItemRules
+            fn (FieldItemRules $rules): FieldItemRules
                 => $rules->date()->allowPartialDates(),
         )
-        ->at(1, fn (AllowedFieldItemRules $rules): AllowedFieldItemRules => $rules->date());
+        ->at(1, fn (FieldItemRules $rules): FieldItemRules => $rules->date());
 
     expect(
         SearchParser::query('dates:2024,2024-03')->allowedFields([$shared])->parse()->getValues(),
@@ -324,7 +324,7 @@ it('opts in shared and positional date item rules separately', function (): void
 });
 
 it('prefers backing values over another case name while accepting both forms', function (): void {
-    $field = AllowedField::enum('status', OverlappingEnumTokens::class);
+    $field = Field::enum('status', OverlappingEnumTokens::class);
 
     expect(
         SearchParser::query('status:ENABLED,Active,OPEN')
@@ -348,7 +348,7 @@ it('resolves integer-backed enum names and values regardless of case or quotes',
     string $token,
     int $expected,
 ): void {
-    $field = AllowedField::enum('priority', PriorityLevel::class);
+    $field = Field::enum('priority', PriorityLevel::class);
 
     foreach ([$token, '"'.$token.'"'] as $value) {
         expect(
@@ -360,7 +360,7 @@ it('resolves integer-backed enum names and values regardless of case or quotes',
 })->with([['1', 1], ['Low', 1], ['LOW', 1], ['low', 1], ['High', 2], ['high', 2]]);
 
 it('returns canonical allowed strings for Unicode and quoted input', function (): void {
-    $field = AllowedField::in('status', ['open', 'Été']);
+    $field = Field::in('status', ['open', 'Été']);
 
     expect(SearchParser::query('status:OPEN,"ÉTÉ"')->allowedFields([$field])->parse()->getValues())
         ->toBe(['open', 'Été'])
@@ -374,7 +374,7 @@ it('returns canonical allowed strings for Unicode and quoted input', function ()
 });
 
 it('supports enum names in shared and positional rules and range bounds', function (): void {
-    $field = AllowedField::array('priority')
+    $field = Field::array('priority')
         ->each(fn ($rules) => $rules->enum(PriorityLevel::class))
         ->at(1, fn ($rules) => $rules->enum(PriorityLevel::class));
 
@@ -384,7 +384,7 @@ it('supports enum names in shared and positional rules and range bounds', functi
         [1, 2],
     )
         ->and(SearchParser::query('priority:[low TO HIGH]')->allowedFields([
-            AllowedField::enum('priority', PriorityLevel::class),
+            Field::enum('priority', PriorityLevel::class),
         ])->build()['to'])->toBe(2);
 });
 
@@ -394,8 +394,8 @@ it('uses inference for untyped fields and callbacks', function (
 ): void {
     foreach ([
         'field',
-        new AllowedField('field'),
-        AllowedField::callback('field', fn (): bool => true),
+        new Field('field'),
+        Field::callback('field', fn (): bool => true),
     ] as $field) {
         expect(
             SearchParser::query('field:'.$input)->allowedFields([$field])->parse()->getValue(),

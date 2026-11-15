@@ -5,10 +5,10 @@ declare(strict_types=1);
 use HosmelQ\SearchSyntaxParser\Date\DateValue;
 use HosmelQ\SearchSyntaxParser\Exception\InvalidFieldValueException;
 use HosmelQ\SearchSyntaxParser\SearchParser;
-use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
+use HosmelQ\SearchSyntaxParser\Validation\Field;
 
 it('rejects invalid dates and times', function (string $value): void {
-    SearchParser::query('date:"'.$value.'"')->allowedFields([AllowedField::date('date')])->build();
+    SearchParser::query('date:"'.$value.'"')->allowedFields([Field::date('date')])->build();
 })->throws(InvalidFieldValueException::class)->with([
     '2025-02-29',
     '2025-02-30',
@@ -30,13 +30,13 @@ it('rejects invalid dates and times', function (string $value): void {
 ]);
 
 it('rejects invalid partial calendars even with the opt-in', function (string $value): void {
-    expect(AllowedField::date('created')->allowPartialDates()->validate($value))->toBeFalse();
+    expect(Field::date('created')->allowPartialDates()->validate($value))->toBeFalse();
 })->with(['0000', '2024-00', '2024-13', '2024-3', '24', '2024-', '2024-03T10']);
 
 it('rejects malformed relative dates in both validation and resolution', function (
     string $value,
 ): void {
-    expect(AllowedField::date('created')->validate($value))
+    expect(Field::date('created')->validate($value))
         ->toBeFalse()
         ->and(fn (): DateValue => DateValue::parse($value, new DateTimeZone('UTC')))
         ->toThrow(InvalidArgumentException::class);
@@ -75,7 +75,7 @@ it('rejects malformed relative dates in both validation and resolution', functio
 ]);
 
 it('rejects relative offsets longer than six digits', function (): void {
-    $field = AllowedField::date('created');
+    $field = Field::date('created');
 
     expect($field->validate('-1000000d'))
         ->toBeFalse()
@@ -84,7 +84,7 @@ it('rejects relative offsets longer than six digits', function (): void {
 });
 
 it('accepts relative offsets up to six digits', function (): void {
-    $field = AllowedField::date('created');
+    $field = Field::date('created');
 
     expect($field->validate('-99999d'))->toBeTrue()->and($field->validate('-999999h'))->toBeTrue();
 });
@@ -93,7 +93,7 @@ it('accepts the relative grammar without resolving its text', function (string $
     foreach ([$value, '"'.$value.'"'] as $text) {
         expect(
             SearchParser::query('created:'.$text)
-                ->allowedFields([AllowedField::date('created')])
+                ->allowedFields([Field::date('created')])
                 ->parse()
                 ->getValue(),
         )->toBe(
@@ -132,7 +132,7 @@ it('validates dates and ISO datetimes while preserving raw text', function (stri
     foreach ([$value, '"'.$value.'"'] as $text) {
         expect(
             SearchParser::query('date:'.$text)
-                ->allowedFields([AllowedField::date('date')])
+                ->allowedFields([Field::date('date')])
                 ->build()['value'],
         )->toBe(
             $value,

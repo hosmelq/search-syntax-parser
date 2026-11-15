@@ -18,8 +18,8 @@ use HosmelQ\SearchSyntaxParser\Lexer\SearchLexer;
 use HosmelQ\SearchSyntaxParser\Lexer\TokenType;
 use HosmelQ\SearchSyntaxParser\Parser\DotRange;
 use HosmelQ\SearchSyntaxParser\Sorting\Sort;
-use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
-use HosmelQ\SearchSyntaxParser\Validation\AllowedFieldItemRules;
+use HosmelQ\SearchSyntaxParser\Validation\Field;
+use HosmelQ\SearchSyntaxParser\Validation\FieldItemRules;
 use LogicException;
 use Override;
 
@@ -291,7 +291,7 @@ final readonly class StringAdapter extends AbstractAdapter
     private function value(
         bool|float|int|string $value,
         bool $quoted = false,
-        null|AllowedField $field = null,
+        null|Field $field = null,
         int $index = 0,
     ): string {
         if (is_bool($value)) {
@@ -348,9 +348,9 @@ final readonly class StringAdapter extends AbstractAdapter
         $bare = ! str_contains($value, '*')
             && $this->isBareValue($value)
             && (
-                $field instanceof AllowedField
+                $field instanceof Field
                 ? ! $field->hasAlias($value) && $field->cast($value, false, $index) === $value
-                : AllowedFieldItemRules::infer($value, false) === $value
+                : FieldItemRules::infer($value, false) === $value
             );
 
         return ! $quoted && $bare ? $value : $this->quote($value);

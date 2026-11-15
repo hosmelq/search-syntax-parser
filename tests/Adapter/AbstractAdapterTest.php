@@ -5,13 +5,13 @@ declare(strict_types=1);
 use HosmelQ\SearchSyntaxParser\Adapter\ArrayAdapter;
 use HosmelQ\SearchSyntaxParser\AST\Node\ComparisonNode;
 use HosmelQ\SearchSyntaxParser\SearchParser;
-use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
+use HosmelQ\SearchSyntaxParser\Validation\Field;
 use HosmelQ\SearchSyntaxParser\Validation\TextMatch;
 
 it('keeps typed dynamic names in the AST and expands internal names for every field node', function (
     string $query,
 ): void {
-    $field = AllowedField::string('meta.*', 'attributes.*')->keys('/^[a-z]+$/D')->prefix();
+    $field = Field::string('meta.*', 'attributes.*')->keys('/^[a-z]+$/D')->prefix();
     $parser = SearchParser::query($query)->allowedFields([$field]);
 
     expect($parser->getAllowedField('meta.color'))->toBe($field)
@@ -32,7 +32,7 @@ it('keeps typed dynamic names in the AST and expands internal names for every fi
 
 it('maps comparison node with internal field name', function (): void {
     $searchParser = new SearchParser()->allowedFields([
-        new AllowedField('price', 'unit_price'),
+        new Field('price', 'unit_price'),
     ]);
     $adapter = new ArrayAdapter($searchParser);
     $node = new ComparisonNode('price', '=', 5);
@@ -53,10 +53,10 @@ it('maps internal field names in complex output', function (): void {
         'status:ACTIVE,DRAFT AND price:>100 OR (category:* AND -discount:*)',
     )
         ->allowedFields([
-            new AllowedField('status', 'state'),
-            new AllowedField('price', 'unit_price'),
-            new AllowedField('category', 'cat'),
-            new AllowedField('discount', 'disc'),
+            new Field('status', 'state'),
+            new Field('price', 'unit_price'),
+            new Field('category', 'cat'),
+            new Field('discount', 'disc'),
         ]);
     $result = $parser->build();
 
@@ -109,7 +109,7 @@ it('maps internal field names in complex output', function (): void {
 
 it('maps wildcard fields while preserving bare terms', function (): void {
     $result = SearchParser::query('name:jo* co*fee')
-        ->allowedFields([AllowedField::string('name', 'full_name')])
+        ->allowedFields([Field::string('name', 'full_name')])
         ->build();
 
     expect($result['left']['field'])->toBe('full_name')->and($result['right']['field'])->toBeNull();
@@ -117,7 +117,7 @@ it('maps wildcard fields while preserving bare terms', function (): void {
 
 it('preserves Unicode prefixes and keys when mapping dynamic fields', function (): void {
     $result = SearchParser::query('méta.色:blue')->allowedFields([
-        AllowedField::string('méta.*', '属性.*')->keys('/^色$/uD'),
+        Field::string('méta.*', '属性.*')->keys('/^色$/uD'),
     ])->build();
 
     expect($result['field'])->toBe('属性.色')->and($result['value'])->toBe('blue');

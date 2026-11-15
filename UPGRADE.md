@@ -12,6 +12,12 @@ PHP 8.4 remains the minimum supported version.
 The package no longer requires doctrine/lexer, archtechx/enums, or thecodingmachine/safe. Declare
 these dependencies in your own application if you use them directly.
 
+### Field classes
+
+`Validation\AllowedField` is now `Validation\Field`, and `Validation\AllowedFieldItemRules` is now
+`Validation\FieldItemRules`. Update imports, type declarations, and subclasses. Parser methods keep
+their names, including `allowedFields()` and `getAllowedField()`.
+
 ### Field permissions
 
 Field queries are rejected until their names are configured with `allowedFields()`. Bare terms
@@ -19,10 +25,10 @@ remain available without configuration:
 
 ```php
 use HosmelQ\SearchSyntaxParser\SearchParser;
-use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
+use HosmelQ\SearchSyntaxParser\Validation\Field;
 
 $parser = SearchParser::query('status:open')->allowedFields([
-    AllowedField::string('status'),
+    Field::string('status'),
 ]);
 ```
 
@@ -52,7 +58,7 @@ validated as query values; other defaults must already have the field's type. In
 throw `InvalidArgumentException` when applied. Decimal defaults should be strings:
 
 ```php
-$field = AllowedField::decimal('price', 2)->default('10.50');
+$field = Field::decimal('price', 2)->default('10.50');
 ```
 
 Default clauses expose `isDefault()` and are omitted from string serialization. Preserve that
@@ -124,7 +130,7 @@ Patterns are rejected in ordering comparisons and range bounds.
 Leading wildcards are rejected by default. Enable them on each configured field that needs them:
 
 ```php
-$field = AllowedField::string('title')->allowLeadingWildcards();
+$field = Field::string('title')->allowLeadingWildcards();
 ```
 
 Use `SearchParser::allowLeadingWildcards()` for bare terms and unconfigured fields. That setting
@@ -200,13 +206,13 @@ end in `.*` if they are not intended to match dynamic keys.
 
 ### Field subclasses
 
-`AllowedField` has a final constructor, and its factories and fluent methods return `static`.
+`Field` has a final constructor, and its factories and fluent methods return `static`.
 Remove constructor overrides and update overridden return types. The protected validator arrays
-have been replaced with `AllowedFieldItemRules`; configure rules through the field's public methods.
+have been replaced with `FieldItemRules`; configure rules through the field's public methods.
 
 ### Validation helpers
 
-`AllowedFieldItemRules::getValidators()` has been removed. Use `validate()` to evaluate item rules.
+`FieldItemRules::getValidators()` has been removed. Use `validate()` to evaluate item rules.
 The `ValidatesAttributes` trait no longer has `requireParameterCount()` or `trim()`, its validation
 methods no longer take an attribute argument, and `getSize()` returns `BigNumber` or null. Update
 custom validators that use those protected helpers.

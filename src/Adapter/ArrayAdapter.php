@@ -13,7 +13,7 @@ use HosmelQ\SearchSyntaxParser\AST\Node\RangeNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\TermNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\UnaryOperatorNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\WildcardNode;
-use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
+use HosmelQ\SearchSyntaxParser\Validation\Field;
 use HosmelQ\SearchSyntaxParser\Validation\TextMatch;
 use Override;
 
@@ -97,7 +97,7 @@ readonly class ArrayAdapter extends AbstractAdapter
             'operator' => $node->getOperator(),
             'quoted' => array_map($node->isQuoted(...), array_keys($values)),
             'type' => 'in',
-            'values' => $field instanceof AllowedField
+            'values' => $field instanceof Field
                 ? array_map($field->toStorage(...), $values, $node->getPositions())
                 : $values,
         ];

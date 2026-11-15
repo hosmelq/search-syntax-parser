@@ -9,10 +9,10 @@ use HosmelQ\SearchSyntaxParser\Query\Bounds;
 use HosmelQ\SearchSyntaxParser\Query\ClauseCompiler;
 use HosmelQ\SearchSyntaxParser\Query\Operator;
 use HosmelQ\SearchSyntaxParser\SearchParser;
-use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
+use HosmelQ\SearchSyntaxParser\Validation\Field;
 
 it('excludes term fields whose types or rules reject the candidate', function (
-    AllowedField $field,
+    Field $field,
     string $query,
 ): void {
     $node = SearchParser::query($query)->allowLeadingWildcards()->parse();
@@ -20,21 +20,21 @@ it('excludes term fields whose types or rules reject the candidate', function (
     expect(new ClauseCompiler()->term($field, $node))->toBeNull()
         ->and(new ClauseCompiler()->term($field, $node, true))->toBeNull();
 })->with([
-    'integer' => [AllowedField::integer('value'), '1.5'],
-    'uuid' => [AllowedField::uuid('value'), 'coffee'],
-    'validation' => [AllowedField::string('value')->min(4), 'a'],
-    'operator' => [AllowedField::string('value')->operators('!='), 'coffee'],
-    'wildcard operator' => [AllowedField::string('value')->operators('!='), 'coff*'],
-    'numeric wildcard' => [AllowedField::numeric('value'), '10*'],
-    'mapped wildcard' => [AllowedField::string('value')->map(['coffee' => 'c']), 'coff*'],
-    'disabled wildcard' => [AllowedField::string('value')->withoutWildcards(), 'coff*'],
-    'leading wildcard' => [AllowedField::string('value'), '*fee'],
-    'short wildcard' => [AllowedField::string('value')->minWildcardLength(5), 'coff*'],
-    'infix words wildcard' => [AllowedField::string('value')->words(), 'co*ee'],
+    'integer' => [Field::integer('value'), '1.5'],
+    'uuid' => [Field::uuid('value'), 'coffee'],
+    'validation' => [Field::string('value')->min(4), 'a'],
+    'operator' => [Field::string('value')->operators('!='), 'coffee'],
+    'wildcard operator' => [Field::string('value')->operators('!='), 'coff*'],
+    'numeric wildcard' => [Field::numeric('value'), '10*'],
+    'mapped wildcard' => [Field::string('value')->map(['coffee' => 'c']), 'coff*'],
+    'disabled wildcard' => [Field::string('value')->withoutWildcards(), 'coff*'],
+    'leading wildcard' => [Field::string('value'), '*fee'],
+    'short wildcard' => [Field::string('value')->minWildcardLength(5), 'coff*'],
+    'infix words wildcard' => [Field::string('value')->words(), 'co*ee'],
 ]);
 
 it('propagates invalid term alias configuration', function (): void {
-    $field = AllowedField::string('value')->alias('mine', fn (): array => []);
+    $field = Field::string('value')->alias('mine', fn (): array => []);
 
     new ClauseCompiler()->term($field, new TermNode('mine'));
 })->throws(InvalidArgumentException::class, 'alias must resolve');
@@ -44,7 +44,7 @@ it('compiles scalar leaves and their complements with source positions', functio
     Operator $operator,
     mixed $value,
 ): void {
-    $field = AllowedField::integer('quantity', 'stored_quantity')->nullable();
+    $field = Field::integer('quantity', 'stored_quantity')->nullable();
 
     foreach ([false, true] as $negated) {
         $ast = SearchParser::query('  '.($negated ? 'NOT ' : '').$query)
@@ -81,7 +81,7 @@ it('converts stored values without mutating the parsed leaves', function (
     string $query,
     mixed $expected,
 ): void {
-    $field = AllowedField::decimal('price', 0, 2)->scale(100);
+    $field = Field::decimal('price', 0, 2)->scale(100);
     $node = SearchParser::query($query)->allowedFields([$field])->parse();
     $before = serialize($node);
     $clause = new ClauseCompiler()->compile($field, $node)[0];
@@ -100,7 +100,7 @@ it('converts stored values without mutating the parsed leaves', function (
 it('expands text lists into alternatives with quoted overrides and complements', function (
     bool $negated,
 ): void {
-    $field = AllowedField::string('title')->contains();
+    $field = Field::string('title')->contains();
     $node = SearchParser::query(' title:cof,"tea"')->allowedFields([$field])->parse();
     $clauses = new ClauseCompiler()->compile($field, $node, $negated);
 
@@ -116,7 +116,7 @@ it('expands text lists into alternatives with quoted overrides and complements',
 })->with([false, true]);
 
 it('keeps external dynamic names while converting their values', function (): void {
-    $field = AllowedField::string('meta.*', 'attributes.*')->keys('/^[a-z]+$/D')->map(['red' => 1]);
+    $field = Field::string('meta.*', 'attributes.*')->keys('/^[a-z]+$/D')->map(['red' => 1]);
     $node = SearchParser::query('meta.color:red')->allowedFields([$field])->parse();
     $clause = new ClauseCompiler()->compile($field, $node)[0];
 
@@ -126,7 +126,7 @@ it('keeps external dynamic names while converting their values', function (): vo
 });
 
 it('keeps quoted exact lists together even when the field defaults to prefix matching', function (): void {
-    $field = AllowedField::string('title')->prefix();
+    $field = Field::string('title')->prefix();
     $node = SearchParser::query('title:"coffee","tea"')->allowedFields([$field])->parse();
     $clauses = new ClauseCompiler()->compile($field, $node);
 
@@ -137,7 +137,7 @@ it('keeps quoted exact lists together even when the field defaults to prefix mat
 });
 
 it('keeps spanless defaults and programmatic terms without invented positions', function (): void {
-    $field = AllowedField::string('title')->default('coffee');
+    $field = Field::string('title')->default('coffee');
     $node = SearchParser::query('')->allowedFields([$field])->parse();
 
     expect(new ClauseCompiler()->compile($field, $node)[0]->position)->toBeNull()
@@ -145,7 +145,7 @@ it('keeps spanless defaults and programmatic terms without invented positions', 
 });
 
 it('normalizes inequalities from parsed leaves and combines surrounding negation', function (
-    AllowedField $field,
+    Field $field,
     string $query,
     array $operators,
     array $values,
@@ -166,20 +166,20 @@ it('normalizes inequalities from parsed leaves and combines surrounding negation
     }
 })->with([
     [
-        AllowedField::string('status'),
+        Field::string('status'),
         'status:!=sold,expired',
         [Operator::NotIn],
         [['sold', 'expired']],
     ],
-    [AllowedField::string('title'), 'title:!=co*', [Operator::NotLike], ['co%']],
+    [Field::string('title'), 'title:!=co*', [Operator::NotLike], ['co%']],
     [
-        AllowedField::string('title')->contains(),
+        Field::string('title')->contains(),
         'title:!=coffee',
         [Operator::NotLike],
         ['%coffee%'],
     ],
     [
-        AllowedField::string('title')->contains(),
+        Field::string('title')->contains(),
         'title:!=cof,"tea"',
         [Operator::NotLike, Operator::NotEqual],
         ['%cof%', 'tea'],
@@ -192,7 +192,7 @@ it('preserves phrases words and prefixes when compiling full-text leaves', funct
     bool $phrase,
     bool $prefix,
 ): void {
-    $field = AllowedField::string('text')->words();
+    $field = Field::string('text')->words();
     $node = SearchParser::query($query)->allowedFields([$field])->parse();
     $clause = new ClauseCompiler()->compile($field, $node)[0];
 
@@ -210,7 +210,7 @@ it('preserves phrases words and prefixes when compiling full-text leaves', funct
 ]);
 
 it('preserves whole-word phrase flags for every list item', function (bool $negated): void {
-    $field = AllowedField::string('text')->words();
+    $field = Field::string('text')->words();
     $node = SearchParser::query('text:"coffee ceramic",espresso')->allowedFields([$field])->parse();
     $clauses = new ClauseCompiler()->compile($field, $node, $negated);
 
@@ -224,7 +224,7 @@ it('preserves whole-word phrase flags for every list item', function (bool $nega
 })->with([false, true]);
 
 it('resolves eligible terms with storage conversions and text matching', function (
-    AllowedField $field,
+    Field $field,
     string $query,
     Operator $operator,
     mixed $value,
@@ -243,16 +243,16 @@ it('resolves eligible terms with storage conversions and text matching', functio
             ->and($clause->negated)->toBe($negated);
     }
 })->with([
-    [AllowedField::string('value'), 'a%_!', Operator::Like, '%a!%!_!!%', true],
-    [AllowedField::string('value')->prefix(), 'coffee', Operator::Like, '%coffee%', true],
-    [AllowedField::string('value'), '"co*fee"', Operator::Like, '%co*fee%', true],
-    [AllowedField::integer('value'), '10', Operator::Equal, 10, false],
-    [AllowedField::decimal('value', 0, 2)->scale(100), '10.50', Operator::Equal, 1_050, false],
-    [AllowedField::string('value')->map(['low' => 0]), 'low', Operator::Equal, 0, false],
-    [AllowedField::integer('value')->map([1 => 'open']), '1', Operator::Equal, 'open', false],
-    [AllowedField::integer('value')->alias('small', 1), 'small', Operator::Equal, 1, false],
-    [AllowedField::integer('value')->ignore(1), '1', Operator::Equal, 1, false],
-    [AllowedField::string('value'), 'coff*', Operator::Like, 'coff%', true],
+    [Field::string('value'), 'a%_!', Operator::Like, '%a!%!_!!%', true],
+    [Field::string('value')->prefix(), 'coffee', Operator::Like, '%coffee%', true],
+    [Field::string('value'), '"co*fee"', Operator::Like, '%co*fee%', true],
+    [Field::integer('value'), '10', Operator::Equal, 10, false],
+    [Field::decimal('value', 0, 2)->scale(100), '10.50', Operator::Equal, 1_050, false],
+    [Field::string('value')->map(['low' => 0]), 'low', Operator::Equal, 0, false],
+    [Field::integer('value')->map([1 => 'open']), '1', Operator::Equal, 'open', false],
+    [Field::integer('value')->alias('small', 1), 'small', Operator::Equal, 1, false],
+    [Field::integer('value')->ignore(1), '1', Operator::Equal, 1, false],
+    [Field::string('value'), 'coff*', Operator::Like, 'coff%', true],
 ]);
 
 it('supports whole-word terms phrases and word prefixes', function (
@@ -262,7 +262,7 @@ it('supports whole-word terms phrases and word prefixes', function (
     bool $prefix,
 ): void {
     $node = SearchParser::query($query)->parse();
-    $field = AllowedField::string('text')->words();
+    $field = Field::string('text')->words();
     $clause = new ClauseCompiler()->term($field, $node);
 
     expect($clause->fullText->words)->toBe($words)
@@ -281,7 +281,7 @@ it('translates text matches and wildcard segments with literal LIKE escapes', fu
     Operator $operator,
     string $value,
 ): void {
-    $field = AllowedField::string('title')->$mode();
+    $field = Field::string('title')->$mode();
     $node = SearchParser::query($query)->allowedFields([$field])->parse();
     $clause = new ClauseCompiler()->compile($field, $node)[0];
 

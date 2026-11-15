@@ -5,7 +5,7 @@ declare(strict_types=1);
 use HosmelQ\SearchSyntaxParser\Exception\ErrorReason;
 use HosmelQ\SearchSyntaxParser\Exception\SearchSyntaxException;
 use HosmelQ\SearchSyntaxParser\SearchParser;
-use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
+use HosmelQ\SearchSyntaxParser\Validation\Field;
 
 it('exposes a machine-readable reason and parameters for query failures', function (
     string $query,
@@ -19,9 +19,9 @@ it('exposes a machine-readable reason and parameters for query failures', functi
         ErrorReason::MaximumDepth => $parser->maxDepth(1),
         ErrorReason::MaximumClauses => $parser->maxClauses(1),
         ErrorReason::FieldNotAllowed => $parser->allowedFields(['age', 'name']),
-        ErrorReason::InvalidFieldValue => $parser->allowedFields([AllowedField::integer('age')]),
+        ErrorReason::InvalidFieldValue => $parser->allowedFields([Field::integer('age')]),
         ErrorReason::OperatorNotAllowed => $parser->allowedFields([
-            AllowedField::integer('age')->operators('='),
+            Field::integer('age')->operators('='),
         ]),
         default => $parser->allowAnyField(),
     };

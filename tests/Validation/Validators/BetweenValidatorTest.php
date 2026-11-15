@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
+use HosmelQ\SearchSyntaxParser\Validation\Field;
 use HosmelQ\SearchSyntaxParser\Validation\Validators\BetweenValidator;
 
 it('rejects arrays outside the size range', function (
@@ -16,7 +16,7 @@ it('rejects arrays outside the size range', function (
 })->with(['too short' => [2, 3, [1]], 'too long' => [2, 3, [1, 2, 3, 4]]]);
 
 it('rejects non-finite configuration bounds', function (float $bound, bool $minimum): void {
-    AllowedField::numeric('p')->between($minimum ? $bound : 1, $minimum ? 10 : $bound);
+    Field::numeric('p')->between($minimum ? $bound : 1, $minimum ? 10 : $bound);
 })
     ->throws(InvalidArgumentException::class, 'Size bounds must be finite.')
     ->with([INF, -INF, NAN])
