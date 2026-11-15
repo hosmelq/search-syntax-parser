@@ -65,7 +65,9 @@ it('casts backed enum values to their backing type', function (
     expect($parser->build())->toBe([
         'default' => false,
         'field' => 'stored_value',
+        'match' => 'exact',
         'operator' => '=',
+        'quoted' => str_contains($query, '"'),
         'type' => 'comparison',
         'value' => $expected,
     ]);

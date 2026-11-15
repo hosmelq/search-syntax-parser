@@ -232,4 +232,5 @@ it('keeps field subclasses through factories and fluent configuration', function
     ['date', []], ['decimal', [2]],
     ['enum', [PublicationStatus::class]],
     ['in', [['open', 'closed']]], ['integer', []], ['numeric', []], ['string', []],
+    ['ulid', []], ['uuid', []],
 ]);

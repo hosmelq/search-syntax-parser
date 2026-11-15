@@ -45,7 +45,9 @@ it('keeps quoted wildcard text literal', function (string $query, array $expecte
         [
             'default' => false,
             'field' => 'name',
+            'match' => 'exact',
             'operator' => '=',
+            'quoted' => true,
             'type' => 'comparison',
             'value' => '*',
         ],
@@ -55,7 +57,9 @@ it('keeps quoted wildcard text literal', function (string $query, array $expecte
         [
             'default' => false,
             'field' => 'name',
+            'match' => 'exact',
             'operator' => '=',
+            'quoted' => true,
             'type' => 'comparison',
             'value' => 'nike*',
         ],
@@ -90,7 +94,9 @@ it('expands mixed lists with the correct connective', function (
             'right' => [
                 'default' => false,
                 'field' => 'name',
+                'match' => 'exact',
                 'operator' => $leafOperator,
+                'quoted' => true,
                 'type' => 'comparison',
                 'value' => 'literal*',
             ],
@@ -100,7 +106,9 @@ it('expands mixed lists with the correct connective', function (
         'right' => [
             'default' => false,
             'field' => 'name',
+            'match' => 'exact',
             'operator' => $leafOperator,
+            'quoted' => false,
             'type' => 'comparison',
             'value' => 42,
         ],

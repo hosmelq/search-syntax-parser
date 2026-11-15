@@ -19,6 +19,7 @@ readonly class ComparisonNode implements NodeInterface
         private bool|float|int|string $value,
         private null|Span $span = null,
         private bool $default = false,
+        private bool $quoted = false,
     ) {}
 
     /**
@@ -75,5 +76,10 @@ readonly class ComparisonNode implements NodeInterface
     public function isDefault(): bool
     {
         return $this->default;
+    }
+
+    public function isQuoted(): bool
+    {
+        return $this->quoted;
     }
 }

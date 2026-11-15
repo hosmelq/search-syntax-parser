@@ -147,5 +147,5 @@ it('treats lowercase and mixed-case connectives as ordinary terms', function (
     ['this is not good', 'this AND is AND not AND good'],
     ['a Or b', 'a AND Or AND b'],
     ['and OR not', 'and OR not'],
-    ['name:AND', 'name:"AND"'],
+    ['name:AND', 'name:AND'],
 ]);

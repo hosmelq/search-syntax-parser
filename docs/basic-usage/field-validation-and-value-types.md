@@ -1,6 +1,6 @@
 ---
 title: "Field validation and value types"
-description: "Restrict searchable fields and control scalar casting with string, numeric, boolean, date, enum, and custom rules."
+description: "Restrict searchable fields and control scalar casting with string, numeric, enum, UUID, ULID, matching, and storage conversion rules."
 weight: 2
 ---
 
@@ -55,9 +55,11 @@ Typed fields cast from raw text regardless of quoting.
 | `boolean($name, $internalName = null)` | Maps `true`/`1` and `false`/`0` to booleans, case-insensitively. |
 | `in($name, $values, $internalName = null)` | Returns the matching allowed scalar with its type preserved. |
 | `date($name, $format = null, $internalName = null)` | Validates a date or datetime and preserves the raw text. |
-| `enum($name, $enum, $internalName = null)` | Uses the backing values of a backed enum, with their integer or string types. |
+| `enum($name, $enum, $internalName = null)` | Accepts a backing value or case name, case-insensitively, and returns the backing value. |
+| `uuid($name, $internalName = null)` | Accepts the 8-4-4-4-12 hexadecimal UUID form and normalizes to lowercase. |
+| `ulid($name, $internalName = null)` | Accepts a 26-character Crockford base32 ULID within 128 bits and normalizes to uppercase. |
 
-`in()` matches the input text or its inferred numeric value. Boolean members match like `boolean()`. For example, `in('code', ['01', '02'])` preserves `01`, and `in('level', [1, 2])` casts `2` to an integer. Invalid typed values fail validation rather than being silently coerced.
+`in()` matches string members case-insensitively with `mb_strtolower()` and returns the configured canonical value: `status:OPEN` with `in('status', ['open'])` produces `'open'`. Two configured strings equal ignoring case throw `InvalidArgumentException`, including duplicate identical strings. Non-string members retain their text or inferred-number matching, and boolean members match like `boolean()`. For example, `in('code', ['01', '02'])` preserves `01`, and `in('level', [1, 2])` casts `2` to an integer. Invalid typed values fail validation rather than being silently coerced.
 
 ```php
 use HosmelQ\SearchSyntaxParser\SearchParser;
@@ -128,7 +130,7 @@ assert(SearchParser::query('birthday:"29/02/2024"')->allowedFields([
 
 ## Backed enums
 
-`enum()` behaves like `in()` over `$enum::cases()` backing values. A unit enum or a class that is not a backed enum throws `InvalidArgumentException` when the rule is configured.
+`enum()` accepts backing values and case names, case-insensitively. The AST always contains the backing value. For `case Active = 1`, `status:1`, `status:Active`, and `status:active` all produce the integer `1`. If a token matches one case's backing value and another case's name, the backing value wins. Backing values must be unique ignoring case, and case names must separately be unique ignoring case; collisions within either set throw `InvalidArgumentException` when configured. A unit enum or a class that is not a backed enum also throws `InvalidArgumentException`.
 
 ```php
 use HosmelQ\SearchSyntaxParser\SearchParser;
@@ -136,14 +138,80 @@ use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
 
 enum Status: string
 {
-    case Draft = 'draft';
-    case Published = 'published';
+    case Draft = 'pending';
+    case Published = 'live';
 }
 
-assert(SearchParser::query('status:draft')->allowedFields([
+assert(SearchParser::query('status:DRAFT')->allowedFields([
     AllowedField::enum('status', Status::class),
-])->build()['value'] === 'draft');
+])->build()['value'] === 'pending');
 ```
+
+## UUIDs and ULIDs
+
+`uuid()` accepts any version in the 8-4-4-4-12 hexadecimal form, including nil and max UUIDs. It does not require a particular version or variant. `ulid()` requires 26 Crockford base32 characters (`0`–`9`, `A`–`Z` excluding `I`, `L`, `O`, and `U`), with the first character between `0` and `7`. Both accept either letter case, require string values, and support `each()` and `at()` item rules.
+
+```php
+use HosmelQ\SearchSyntaxParser\SearchParser;
+use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
+
+assert(SearchParser::query('id:550E8400-E29B-41D4-A716-446655440000')->allowedFields([
+    AllowedField::uuid('id'),
+])->parse()->getValue() === '550e8400-e29b-41d4-a716-446655440000');
+
+assert(AllowedField::ulid('id')->tryCast('01arz3ndektsv4rrffq69g5fav') === '01ARZ3NDEKTSV4RRFFQ69G5FAV');
+assert(AllowedField::ulid('id')->tryCast('8ZZZZZZZZZZZZZZZZZZZZZZZZZ') === null);
+```
+
+## Text match modes
+
+Text fields match exactly by default. `prefix()`, `contains()`, and `words()` configure prefix, substring, and whole-word matching as metadata for adapters; only the last call wins. These methods require `string()`, or an `array()` field with a shared `each()->string()` type. Other cast types, untyped collections, and positional overrides with a non-string type throw `InvalidArgumentException` when configured. On `array()` fields, call these methods and `scale()` after `each()`, because they check the shared item type when called.
+
+`TextMatch` is a string-backed enum with `Exact`, `Prefix`, `Contains`, and `Words` cases. `AllowedField::getTextMatch(null|ComparisonNode|InNode $node = null, int $index = 0): TextMatch` returns the configured mode without a node, or the effective mode for a comparison or one list item. Quoted values force `Exact`; defaults are unquoted. Quoting changes the matching mode, not case sensitivity. Explicit wildcard patterns remain `WildcardNode` instances and are independent of these modes. Text ranges retain their range semantics.
+
+```php
+use HosmelQ\SearchSyntaxParser\SearchParser;
+use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
+use HosmelQ\SearchSyntaxParser\Validation\TextMatch;
+
+$title = AllowedField::string('title')->contains()->prefix();
+$parser = SearchParser::query('title:mug,"cup"')->allowedFields([$title]);
+$node = $parser->parse();
+
+assert($title->getTextMatch($node, 0) === TextMatch::Prefix);
+assert($title->getTextMatch($node, 1) === TextMatch::Exact);
+assert($parser->build()['match'] === ['prefix', 'exact']);
+assert($parser->build()['quoted'] === [false, true]);
+```
+
+## Storage conversions
+
+`scale(int|string $factor)` multiplies integer, numeric, and decimal field values, or array items with one of those shared types, using `brick/math`. Floats are read from their shortest round-trip text, so no precision is lost. An integral result becomes a PHP integer, or a decimal string when it does not fit in one; a fractional result becomes a decimal string with trailing zeros removed. Decimal fields preserve the user's decimal text until this conversion, so `10.50` scaled by `100` becomes the integer `1050`. An invalid factor or a non-numeric field throws `InvalidArgumentException` when configured. Numeric fields reject non-finite values such as `1e400`.
+
+`map(array $map)` translates cast values to stored scalars, and unmapped values pass through. String keys match ignoring case, like every other value comparison, so `map(['open' => 1])` converts `OPEN` too; keys that collide ignoring case throw `InvalidArgumentException`. Boolean keys use `0` and `1`; fractional numeric keys use strings such as `'1.5'`. A field accepts one storage conversion: calling `scale()` or `map()` a second time throws `InvalidArgumentException`.
+
+`AllowedField::toStorage(bool|float|int|string $value): bool|float|int|string` applies the conversion to an already cast and validated value. The built-in array adapter calls it for comparisons, every list item, and non-null range bounds, including default values. Custom adapters must call it themselves. The AST retains user-facing cast values, and the string adapter never applies storage conversions. Aliases, `ignore()`, validation, and size rules run before conversion.
+
+```php
+use HosmelQ\SearchSyntaxParser\SearchParser;
+use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
+
+$price = AllowedField::decimal('price', 2)->max(20)->scale(100);
+$parser = SearchParser::query('price:10.50')->allowedFields([$price]);
+
+assert($parser->parse()->getValue() === '10.50');
+assert($parser->build()['value'] === 1050);
+assert($price->toStorage('10.50') === 1050);
+
+$priority = AllowedField::in('priority', ['low', 'normal', 'high'])
+    ->map(['low' => 1, 'normal' => 2, 'high' => 3]);
+$result = SearchParser::query('priority:>NORMAL')->allowedFields([$priority])->build();
+
+assert($result['operator'] === '>');
+assert($result['value'] === 2);
+```
+
+Fields with a storage conversion reject explicit wildcard patterns with `InvalidFieldOperatorException`, exactly like `withoutWildcards()`, because a pattern cannot be converted. Existence checks and quoted literal asterisks remain allowed. Use order-preserving conversions when ordering comparisons or ranges must reflect user-facing order.
 
 ## Size rules and custom validation
 
@@ -164,7 +232,7 @@ assert($result['value'] === 4);
 
 ## Ignored values
 
-`ignore(...$values)` removes constraints whose values strictly match an ignored value after alias resolution and casting. Removed values never reach validation. Operator and clause restrictions still run first.
+`ignore(...$values)` removes constraints whose values match an ignored value after alias resolution and casting. Strings compare case-insensitively using `mb_strtolower()` on both sides; other values compare strictly. Storage conversions have not run at this point. Removed values never reach validation. Operator and clause restrictions still run first.
 
 A matching comparison disappears. Lists drop matching literal items and keep an `InNode`, even when only one item remains; an empty list disappears. Wildcard-expanded lists drop matching literal items but retain their patterns. Ignored range bounds become open bounds (`null`); a range disappears when both bounds are ignored values. Existing open `*` bounds are not ignored values. Wildcard patterns, existence checks, and bare terms are unaffected by `ignore()`.
 

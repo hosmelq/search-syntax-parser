@@ -7,10 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
-This release includes breaking changes to field permissions, ignored values, operators, wildcard AST nodes, exception inheritance, value typing, validation, default origin and serialization, nullable AST results, query limits, and the lexer and parser APIs.
+This release includes breaking changes to field permissions, ignored values, operators, wildcard AST nodes, exception inheritance, value typing, validation, default origin and serialization, nullable AST results, case-insensitive values, quoted field metadata, text match modes, storage conversions, query limits, and the lexer and parser APIs.
 
 ### Added
 
+- Add `AllowedField::prefix()`, `contains()`, and `words()` with `TextMatch` metadata and per-value quoted overrides to exact matching.
+- Add storage conversions through `AllowedField::scale()`, `map()`, and `toStorage()`, applied to comparison, list, and range values by the array adapter while preserving the AST and string output.
+- Add `uuid()` and `ulid()` field factories and item rules with format validation and canonical letter case.
+- Expose comparison and per-item list quotes with `isQuoted()`, `quoted` in array output, and preserved quotes in string output; add effective `match` metadata to every comparison and list array.
 - Add `AllowedField::tryCast()` to probe typed values with alias resolution and validation, returning null for invalid input.
 - Add `NodeTransformer` for selective AST rewriting and opt-in `NegationNormalFormTransformer` for set complements around positive leaves.
 - Expose `isDefault()` on comparison, exists, list, and unary nodes, and `default: bool` on their array output.
@@ -26,6 +30,10 @@ This release includes breaking changes to field permissions, ignored values, ope
 
 ### Changed
 
+- Require brick/math 0.14.4 or newer, up to 1.x.
+- Match `in()` strings and `ignore()` values case-insensitively, returning canonical allowed members and rejecting duplicate allowed strings ignoring case; alias tokens remain case-sensitive.
+- Accept backed enum values or case names ignoring case, prefer backing values over overlapping names, and reject ambiguous backing values or case names at configuration time.
+- Reject wildcard patterns on fields with a storage conversion before alias resolution or value validation.
 - Return null from `SearchParser::parse()` and `build()` when no constraint or default applies; `build()` still resolves the adapter but does not call it.
 - Preserve field subclasses through late-bound factories and fluent `static` returns, with a final field constructor.
 - Read string defaults like typed query text, resolving aliases and casting, and validate defaults like the equivalent query clause, reporting invalid defaults as configuration errors naming the field. Non-string defaults must already have the field's cast type.

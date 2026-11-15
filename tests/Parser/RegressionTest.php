@@ -14,7 +14,9 @@ it('keeps punctuation and unicode values intact', function (
     expect(SearchParser::query($input)->allowAnyField()->build())->toBe([
         'default' => false,
         'field' => mb_strstr($input, ':', true),
+        'match' => 'exact',
         'operator' => '=',
+        'quoted' => str_contains($input, '"'),
         'type' => 'comparison',
         'value' => $value,
     ]);

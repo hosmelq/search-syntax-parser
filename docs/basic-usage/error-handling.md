@@ -80,6 +80,6 @@ try {
 
 ## Programmer errors
 
-Unknown adapters, non-positive limits, defaults that have an invalid shape or fail the field's rules when applied, unknown configured operators, nonscalar alias closure results, and non-backed enum rules throw `InvalidArgumentException`. They indicate invalid application configuration rather than a user's query error. A string adapter asked to serialize an unrepresentable wildcard throws `LogicException`.
+Unknown adapters, non-positive limits, defaults that have an invalid shape or fail the field's rules when applied, unknown configured operators, nonscalar alias closure results, and non-backed enum rules throw `InvalidArgumentException`. So do `in()` strings, enum values or case names, and `map()` keys that collide ignoring case; a second storage conversion; an invalid `scale()` factor or a non-numeric scaled field; and a text match mode on a field whose values are not text. They indicate invalid application configuration rather than a user's query error. A string adapter asked to serialize an unrepresentable wildcard throws `LogicException`.
 
 Read [query limits and untrusted input](../advanced-usage/query-limits-and-untrusted-input) for limits that bound parser work.

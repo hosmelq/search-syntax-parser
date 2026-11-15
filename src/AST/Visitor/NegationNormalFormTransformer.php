@@ -29,6 +29,7 @@ final class NegationNormalFormTransformer extends NodeTransformer
                 $node->getValue(),
                 $node->getSpan(),
                 $node->isDefault(),
+                $node->isQuoted(),
             ), $node->getSpan(), $node->isDefault())
             : $node;
     }
@@ -43,6 +44,7 @@ final class NegationNormalFormTransformer extends NodeTransformer
                 $node->getValues(),
                 $node->getSpan(),
                 $node->isDefault(),
+                array_map($node->isQuoted(...), array_keys($node->getValues())),
             ), $node->getSpan(), $node->isDefault())
             : $node;
     }

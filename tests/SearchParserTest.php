@@ -16,7 +16,9 @@ it('accepts whitespace surrounding the query', function (): void {
     expect($result)->toEqual([
         'default' => false,
         'field' => 'title',
+        'match' => 'exact',
         'operator' => '=',
+        'quoted' => false,
         'type' => 'comparison',
         'value' => 'Coffee',
     ]);

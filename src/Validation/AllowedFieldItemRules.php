@@ -19,6 +19,8 @@ use HosmelQ\SearchSyntaxParser\Validation\Validators\MinValidator;
 use HosmelQ\SearchSyntaxParser\Validation\Validators\NumericValidator;
 use HosmelQ\SearchSyntaxParser\Validation\Validators\SizeValidator;
 use HosmelQ\SearchSyntaxParser\Validation\Validators\StringValidator;
+use HosmelQ\SearchSyntaxParser\Validation\Validators\UlidValidator;
+use HosmelQ\SearchSyntaxParser\Validation\Validators\UuidValidator;
 use InvalidArgumentException;
 
 /**
@@ -29,7 +31,12 @@ use InvalidArgumentException;
 final class AllowedFieldItemRules
 {
     /**
-     * @var null|'boolean'|'date'|'decimal'|'in'|'integer'|'numeric'|'string'
+     * @var array<string, int|string>
+     */
+    private array $caseNames = [];
+
+    /**
+     * @var null|'boolean'|'date'|'decimal'|'in'|'integer'|'numeric'|'string'|'ulid'|'uuid'
      */
     private null|string $type = null;
 
@@ -134,6 +141,8 @@ final class AllowedFieldItemRules
                 : (is_numeric($value) ? (float) $value : $value),
             'boolean' => $this->toBoolean($value) ?? $value,
             'in' => $this->castMember($value, $quoted),
+            'ulid' => strtr($value, 'abcdefghijklmnopqrstuvwxyz', 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'),
+            'uuid' => mb_strtolower($value),
         };
     }
 
@@ -160,7 +169,7 @@ final class AllowedFieldItemRules
     }
 
     /**
-     * Require a backing value from a backed enum.
+     * Require a backing value or case name from a backed enum, preferring values over names.
      *
      * @param class-string<BackedEnum> $enum
      */
@@ -170,9 +179,33 @@ final class AllowedFieldItemRules
             throw new InvalidArgumentException('An enum rule requires a backed enum.');
         }
 
-        return $this->in(
+        $this->in(
             array_map(static fn (BackedEnum $case): int|string => $case->value, $enum::cases()),
         );
+
+        foreach ($enum::cases() as $case) {
+            $name = mb_strtolower($case->name);
+
+            if (array_key_exists($name, $this->caseNames)) {
+                throw new InvalidArgumentException('Enum case names must be unique ignoring case.');
+            }
+
+            $this->caseNames[$name] = $case->value;
+        }
+
+        return $this;
+    }
+
+    /**
+     * Get the configured cast type for field metadata constraints.
+     *
+     * @internal
+     *
+     * @return null|'boolean'|'date'|'decimal'|'in'|'integer'|'numeric'|'string'|'ulid'|'uuid'
+     */
+    public function getType(): null|string
+    {
+        return $this->type;
     }
 
     /**
@@ -197,7 +230,7 @@ final class AllowedFieldItemRules
             'boolean' => is_bool($value),
             'integer' => is_int($value),
             'numeric' => is_int($value) || is_float($value),
-            'date', 'decimal', 'string' => is_string($value),
+            'date', 'decimal', 'string', 'ulid', 'uuid' => is_string($value),
             'in' => in_array($value, $rules->values, true),
         };
     }
@@ -209,9 +242,11 @@ final class AllowedFieldItemRules
      */
     public function in(array $values): self
     {
+        $validator = new InValidator($values);
+        $this->caseNames = [];
         $this->type = 'in';
         $this->values = $values;
-        $this->validators[] = new InValidator($values);
+        $this->validators[] = $validator;
 
         return $this;
     }
@@ -288,6 +323,28 @@ final class AllowedFieldItemRules
     }
 
     /**
+     * Require a ULID and normalize its text to uppercase.
+     */
+    public function ulid(): self
+    {
+        $this->type = 'ulid';
+        $this->validators[] = new UlidValidator();
+
+        return $this;
+    }
+
+    /**
+     * Require a UUID and normalize its text to lowercase.
+     */
+    public function uuid(): self
+    {
+        $this->type = 'uuid';
+        $this->validators[] = new UuidValidator();
+
+        return $this;
+    }
+
+    /**
      * Validate the value; string types size strings by length regardless of rule order.
      */
     public function validate(mixed $value, string $attribute, null|bool $length = null): bool
@@ -318,18 +375,21 @@ final class AllowedFieldItemRules
         $candidates = is_int($inferred) || is_float($inferred)
             ? [$value, (string) $inferred]
             : [$value];
+        $strings = array_map(mb_strtolower(...), $candidates);
 
         foreach ($this->values as $allowed) {
             if (
                 is_bool($allowed)
                 ? $boolean === $allowed
-                : is_scalar($allowed) && in_array((string) $allowed, $candidates, true)
+                : (is_string($allowed)
+                    ? in_array(mb_strtolower($allowed), $strings, true)
+                    : is_scalar($allowed) && in_array((string) $allowed, $candidates, true))
             ) {
                 return $allowed;
             }
         }
 
-        return $value;
+        return $this->caseNames[mb_strtolower($value)] ?? $value;
     }
 
     /**

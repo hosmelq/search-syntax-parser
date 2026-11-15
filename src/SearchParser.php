@@ -304,7 +304,7 @@ class SearchParser
 
     protected function createStringAdapter(): StringAdapter
     {
-        return new StringAdapter();
+        return new StringAdapter($this);
     }
 
     /**

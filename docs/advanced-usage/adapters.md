@@ -17,15 +17,15 @@ assert(new ArrayAdapter()->build($parser->parse()) === $parser->build());
 
 ## Array output reference
 
-Each node has a lowercase `type`. Field nodes use the configured internal field name. Bare wildcard terms have a null field. Typed scalars retain their PHP types; decimal and date fields retain text.
+Each node has a lowercase `type`. Field nodes use the configured internal field name. Bare wildcard terms have a null field. Values use their cast types unless a configured storage conversion changes them. Decimal and date fields retain text without a conversion. UUIDs normalize to lowercase and ULIDs to uppercase.
 
 | Node | Array keys |
 | --- | --- |
-| Comparison | `default: bool`, `field`, `operator`, `type: comparison`, `value` |
+| Comparison | `default: bool`, `field`, `match: string`, `operator`, `quoted: bool`, `type: comparison`, `value` |
 | Term | `quoted: bool`, `type: term`, `value` |
 | Binary operator | `left`, `operator: AND/OR`, `right`, `type: binary` |
 | Unary operator | `default: bool`, `operand`, `operator: NOT`, `type: unary` |
-| List | `default: bool`, `field`, `operator: =/!=`, `type: in`, `values` |
+| List | `default: bool`, `field`, `match: list<string>`, `operator`, `quoted: list<bool>`, `type: in`, `values` |
 | Range | `field`, `from`, `to`, `type: range` |
 | Exists | `default: bool`, `field`, `type: exists` |
 | Wildcard | `field`, `operator: =/!=`, `segments`, `type: wildcard` |
@@ -38,7 +38,9 @@ use HosmelQ\SearchSyntaxParser\SearchParser;
 assert(SearchParser::query('title:Coffee')->allowAnyField()->build() === [
     'default' => false,
     'field' => 'title',
+    'match' => 'exact',
     'operator' => '=',
+    'quoted' => false,
     'type' => 'comparison',
     'value' => 'Coffee',
 ]);
@@ -52,6 +54,12 @@ assert(SearchParser::query('title:co*fee')->allowAnyField()->build() === [
 ```
 
 Literal lists stay one node. Lists containing any pattern expand into binary trees: equality joins leaves with OR and inequality joins them with AND. Defaults appear in the same tree as explicit query filters. Comparison, list, exists, and unary arrays always include `default: bool`, mirroring `isDefault()`. It is true on default comparisons, default lists, and both the NOT wrapper and the exists check of a null default; parsed clauses use false. Other node types do not carry this key.
+
+## Match metadata and storage values
+
+Comparison and list output always includes `match` and `quoted`, with all keys in alphabetical order. A comparison's `match` is `exact`, `prefix`, `contains`, or `words`; a list's `match` is a list of those strings aligned with `values`. Quoted values use `exact`, and list quote flags are also aligned with the surviving values after ignored items are removed. Unconfigured fields use `exact`, including direct `new ArrayAdapter()` builds without a parser. These modes describe matching; the array adapter does not execute a search.
+
+Pass the parser to `new ArrayAdapter($parser)` when building a tree directly with field mappings, match modes, or storage conversions. This is how `SearchParser::build()` creates its array adapter. It applies `AllowedField::toStorage()` to comparison values, list items, and non-null range bounds. The AST remains unchanged. Custom adapters must honor [case-insensitive text comparison semantics](../basic-usage/query-syntax#value-comparison-semantics), effective match modes, and storage conversions themselves.
 
 ## Adapter selection
 

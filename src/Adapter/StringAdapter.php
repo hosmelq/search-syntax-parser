@@ -13,15 +13,15 @@ use HosmelQ\SearchSyntaxParser\AST\Node\RangeNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\TermNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\UnaryOperatorNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\WildcardNode;
-use HosmelQ\SearchSyntaxParser\AST\Visitor\VisitorInterface;
 use HosmelQ\SearchSyntaxParser\Exception\ParseException;
 use HosmelQ\SearchSyntaxParser\Lexer\SearchLexer;
 use HosmelQ\SearchSyntaxParser\Lexer\TokenType;
+use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
 use HosmelQ\SearchSyntaxParser\Validation\AllowedFieldItemRules;
 use LogicException;
 use Override;
 
-final readonly class StringAdapter implements QueryAdapterInterface, VisitorInterface
+final readonly class StringAdapter extends AbstractAdapter
 {
     #[Override]
     public function build(NodeInterface $ast): string
@@ -43,9 +43,13 @@ final readonly class StringAdapter implements QueryAdapterInterface, VisitorInte
             return '';
         }
 
-        return $this->fieldPrefix($node->getField())
-            .($node->getOperator() === '=' ? '' : $node->getOperator())
-            .$this->value($node->getValue());
+        $value = $this->value(
+            $node->getValue(),
+            $node->isQuoted(),
+            $this->searchParser?->getAllowedField($node->getField()),
+        );
+
+        return $this->comparison($node->getField(), $node->getOperator(), $value);
     }
 
     #[Override]
@@ -65,17 +69,34 @@ final readonly class StringAdapter implements QueryAdapterInterface, VisitorInte
             return '';
         }
 
-        return $this->fieldPrefix($node->getField())
-            .($node->getOperator() === '=' ? '' : $node->getOperator())
-            .implode(',', array_map($this->value(...), $node->getValues()));
+        $field = $this->searchParser?->getAllowedField($node->getField());
+
+        return $this->comparison(
+            $node->getField(),
+            $node->getOperator(),
+            implode(',', array_map(
+                fn (bool|float|int|string $value, int $index): string => $this->value(
+                    $value,
+                    $node->isQuoted($index),
+                    $field,
+                    $index,
+                ),
+                $node->getValues(),
+                array_keys($node->getValues()),
+            )),
+        );
     }
 
     #[Override]
     public function visitRange(RangeNode $node): string
     {
+        $field = $this->searchParser?->getAllowedField($node->getField());
+        $from = $node->getFrom();
+        $to = $node->getTo();
+
         return $this->fieldPrefix($node->getField()).'['
-            .($node->getFrom() === null ? '*' : $this->value($node->getFrom()))
-            .' TO '.($node->getTo() === null ? '*' : $this->value($node->getTo())).']';
+            .($from === null ? '*' : $this->value($from, false, $field))
+            .' TO '.($to === null ? '*' : $this->value($to, false, $field)).']';
     }
 
     #[Override]
@@ -146,7 +167,7 @@ final readonly class StringAdapter implements QueryAdapterInterface, VisitorInte
             .$pattern;
     }
 
-    private function canBeBare(string $value): bool
+    private function canBeBare(string $value, bool $keywords = false): bool
     {
         try {
             $tokens = new SearchLexer()->tokenize($value);
@@ -154,7 +175,21 @@ final readonly class StringAdapter implements QueryAdapterInterface, VisitorInte
             return false;
         }
 
-        return $tokens->types === [TokenType::Word] && $tokens->values === [$value];
+        return count($tokens->types) === 1
+            && ($tokens->types[0] === TokenType::Word || ($keywords && in_array(
+                $tokens->types[0],
+                [TokenType::And, TokenType::Or, TokenType::Not],
+                true,
+            )))
+            && $tokens->values === [$value];
+    }
+
+    private function comparison(string $field, string $operator, string $value): string
+    {
+        return $this->fieldPrefix($field)
+            .($operator === '=' ? '' : $operator)
+            .(($operator === '<' || $operator === '>') && str_starts_with($value, '=') ? ' ' : '')
+            .$value;
     }
 
     /**
@@ -168,6 +203,15 @@ final readonly class StringAdapter implements QueryAdapterInterface, VisitorInte
 
         // A name starting like an ISO datetime would absorb `:` and the value into one word.
         return preg_match('/^\d{4}-\d{2}-\d{2}[Tt]\d{2}/u', $name) === 0 ? $name.':' : $name.' :';
+    }
+
+    /**
+     * Check whether text lexes as one field value; a leading `-` joins the value after a colon.
+     */
+    private function isBareValue(string $value): bool
+    {
+        return $this->canBeBare($value, true)
+            || (str_starts_with($value, '-') && $this->canBeBare(mb_substr($value, 1)));
     }
 
     private function quote(string $value): string
@@ -213,14 +257,20 @@ final readonly class StringAdapter implements QueryAdapterInterface, VisitorInte
         return [$leftText.' '.$operator.' '.$rightText, $operator];
     }
 
-    private function value(bool|float|int|string $value): string
-    {
+    private function value(
+        bool|float|int|string $value,
+        bool $quoted = false,
+        null|AllowedField $field = null,
+        int $index = 0,
+    ): string {
         if (is_bool($value)) {
-            return $value ? 'true' : 'false';
+            $text = $value ? 'true' : 'false';
+
+            return $quoted ? $this->quote($text) : $text;
         }
 
         if (is_int($value)) {
-            return (string) $value;
+            return $quoted ? $this->quote((string) $value) : (string) $value;
         }
 
         if (is_float($value)) {
@@ -254,15 +304,22 @@ final readonly class StringAdapter implements QueryAdapterInterface, VisitorInte
                 $text = ($negative ? '-' : '').$text;
             }
 
-            return str_contains($text, '.') ? $text : $text.'.0';
+            $text = str_contains($text, '.') ? $text : $text.'.0';
+
+            return $quoted ? $this->quote($text) : $text;
         }
 
-        // A leading `=` would merge with a preceding `<` or `>` into another operator.
-        $bare = $this->canBeBare($value)
-            && ! str_contains($value, '*')
-            && ! str_starts_with($value, '=')
-            && AllowedFieldItemRules::infer($value, false) === $value;
+        // Unquoted text must read back as the same value: through the field's own casting
+        // when it is configured, otherwise through untyped inference. Alias tokens stay quoted,
+        // and are detected without running alias closures.
+        $bare = ! str_contains($value, '*')
+            && $this->isBareValue($value)
+            && (
+                $field instanceof AllowedField
+                ? ! $field->hasAlias($value) && $field->cast($value, false, $index) === $value
+                : AllowedFieldItemRules::infer($value, false) === $value
+            );
 
-        return $bare ? $value : $this->quote($value);
+        return ! $quoted && $bare ? $value : $this->quote($value);
     }
 }

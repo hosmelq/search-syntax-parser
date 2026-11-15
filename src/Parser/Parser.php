@@ -361,9 +361,11 @@ class Parser
         $valueIndex = $this->index;
         $value = $this->parseValue($field, $allowed);
         $segments = $this->segments;
+        $quoted = ($this->tokens->types[$valueIndex] ?? null) === TokenType::String;
 
         if ($hasColon && ($this->tokens->types[$this->index] ?? null) === TokenType::Comma) {
             $values = [$value];
+            $quotes = [$quoted];
             $patterns = [$segments];
             $starts = [$valueIndex];
             $hasPattern = $segments !== null;
@@ -372,6 +374,7 @@ class Parser
                 $this->index++;
 
                 $starts[] = $this->index;
+                $quotes[] = ($this->tokens->types[$this->index] ?? null) === TokenType::String;
                 $values[] = $this->parseValue($field, $allowed, count($values));
                 $patterns[] = $this->segments;
                 $hasPattern = $hasPattern || $this->segments !== null;
@@ -391,7 +394,7 @@ class Parser
             if ($allowed instanceof AllowedField) {
                 foreach ($values as $index => $item) {
                     if ($patterns[$index] === null && $allowed->isIgnored($item)) {
-                        unset($values[$index]);
+                        unset($values[$index], $quotes[$index]);
                     }
                 }
             }
@@ -404,7 +407,13 @@ class Parser
             $this->validateValue($field, $values, $valueIndex);
 
             if (! $hasPattern) {
-                return new InNode($field, $operator, array_values($values), $this->span($start));
+                return new InNode(
+                    $field,
+                    $operator,
+                    array_values($values),
+                    $this->span($start),
+                    quoted: array_values($quotes),
+                );
             }
 
             $left = null;
@@ -425,7 +434,13 @@ class Parser
                 }
 
                 $node = $pattern === null
-                    ? new ComparisonNode($field, $operator, $values[$index], $span)
+                    ? new ComparisonNode(
+                        $field,
+                        $operator,
+                        $values[$index],
+                        $span,
+                        quoted: $quotes[$index],
+                    )
                     : new WildcardNode($field, $operator, $pattern, $span);
                 $left = $left === null
                     ? $node
@@ -446,7 +461,7 @@ class Parser
         $this->validateValue($field, $value, $valueIndex);
 
         return $segments === null
-            ? new ComparisonNode($field, $operator, $value, $this->span($start))
+            ? new ComparisonNode($field, $operator, $value, $this->span($start), quoted: $quoted)
             : new WildcardNode($field, $operator, $segments, $this->span($start));
     }
 

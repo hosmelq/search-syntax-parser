@@ -56,6 +56,14 @@ assert(SearchParser::query('category:*')->allowAnyField()->build()['type'] === '
 assert(SearchParser::query('NOT discount:*')->allowAnyField()->build()['operator'] === 'NOT');
 ```
 
+## Value comparison semantics
+
+Values compare case-insensitively. Adapters must compare text that way for exact, prefix, substring, whole-word, and explicit wildcard searches, including exclusions. MySQL integrations can use case-insensitive collations; PostgreSQL integrations can use `ILIKE`, `lower()`, or `citext` as appropriate. Quoting makes a value literal and overrides configured text match modes to exact, but does not make comparisons case-sensitive. Field names and alias tokens remain exact and case-sensitive.
+
+`in()` returns its configured canonical string, and `enum()` accepts either backing values or case names, ignoring case. Enum backing values take precedence when a token also matches another case's name. Non-string allowed members retain their existing matching rules. See [field validation and value types](field-validation-and-value-types) for configuration errors and storage conversions.
+
+`prefix()`, `contains()`, and `words()` select how unquoted text matches; the last configured mode wins. `words()` requests whole-word matching; the adapter implements word boundaries appropriate to its backend. A quoted value forces exact matching for that comparison or list item. Explicit wildcard patterns keep their own meaning regardless of the field's configured mode.
+
 ## Complements and missing values
 
 `NOT x`, `-x`, and `field:!=v` mean set complement. When a field is `nullable()`, its stored value can be missing: a NULL column, an optional relation, or an absent key. Adapters must include those records in the complement. For example, `NOT price:>10` includes a missing price as well as prices at most 10; replacing it with `price:<=10` would lose missing values.
@@ -66,7 +74,7 @@ These semantics apply to custom adapters too. SQL integrations must account for 
 
 ## Quoted text
 
-Single or double quotes preserve literal text. Quote values with whitespace or reserved punctuation: `(`, `)`, `[`, `]`, `:`, `,`, `<`, `>`, and `!=`. A leading `-` negates a standalone term, so quote it to search for literal text beginning with a hyphen.
+Single or double quotes preserve literal text. `ComparisonNode::isQuoted()` and `InNode::isQuoted(int $index)` retain field value quoting, including each item of a mixed list; array output exposes the same flags under `quoted`. Default values are unquoted. The string adapter retains explicit value quotes, so `title:"mug"` remains `title:"mug"`. Quote values with whitespace or reserved punctuation: `(`, `)`, `[`, `]`, `:`, `,`, `<`, `>`, and `!=`. A leading `-` negates a standalone term, so quote it to search for literal text beginning with a hyphen.
 
 Inside quotes, only `\\`, `\"`, and `\'` are unescaped. Other backslashes remain literal. Unterminated quotes throw a parse error. ISO datetimes such as `2025-01-01T12:30:45.123Z` may be unquoted, with or without a timezone; quote other values containing colons, such as URLs and times.
 

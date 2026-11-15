@@ -13,6 +13,8 @@ use HosmelQ\SearchSyntaxParser\AST\Node\RangeNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\TermNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\UnaryOperatorNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\WildcardNode;
+use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
+use HosmelQ\SearchSyntaxParser\Validation\TextMatch;
 use Override;
 
 readonly class ArrayAdapter extends AbstractAdapter
@@ -53,12 +55,16 @@ readonly class ArrayAdapter extends AbstractAdapter
     #[Override]
     public function visitComparison(ComparisonNode $node): array
     {
+        $field = $this->searchParser?->getAllowedField($node->getField());
+
         return [
             'default' => $node->isDefault(),
             'field' => $this->getInternalFieldName($node->getField()),
+            'match' => ($field?->getTextMatch($node) ?? TextMatch::Exact)->value,
             'operator' => $node->getOperator(),
+            'quoted' => $node->isQuoted(),
             'type' => 'comparison',
-            'value' => $node->getValue(),
+            'value' => $field?->toStorage($node->getValue()) ?? $node->getValue(),
         ];
     }
 
@@ -85,12 +91,23 @@ readonly class ArrayAdapter extends AbstractAdapter
     #[Override]
     public function visitIn(InNode $node): array
     {
+        $field = $this->searchParser?->getAllowedField($node->getField());
+        $values = $node->getValues();
+
         return [
             'default' => $node->isDefault(),
             'field' => $this->getInternalFieldName($node->getField()),
+            'match' => array_map(
+                static fn (int $index): string
+                    => ($field?->getTextMatch($node, $index) ?? TextMatch::Exact)->value,
+                array_keys($values),
+            ),
             'operator' => $node->getOperator(),
+            'quoted' => array_map($node->isQuoted(...), array_keys($values)),
             'type' => 'in',
-            'values' => $node->getValues(),
+            'values' => $field instanceof AllowedField
+                ? array_map($field->toStorage(...), $values)
+                : $values,
         ];
     }
 
@@ -102,10 +119,14 @@ readonly class ArrayAdapter extends AbstractAdapter
     #[Override]
     public function visitRange(RangeNode $node): array
     {
+        $field = $this->searchParser?->getAllowedField($node->getField());
+        $from = $node->getFrom();
+        $to = $node->getTo();
+
         return [
             'field' => $this->getInternalFieldName($node->getField()),
-            'from' => $node->getFrom(),
-            'to' => $node->getTo(),
+            'from' => $from === null ? null : ($field?->toStorage($from) ?? $from),
+            'to' => $to === null ? null : ($field?->toStorage($to) ?? $to),
             'type' => 'range',
         ];
     }

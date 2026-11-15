@@ -91,7 +91,7 @@ it('quotes programmatic terms whose text needs literal syntax', function (string
     expect(SearchParser::query($text)->parse()->getValue())->toBe($value);
 })->with(['', 'a b', '*', 'co*fee', 'AND', '-coffee']);
 
-it('quotes values that would merge with a comparison operator', function (
+it('separates unquoted values that would merge with a comparison operator', function (
     string $query,
     string $expected,
 ): void {
@@ -101,9 +101,10 @@ it('quotes values that would merge with a comparison operator', function (
     expect($text)->toBe($expected)
         ->and(SearchParser::query($text)->allowAnyField()->build())->toBe($parser->build());
 })->with([
-    ['x:< =5', 'x:<"=5"'],
-    ['x:> =a', 'x:>"=a"'],
-    ['x:=5', 'x:"=5"'],
+    ['x:< =5', 'x:< =5'],
+    ['x:> =a', 'x:> =a'],
+    ['x:=5', 'x:=5'],
+    ['x:> =a,=b', 'x:> =a,=b'],
 ]);
 
 it('refuses field names the query syntax cannot express', function (string $name): void {
@@ -172,4 +173,45 @@ it('preserves precedence when omitting defaults exposes a nested boolean operato
             ->and($adapter->build(new UnaryOperatorNode('NOT', $node)))
             ->toBe('NOT (coffee OR tea)');
     }
+});
+
+it('writes unquoted values bare when the field reads them back unchanged', function (
+    string $query,
+): void {
+    $fields = static fn (): array => [
+        AllowedField::string('title'),
+        AllowedField::string('name')->prefix(),
+        AllowedField::decimal('price', 0, 2),
+        AllowedField::in('status', ['1', '2', 'open']),
+        new AllowedField('code'),
+    ];
+    $parser = SearchParser::query($query)->allowedFields($fields());
+    $text = $parser->build('string');
+
+    expect($text)->toBe($query)
+        ->and(SearchParser::query($text)->allowedFields($fields())->build())->toBe(
+            $parser->build(),
+        );
+})->with([
+    'number on string field' => ['title:123'],
+    'boolean word on string field' => ['title:true'],
+    'leading hyphen' => ['title:-x'],
+    'decimal text' => ['price:10.50'],
+    'numeric member' => ['status:1'],
+    'negative number on prefix field' => ['name:-5'],
+    'hyphenated list item' => ['name:a,-b'],
+    'untyped leading zeros' => ['code:007'],
+    'untyped quoted number' => ['code:"123"'],
+    'range bounds' => ['price:[1.00 TO 10.50]'],
+]);
+
+it('serializes alias tokens without running alias closures', function (): void {
+    $field = AllowedField::string('owner')->alias(
+        'me',
+        static fn (): never
+            => throw new LogicException('Alias closures must not run while serializing.'),
+    );
+
+    expect(SearchParser::query('owner:"me" owner:other')->allowedFields([$field])->build('string'))
+        ->toBe('owner:"me" AND owner:other');
 });

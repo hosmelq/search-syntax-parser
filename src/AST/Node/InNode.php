@@ -14,6 +14,7 @@ readonly class InNode implements NodeInterface
      * Create a new in node.
      *
      * @param list<bool|float|int|string> $values
+     * @param list<bool> $quoted
      */
     public function __construct(
         private string $field,
@@ -21,6 +22,7 @@ readonly class InNode implements NodeInterface
         private array $values,
         private null|Span $span = null,
         private bool $default = false,
+        private array $quoted = [],
     ) {}
 
     /**
@@ -79,5 +81,10 @@ readonly class InNode implements NodeInterface
     public function isDefault(): bool
     {
         return $this->default;
+    }
+
+    public function isQuoted(int $index): bool
+    {
+        return $this->quoted[$index] ?? false;
     }
 }

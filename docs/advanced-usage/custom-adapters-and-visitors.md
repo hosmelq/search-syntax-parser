@@ -33,7 +33,7 @@ Each node implements `getType()`, `getSpan()`, and `accept(VisitorInterface $vis
 
 AST type names are `BinaryOperator`, `Comparison`, `Exists`, `In`, `Range`, `Term`, `UnaryOperator`, and `Wildcard`. All field nodes retain external names. `WildcardNode::getField()` can be null for a bare term; `getOperator()` returns `=` or `!=`; `getSegments()` returns literal segments, with runs of unquoted asterisks collapsed.
 
-`AbstractAdapter` supplies `getInternalFieldName()` when constructed with a parser. `ArrayAdapter` is also extensible, so a visitor can override one representation while inheriting the remaining node handling.
+`AbstractAdapter` supplies `getInternalFieldName()` when constructed with a parser. Get a configured field through `SearchParser::getAllowedField($node->getField())`; its `getTextMatch($node, $index)` resolves effective text matching, and `toStorage($value)` converts cast values for your backend. Apply conversions to comparison values, list items, and non-null range bounds, and implement case-insensitive text comparisons. `ArrayAdapter` is also extensible, so a visitor can override one representation while inheriting the remaining node handling.
 
 ## Rewriting nodes
 
@@ -61,7 +61,7 @@ $rewritten = new UppercaseTerms()->transform($ast);
 assert(new StringAdapter()->build($rewritten) === 'COFFEE OR NOT TEA');
 ```
 
-When replacing a comparison, exists, list, or unary node in a custom override, pass its `isDefault()` value as the new node's `default` argument.
+When replacing a comparison, exists, list, or unary node in a custom override, pass its `isDefault()` value as the new node's `default` argument. Comparisons and lists also accept `quoted` as the last optional argument: a boolean for comparisons or a list of booleans aligned with list values. Preserve these flags with `ComparisonNode::isQuoted()` or `InNode::isQuoted($index)` so quoted values retain exact text matching. Defaults are unquoted.
 
 ## Negation normal form
 

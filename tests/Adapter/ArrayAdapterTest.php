@@ -23,7 +23,9 @@ it('maps binary node recursively', function (): void {
         'left' => [
             'default' => false,
             'field' => 'price',
+            'match' => 'exact',
             'operator' => '>',
+            'quoted' => false,
             'type' => 'comparison',
             'value' => 10,
         ],
@@ -44,7 +46,9 @@ it('maps comparison node', function (): void {
     expect($adapter->build($node))->toBe([
         'default' => false,
         'field' => 'price',
+        'match' => 'exact',
         'operator' => '>=',
+        'quoted' => false,
         'type' => 'comparison',
         'value' => 10,
     ]);
@@ -60,7 +64,9 @@ it('maps comparison node with internal field name', function (): void {
     expect($adapter->build($node))->toBe([
         'default' => false,
         'field' => 'unit_price',
+        'match' => 'exact',
         'operator' => '=',
+        'quoted' => false,
         'type' => 'comparison',
         'value' => 5,
     ]);
@@ -84,7 +90,9 @@ it('maps in node', function (): void {
     expect($adapter->build($node))->toBe([
         'default' => false,
         'field' => 'status',
+        'match' => ['exact', 'exact'],
         'operator' => '!=',
+        'quoted' => [false, false],
         'type' => 'in',
         'values' => ['A', 'B'],
     ]);
@@ -123,7 +131,9 @@ it('maps unary node recursively', function (): void {
         'operand' => [
             'default' => false,
             'field' => 'flag',
+            'match' => 'exact',
             'operator' => '=',
+            'quoted' => false,
             'type' => 'comparison',
             'value' => true,
         ],

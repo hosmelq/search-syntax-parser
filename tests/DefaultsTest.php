@@ -53,7 +53,9 @@ it('supports every scalar default and singleton lists', function (
         [
             'default' => true,
             'field' => 'value',
+            'match' => 'exact',
             'operator' => '=',
+            'quoted' => false,
             'type' => 'comparison',
             'value' => true,
         ],
@@ -63,7 +65,9 @@ it('supports every scalar default and singleton lists', function (
         [
             'default' => true,
             'field' => 'value',
+            'match' => 'exact',
             'operator' => '=',
+            'quoted' => false,
             'type' => 'comparison',
             'value' => false,
         ],
@@ -73,7 +77,9 @@ it('supports every scalar default and singleton lists', function (
         [
             'default' => true,
             'field' => 'value',
+            'match' => 'exact',
             'operator' => '=',
+            'quoted' => false,
             'type' => 'comparison',
             'value' => 0,
         ],
@@ -83,7 +89,9 @@ it('supports every scalar default and singleton lists', function (
         [
             'default' => true,
             'field' => 'value',
+            'match' => 'exact',
             'operator' => '=',
+            'quoted' => false,
             'type' => 'comparison',
             'value' => 1.5,
         ],
@@ -93,7 +101,9 @@ it('supports every scalar default and singleton lists', function (
         [
             'default' => true,
             'field' => 'value',
+            'match' => 'exact',
             'operator' => '=',
+            'quoted' => false,
             'type' => 'comparison',
             'value' => '',
         ],
@@ -103,7 +113,9 @@ it('supports every scalar default and singleton lists', function (
         [
             'default' => true,
             'field' => 'value',
+            'match' => ['exact', 'exact', 'exact', 'exact'],
             'operator' => '=',
+            'quoted' => [false, false, false, false],
             'type' => 'in',
             'values' => [true, 2, 3.5, 'four'],
         ],
@@ -113,7 +125,9 @@ it('supports every scalar default and singleton lists', function (
         [
             'default' => true,
             'field' => 'value',
+            'match' => ['exact'],
             'operator' => '=',
+            'quoted' => [false],
             'type' => 'in',
             'values' => ['one'],
         ],

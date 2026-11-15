@@ -5,7 +5,12 @@ declare(strict_types=1);
 namespace HosmelQ\SearchSyntaxParser\Validation;
 
 use BackedEnum;
+use Brick\Math\BigDecimal;
+use Brick\Math\Exception\IntegerOverflowException;
+use Brick\Math\Exception\MathException;
 use Closure;
+use HosmelQ\SearchSyntaxParser\AST\Node\ComparisonNode;
+use HosmelQ\SearchSyntaxParser\AST\Node\InNode;
 use HosmelQ\SearchSyntaxParser\Exception\InvalidFieldOperatorException;
 use InvalidArgumentException;
 
@@ -70,6 +75,13 @@ class AllowedField
      * @var null|list<string>
      */
     private null|array $operators = null;
+
+    /**
+     * @var null|Closure(bool|float|int|string): (bool|float|int|string)
+     */
+    private null|Closure $storageConversion = null;
+
+    private TextMatch $textMatch = TextMatch::Exact;
 
     /**
      * Create a new field with the specified name.
@@ -155,7 +167,7 @@ class AllowedField
     }
 
     /**
-     * Create a field accepting the backing values of an enum.
+     * Create a field accepting backed enum values or case names, ignoring case.
      *
      * @param class-string<BackedEnum> $enum
      */
@@ -222,6 +234,30 @@ class AllowedField
     }
 
     /**
+     * Create a ULID field, normalized to uppercase.
+     */
+    public static function ulid(string $name, null|string $internalName = null): static
+    {
+        $field = new static($name, $internalName);
+
+        $field->rules->ulid();
+
+        return $field;
+    }
+
+    /**
+     * Create a UUID field, normalized to lowercase.
+     */
+    public static function uuid(string $name, null|string $internalName = null): static
+    {
+        $field = new static($name, $internalName);
+
+        $field->rules->uuid();
+
+        return $field;
+    }
+
+    /**
      * Replace an exact unquoted value with a scalar, or with the result of a closure called at parse time.
      */
     public function alias(string $token, bool|Closure|float|int|string $value): static
@@ -274,6 +310,10 @@ class AllowedField
 
         $callback($rules);
 
+        if ($this->textMatch !== TextMatch::Exact) {
+            $this->assertTextMatchAllowed();
+        }
+
         return $this;
     }
 
@@ -315,6 +355,18 @@ class AllowedField
     }
 
     /**
+     * Match unquoted text anywhere within the stored text.
+     */
+    public function contains(): static
+    {
+        $this->assertTextMatchAllowed();
+
+        $this->textMatch = TextMatch::Contains;
+
+        return $this;
+    }
+
+    /**
      * Set a raw default value, validated against this field when the parser applies it.
      */
     public function default(mixed $value): static
@@ -350,6 +402,10 @@ class AllowedField
     public function each(callable $callback): static
     {
         $callback($this->itemRules);
+
+        if ($this->textMatch !== TextMatch::Exact) {
+            $this->assertTextMatchAllowed();
+        }
 
         return $this;
     }
@@ -389,6 +445,31 @@ class AllowedField
     }
 
     /**
+     * Get the configured text match mode, or a comparison's or list item's effective mode,
+     * where quotes force exact matching.
+     */
+    public function getTextMatch(null|ComparisonNode|InNode $node = null, int $index = 0): TextMatch
+    {
+        if ($node === null) {
+            return $this->textMatch;
+        }
+
+        $quoted = $node instanceof ComparisonNode ? $node->isQuoted() : $node->isQuoted($index);
+
+        return $quoted ? TextMatch::Exact : $this->textMatch;
+    }
+
+    /**
+     * Check whether an exact unquoted value is an alias token, without resolving it.
+     *
+     * @internal
+     */
+    public function hasAlias(string $token): bool
+    {
+        return array_key_exists($token, $this->aliases);
+    }
+
+    /**
      * Check that a typed value has the type this field casts query text to at the given index.
      *
      * @internal
@@ -423,7 +504,7 @@ class AllowedField
     }
 
     /**
-     * Remove query constraints whose cast values strictly match these values.
+     * Remove query constraints matching these cast values, ignoring case for strings.
      */
     public function ignore(mixed ...$values): static
     {
@@ -437,7 +518,10 @@ class AllowedField
      */
     public function isIgnored(mixed $value): bool
     {
-        return in_array($value, $this->ignored, true);
+        return array_any($this->ignored, static fn (mixed $ignored): bool
+            => is_string($value) && is_string($ignored)
+                ? mb_strtolower($value) === mb_strtolower($ignored)
+                : $value === $ignored);
     }
 
     /**
@@ -446,6 +530,45 @@ class AllowedField
     public function isNullable(): bool
     {
         return $this->nullable;
+    }
+
+    /**
+     * Convert cast values to stored values, matching string keys ignoring case; unmapped values pass through.
+     *
+     * @param array<int|string, bool|float|int|string> $map
+     */
+    public function map(array $map): static
+    {
+        $this->assertNoStorageConversion();
+
+        $lookup = [];
+
+        foreach ($map as $key => $stored) {
+            $key = is_string($key) ? mb_strtolower($key) : $key;
+
+            if (array_key_exists($key, $lookup)) {
+                throw new InvalidArgumentException(
+                    'Storage map keys must be unique ignoring case.',
+                );
+            }
+
+            $lookup[$key] = $stored;
+        }
+
+        $this->storageConversion = static function (bool|float|int|string $value) use (
+            $lookup,
+        ): bool|float|int|string {
+            $key = match (true) {
+                is_bool($value) => (int) $value,
+                is_string($value) => mb_strtolower($value),
+                is_float($value) => (string) self::toDecimal($value)->strippedOfTrailingZeros(),
+                default => $value,
+            };
+
+            return array_key_exists($key, $lookup) ? $lookup[$key] : $value;
+        };
+
+        return $this->withoutWildcards();
     }
 
     /**
@@ -498,6 +621,62 @@ class AllowedField
     }
 
     /**
+     * Match unquoted text at the start of stored text.
+     */
+    public function prefix(): static
+    {
+        $this->assertTextMatchAllowed();
+
+        $this->textMatch = TextMatch::Prefix;
+
+        return $this;
+    }
+
+    /**
+     * Multiply integer, numeric, or decimal values when adapting them for storage.
+     */
+    public function scale(int|string $factor): static
+    {
+        $this->assertNoStorageConversion();
+
+        $type = $this->expectsArray ? $this->itemRules->getType() : $this->rules->getType();
+
+        if (! in_array($type, ['integer', 'numeric', 'decimal'], true)) {
+            throw new InvalidArgumentException(
+                'Scaling requires an integer, numeric, or decimal field or shared item type.',
+            );
+        }
+
+        try {
+            $multiplier = BigDecimal::of($factor);
+        } catch (MathException $mathException) {
+            throw new InvalidArgumentException(
+                'The scale factor must be a decimal number.',
+                $mathException->getCode(),
+                previous: $mathException,
+            );
+        }
+
+        $this->storageConversion = static function (bool|float|int|string $value) use (
+            $multiplier,
+        ): int|string {
+            $result = self::toDecimal($value)->multipliedBy($multiplier)->strippedOfTrailingZeros();
+
+            if ($result->getScale() !== 0) {
+                return (string) $result;
+            }
+
+            try {
+                return $result->toInt();
+            } catch (IntegerOverflowException) {
+                return (string) $result;
+            }
+        };
+
+        return $this->withoutWildcards();
+    }
+
+    /**
      * Add an exact size constraint.
      */
     public function size(float|int $value): static
@@ -505,6 +684,16 @@ class AllowedField
         $this->rules->size($value);
 
         return $this;
+    }
+
+    /**
+     * Convert a validated cast value for an adapter, without changing the AST.
+     */
+    public function toStorage(bool|float|int|string $value): bool|float|int|string
+    {
+        return $this->storageConversion instanceof Closure
+            ? ($this->storageConversion)($value)
+            : $value;
     }
 
     /**
@@ -593,5 +782,60 @@ class AllowedField
         $this->disabledClauses['wildcards'] = true;
 
         return $this;
+    }
+
+    /**
+     * Match unquoted text as whole words within stored text.
+     */
+    public function words(): static
+    {
+        $this->assertTextMatchAllowed();
+
+        $this->textMatch = TextMatch::Words;
+
+        return $this;
+    }
+
+    /**
+     * Read a number exactly, using the shortest round-trip text for floats.
+     */
+    private static function toDecimal(bool|float|int|string $value): BigDecimal
+    {
+        if (! is_float($value)) {
+            return BigDecimal::of((string) $value);
+        }
+
+        // json_encode() writes the shortest round-trip text only with serialize_precision -1.
+        $precision = ini_set('serialize_precision', '-1');
+
+        try {
+            return BigDecimal::of(json_encode($value, JSON_THROW_ON_ERROR));
+        } finally {
+            if ($precision !== false) {
+                ini_set('serialize_precision', $precision);
+            }
+        }
+    }
+
+    private function assertNoStorageConversion(): void
+    {
+        if ($this->storageConversion instanceof Closure) {
+            throw new InvalidArgumentException('A field accepts only one storage conversion.');
+        }
+    }
+
+    private function assertTextMatchAllowed(): void
+    {
+        $rules = $this->expectsArray ? $this->itemRules : $this->rules;
+
+        if ($rules->getType() !== 'string' || ($this->expectsArray && array_any(
+            $this->indexItemRules,
+            static fn (AllowedFieldItemRules $item): bool
+                => $item->getType() !== null && $item->getType() !== 'string',
+        ))) {
+            throw new InvalidArgumentException(
+                'Text match modes require a string field or shared string item type.',
+            );
+        }
     }
 }

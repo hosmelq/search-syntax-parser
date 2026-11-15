@@ -245,7 +245,7 @@ trait ValidatesAttributes
      */
     protected function validateNumeric(string $attribute, mixed $value): bool
     {
-        return is_numeric($value);
+        return is_numeric($value) && (! is_float($value) || is_finite($value));
     }
 
     /**

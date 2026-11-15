@@ -15,7 +15,9 @@ it('builds complex query with precedence and grouping', function (): void {
             'left' => [
                 'default' => false,
                 'field' => 'status',
+                'match' => ['exact', 'exact'],
                 'operator' => '=',
+                'quoted' => [false, false],
                 'type' => 'in',
                 'values' => ['ACTIVE', 'DRAFT'],
             ],
@@ -23,7 +25,9 @@ it('builds complex query with precedence and grouping', function (): void {
             'right' => [
                 'default' => false,
                 'field' => 'price',
+                'match' => 'exact',
                 'operator' => '>',
+                'quoted' => false,
                 'type' => 'comparison',
                 'value' => 100,
             ],
@@ -70,7 +74,9 @@ it('maps internal field names in complex output', function (): void {
             'left' => [
                 'default' => false,
                 'field' => 'state',
+                'match' => ['exact', 'exact'],
                 'operator' => '=',
+                'quoted' => [false, false],
                 'type' => 'in',
                 'values' => ['ACTIVE', 'DRAFT'],
             ],
@@ -78,7 +84,9 @@ it('maps internal field names in complex output', function (): void {
             'right' => [
                 'default' => false,
                 'field' => 'unit_price',
+                'match' => 'exact',
                 'operator' => '>',
+                'quoted' => false,
                 'type' => 'comparison',
                 'value' => 100,
             ],
