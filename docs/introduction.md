@@ -1,6 +1,6 @@
 ---
 title: "Introduction"
-description: "Parse search queries into structured data with field searches, boolean logic, ranges, lists, and adapters."
+description: "Parse search queries into structured data with field searches, boolean logic, ranges, and lists."
 weight: 1
 ---
 

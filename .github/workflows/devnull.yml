@@ -23,7 +23,7 @@ jobs:
 
             ${{ github.event.release.body }}
 
-            Parse search queries into structured data with field searches, boolean logic, ranges, lists, and adapters.
+            Parse search queries into structured data with field searches, boolean logic, ranges, and lists.
 
             ${{ github.event.release.html_url }}
           ssh-key: ${{ secrets.DEVNULL_SSH_KEY }}
