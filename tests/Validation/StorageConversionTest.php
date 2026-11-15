@@ -218,7 +218,7 @@ it('matches decimal values against map keys by value without trailing zeros', fu
         ->toBe(['seven', 'half']);
 });
 
-it('matches decimal keys written with trailing zeros and rejects keys equal by value', function (): void {
+it('matches decimal keys written with trailing zeros', function (): void {
     $field = AllowedField::decimal('amount', 0, 2)->map(['1.50' => 'half', '-7' => 'minus']);
 
     expect($field->toStorage('1.50'))->toBe('half')
@@ -227,21 +227,60 @@ it('matches decimal keys written with trailing zeros and rejects keys equal by v
         ->and(SearchParser::query('amount:@half')->allowedFields([
             AllowedField::decimal('amount', 0, 2)->alias('@half', 1.5)->map(['1.50' => 'half']),
         ])->build()['value'])->toBe('half')
-        ->and(AllowedField::string('code')->map(['1.5' => 'a', '1.50' => 'b'])->toStorage('1.50'))
-        ->toBe('b')
-        ->and(
-            fn (): AllowedField
-                => AllowedField::decimal('amount', 0, 2)->map(['1.5' => 'a', '1.50' => 'b']),
-        )
-        ->toThrow(
-            InvalidArgumentException::class,
-            'Storage map keys of a decimal field must be unique by value.',
-        )
-        ->and(
-            fn (): AllowedField
-                => AllowedField::decimal('amount', 0, 2)->map([7 => 'a', '7.0' => 'b']),
-        )
-        ->toThrow(InvalidArgumentException::class, 'unique by value');
+        ->and(SearchParser::query('code:1.50')->allowedFields([
+            AllowedField::string('code')->map(['1.5' => 'a', '1.50' => 'b']),
+        ])->build()['value'])->toBe('b');
+});
+
+it('rejects decimal map keys equal by value in any configuration order', function (
+    Closure $field,
+): void {
+    SearchParser::query('')->allowedFields([$field()]);
+})->throws(
+    InvalidArgumentException::class,
+    "Storage map keys of decimal field 'amount' must be unique by value.",
+)->with(
+    [
+        fn (): AllowedField
+            => AllowedField::decimal('amount', 0, 2)->map(['1.5' => 'a', '1.50' => 'b']),
+        fn (): AllowedField => AllowedField::decimal('amount', 0, 2)->map([7 => 'a', '7.0' => 'b']),
+        fn (): AllowedField => AllowedField::array('amount')
+            ->map(['1.5' => 'a', '1.50' => 'b'])
+            ->each(
+                fn (AllowedFieldItemRules $rules): AllowedFieldItemRules => $rules->decimal(0, 2),
+            ),
+        fn (): AllowedField => AllowedField::array('amount')
+            ->map(['1.5' => 'a', '1.50' => 'b'])
+            ->at(
+                1,
+                fn (AllowedFieldItemRules $rules): AllowedFieldItemRules => $rules->decimal(0, 2),
+            ),
+    ],
+);
+
+it('converts list items with their written positions after ignored items are removed', function (): void {
+    $field = AllowedField::array('amount')
+        ->each(fn (AllowedFieldItemRules $rules): AllowedFieldItemRules => $rules->string())
+        ->at(0, fn (AllowedFieldItemRules $rules): AllowedFieldItemRules => $rules->decimal(0, 2))
+        ->ignore('0')
+        ->map([7 => 'seven']);
+    $ignored = SearchParser::query('amount:0,hello')->allowedFields([$field])->parse();
+
+    expect($ignored->getPositions())->toBe([1])
+        ->and(SearchParser::query('amount:0,hello')->allowedFields([$field])->build()['values'])
+        ->toBe(['hello'])
+        ->and(SearchParser::query('amount:0,7.00')->allowedFields([$field])->build()['values'])
+        ->toBe(['7.00'])
+        ->and(SearchParser::query('amount:7.00,7.00')->allowedFields([$field])->build()['values'])
+        ->toBe(['seven', '7.00'])
+        ->and(SearchParser::query('amount:!=0,7.00')->allowedFields([$field])->build()['values'])
+        ->toBe(['7.00']);
+});
+
+it('scales numeric text that validation accepts with surrounding whitespace', function (): void {
+    expect(SearchParser::query('amount:@seven')->allowedFields([
+        AllowedField::numeric('amount')->alias('@seven', ' 7 ')->scale(100),
+    ])->build()['value'])->toBe(700);
 });
 
 it('converts array items with the rules of their position', function (): void {

@@ -30,7 +30,7 @@ assert($result['values'] === ['alpha', 'beta']);
 
 `at($index, $callback)` configures a zero-based position. An item's `at()` type takes precedence over its `each()` type; without either, it uses ordinary value inference. Validators from both scopes still apply. Size rules use the item's effective type regardless of the order in which rules were configured.
 
-Positions are the ones written in the query. When an ignored item is removed, the remaining items are still cast and validated with the `at()` rules of their written positions, but the list in the AST is renumbered, so a later item can appear at a lower index.
+Positions are the ones written in the query. When an ignored item is removed, the remaining items are still cast and validated with the `at()` rules of their written positions, but the list in the AST is renumbered, so a later item can appear at a lower index. `InNode::getPositions()` returns each remaining item's written position; pass it to `toStorage()` so storage conversions use the same rules.
 
 ```php
 use HosmelQ\SearchSyntaxParser\SearchParser;

@@ -618,6 +618,7 @@ class Parser
                     array_values($values),
                     $this->span($start),
                     quoted: array_values($quotes),
+                    positions: array_keys($values),
                 );
             }
 

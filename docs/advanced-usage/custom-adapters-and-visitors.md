@@ -63,7 +63,7 @@ $rewritten = new UppercaseTerms()->transform($ast);
 assert(new StringAdapter()->build($rewritten) === 'COFFEE OR NOT TEA');
 ```
 
-When replacing a comparison, exists, list, or unary node in a custom override, pass its `isDefault()` value as the new node's `default` argument. Comparisons and lists also accept `quoted` as the last optional argument: a boolean for comparisons or a list of booleans aligned with list values. Preserve these flags with `ComparisonNode::isQuoted()` or `InNode::isQuoted($index)` so quoted values retain exact text matching. Defaults are unquoted.
+When replacing a comparison, exists, list, or unary node in a custom override, pass its `isDefault()` value as the new node's `default` argument. Comparisons and lists also accept an optional `quoted` argument: a boolean for comparisons or a list of booleans aligned with list values. Preserve these flags with `ComparisonNode::isQuoted()` or `InNode::isQuoted($index)` so quoted values retain exact text matching. Defaults are unquoted. Lists also take `positions`; pass `InNode::getPositions()` so array storage conversions keep each item's written position.
 
 ## Negation normal form
 

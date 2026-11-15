@@ -15,6 +15,7 @@ readonly class InNode implements NodeInterface
      *
      * @param list<bool|float|int|string> $values
      * @param list<bool> $quoted
+     * @param list<int> $positions written positions of the values; empty means their list order
      */
     public function __construct(
         private string $field,
@@ -23,6 +24,7 @@ readonly class InNode implements NodeInterface
         private null|Span $span = null,
         private bool $default = false,
         private array $quoted = [],
+        private array $positions = [],
     ) {}
 
     /**
@@ -48,6 +50,16 @@ readonly class InNode implements NodeInterface
     public function getOperator(): string
     {
         return $this->operator;
+    }
+
+    /**
+     * Get the position each value had in the query, before ignored items were removed.
+     *
+     * @return list<int>
+     */
+    public function getPositions(): array
+    {
+        return $this->positions === [] ? array_keys($this->values) : $this->positions;
     }
 
     /**

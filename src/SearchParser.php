@@ -124,9 +124,9 @@ class SearchParser
 
         // Read patterns from the final map so a repeated name resolves to the same field.
         foreach ($this->allowedFields as $field) {
-            if ($field->isPattern()) {
-                $field->assertValidConfiguration();
+            $field->assertValidConfiguration();
 
+            if ($field->isPattern()) {
                 $this->patternFields[] = $field;
             }
         }

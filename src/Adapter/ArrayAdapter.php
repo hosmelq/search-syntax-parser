@@ -106,7 +106,7 @@ readonly class ArrayAdapter extends AbstractAdapter
             'quoted' => array_map($node->isQuoted(...), array_keys($values)),
             'type' => 'in',
             'values' => $field instanceof AllowedField
-                ? array_map($field->toStorage(...), $values, array_keys($values))
+                ? array_map($field->toStorage(...), $values, $node->getPositions())
                 : $values,
         ];
     }

@@ -69,6 +69,11 @@ class AllowedField
     private bool $allowsLeadingWildcards = false;
 
     /**
+     * Whether map() received keys that are equal as decimal numbers, such as '1.5' and '1.50'.
+     */
+    private bool $decimalKeyCollision = false;
+
+    /**
      * Whether clauses of this field are top-level settings instead of filters.
      */
     private bool $directive = false;
@@ -393,6 +398,15 @@ class AllowedField
         if ($this->isPattern() && $this->keyRule === null) {
             throw new InvalidArgumentException(
                 sprintf("Pattern field '%s' requires a keys() rule.", $this->name),
+            );
+        }
+
+        if ($this->decimalKeyCollision && $this->hasDecimalItems()) {
+            throw new InvalidArgumentException(
+                sprintf(
+                    "Storage map keys of decimal field '%s' must be unique by value.",
+                    $this->name,
+                ),
             );
         }
     }
@@ -751,12 +765,9 @@ class AllowedField
                 continue;
             }
 
-            if (array_key_exists($decimal, $decimals) && $this->hasDecimalItems()) {
-                throw new InvalidArgumentException(
-                    'Storage map keys of a decimal field must be unique by value.',
-                );
-            }
-
+            // Item types can be configured after map(), so assertValidConfiguration() rejects the collision.
+            $this->decimalKeyCollision = $this->decimalKeyCollision
+                || array_key_exists($decimal, $decimals);
             $decimals[$decimal] = $stored;
         }
 
@@ -1068,7 +1079,8 @@ class AllowedField
     private static function toDecimal(bool|float|int|string $value): BigDecimal
     {
         if (! is_float($value)) {
-            return BigDecimal::of((string) $value);
+            // Numeric validation accepts the surrounding whitespace that is_numeric() allows.
+            return BigDecimal::of(mb_trim((string) $value, " \t\n\r\v\f"));
         }
 
         // json_encode() writes the shortest round-trip text only with serialize_precision -1.
