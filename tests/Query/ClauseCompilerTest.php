@@ -144,6 +144,48 @@ it('keeps spanless defaults and programmatic terms without invented positions', 
         ->and(new ClauseCompiler()->term($field, new TermNode('tea'))->position)->toBeNull();
 });
 
+it('normalizes inequalities from parsed leaves and combines surrounding negation', function (
+    AllowedField $field,
+    string $query,
+    array $operators,
+    array $values,
+    bool $negated,
+): void {
+    $node = SearchParser::query('  '.$query)->allowedFields([$field])->parse();
+    $clauses = new ClauseCompiler()->compile($field, $node, $negated);
+
+    expect($clauses)->toHaveSameSize($operators);
+
+    foreach ($clauses as $index => $clause) {
+        expect($clause->operator)->toBe(
+            $negated ? $operators[$index]->complement() : $operators[$index],
+        )
+            ->and($clause->value)->toBe($values[$index])
+            ->and($clause->negated)->toBe(! $negated)
+            ->and($clause->position)->toBe(2);
+    }
+})->with([
+    [
+        AllowedField::string('status'),
+        'status:!=sold,expired',
+        [Operator::NotIn],
+        [['sold', 'expired']],
+    ],
+    [AllowedField::string('title'), 'title:!=co*', [Operator::NotLike], ['co%']],
+    [
+        AllowedField::string('title')->contains(),
+        'title:!=coffee',
+        [Operator::NotLike],
+        ['%coffee%'],
+    ],
+    [
+        AllowedField::string('title')->contains(),
+        'title:!=cof,"tea"',
+        [Operator::NotLike, Operator::NotEqual],
+        ['%cof%', 'tea'],
+    ],
+])->with([false, true]);
+
 it('preserves phrases words and prefixes when compiling full-text leaves', function (
     string $query,
     array $words,

@@ -380,10 +380,7 @@ class SearchParser
                 }
 
                 if ($field->isDirective()) {
-                    if (! is_scalar($value)) {
-                        throw new InvalidArgumentException('A directive default must be a scalar.');
-                    }
-
+                    /** @var bool|float|int|string $value */
                     $directives[$name] = $value;
 
                     continue;

@@ -2,28 +2,11 @@
 
 declare(strict_types=1);
 
-use HosmelQ\SearchSyntaxParser\Exception\ErrorReason;
 use HosmelQ\SearchSyntaxParser\Exception\ParseException;
 use HosmelQ\SearchSyntaxParser\Support\FullText;
 
 it('rejects invalid UTF-8', function (): void {
     expect(fn (): FullText => new FullText("\xff"))->toThrow(ParseException::class, 'valid UTF-8');
-});
-
-it('reports tokenization failures', function (): void {
-    $limit = ini_get('pcre.backtrack_limit');
-
-    ini_set('pcre.backtrack_limit', '1');
-
-    try {
-        new FullText('coffee-ceramic');
-
-        test()->fail('Expected a tokenization failure.');
-    } catch (ParseException $parseException) {
-        expect($parseException->getReason())->toBe(ErrorReason::TokenizationFailed);
-    } finally {
-        ini_set('pcre.backtrack_limit', $limit);
-    }
 });
 
 it('extracts Unicode words without accepting backend query operators', function (

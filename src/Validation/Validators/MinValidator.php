@@ -12,7 +12,10 @@ class MinValidator implements ValidatorInterface
 {
     use ValidatesAttributes;
 
-    public function __construct(private readonly float|int $min) {}
+    public function __construct(private readonly float|int $min)
+    {
+        $this->assertFinite($this->min);
+    }
 
     #[Override]
     public function __invoke(mixed $value, string $attribute, bool $length = false): bool

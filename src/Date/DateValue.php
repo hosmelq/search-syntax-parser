@@ -229,11 +229,11 @@ final readonly class DateValue
         if ($parts['anchor'] === 'now') {
             $start = match (true) {
                 $amount === 0 => $local,
-
+                // Hours and minutes are elapsed time.
                 $unit === 'h', $unit === 'm' => $local->setTimezone($utc)
                     ->modify(sprintf('%+d %s', $amount, $unit === 'h' ? 'hours' : 'minutes'))
                     ->setTimezone($zone),
-
+                // Calendar units keep the local wall-clock time.
                 default => self::instant(
                     self::withinYears(self::shift(
                         new DateTimeImmutable($local->format('X-m-d H:i:s.u'), $utc),

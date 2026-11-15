@@ -10,27 +10,28 @@ Your adapter traverses boolean groups, selects term fields, maps trusted identif
 
 ## Compile filter leaves
 
-Normalize the tree with `NegationNormalFormTransformer`. Pass each positive leaf to `compile()`, with `negated: true` when it has a surrounding NOT:
+Pass a field leaf directly from `parse()` to `compile()`. The compiler normalizes leaf inequalities and combines them with the optional `negated` argument:
 
 ```php
-use HosmelQ\SearchSyntaxParser\AST\Visitor\NegationNormalFormTransformer;
 use HosmelQ\SearchSyntaxParser\Query\ClauseCompiler;
 use HosmelQ\SearchSyntaxParser\SearchParser;
 use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
 
 $field = AllowedField::decimal('price', 2)->scale(100)->nullable();
-$tree = SearchParser::query('NOT price:>10.50')->allowedFields([$field])->parse();
-$normalized = new NegationNormalFormTransformer()->transform($tree);
-
-$clauses = new ClauseCompiler()->compile($field, $normalized->getOperand(), negated: true);
+$node = SearchParser::query('price:!=10.50')->allowedFields([$field])->parse();
+$clauses = new ClauseCompiler()->compile($field, $node);
 $clause = $clauses[0];
 ```
 
-The clause uses `Operator::LessOrEqual`, value `1050`, position `4`, and `negated: true`. An adapter includes missing prices because the field is nullable. A plain `<=` predicate would omit them.
+The clause uses `Operator::NotEqual`, value `1050`, position `0`, and `negated: true`. An adapter includes missing prices because the field is nullable. A plain SQL `<>` predicate would omit them.
+
+Likewise, `status:!=sold,expired` produces `Operator::NotIn`, and `title:!=co*` produces `Operator::NotLike`. Passing `negated: true` cancels the inequality and produces a positive clause.
+
+For a boolean tree, use `NegationNormalFormTransformer` to move NOT onto leaves before traversal. Unwrap each `UnaryOperatorNode` and pass its operand with `negated: true`; `compile()` does not traverse groups.
 
 `compile()` accepts `ComparisonNode`, `ExistsNode`, `InNode`, `RangeNode`, or a field `WildcardNode` and returns a list of readonly `Clause` objects. Ordinary leaves produce one clause. Lists using prefix, contains, or word matching expand into one clause per item. Fully quoted prefix and contains lists remain exact membership clauses.
 
-Combine expanded alternatives with OR for a positive leaf and AND for a negated leaf. Keep that group within the surrounding boolean tree.
+Combine expanded alternatives with OR when their `Clause::negated` flag is false and AND when it is true. This flag includes both leaf inequality and surrounding negation. Keep that group within the surrounding boolean tree.
 
 ## Read a clause
 

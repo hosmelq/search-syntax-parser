@@ -12,7 +12,10 @@ class SizeValidator implements ValidatorInterface
 {
     use ValidatesAttributes;
 
-    public function __construct(private readonly float|int $size) {}
+    public function __construct(private readonly float|int $size)
+    {
+        $this->assertFinite($this->size);
+    }
 
     #[Override]
     public function __invoke(mixed $value, string $attribute, bool $length = false): bool

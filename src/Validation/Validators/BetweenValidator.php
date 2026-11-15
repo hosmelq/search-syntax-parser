@@ -12,7 +12,10 @@ readonly class BetweenValidator implements ValidatorInterface
 {
     use ValidatesAttributes;
 
-    public function __construct(private float|int $min, private float|int $max) {}
+    public function __construct(private float|int $min, private float|int $max)
+    {
+        $this->assertFinite($this->min, $this->max);
+    }
 
     #[Override]
     public function __invoke(mixed $value, string $attribute, bool $length = false): bool

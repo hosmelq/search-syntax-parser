@@ -19,16 +19,33 @@ it('rejects dates that do not match the custom format exactly', function (string
     expect(fn (): mixed => $parser->build())->toThrow(InvalidFieldValueException::class);
 })->with([['29/02/2025'], ['1/1/2025'], ['01/01/2025tail'], ["01/01/2025\x00"]]);
 
+it('rejects partial dates without an explicit opt-in', function (
+    string $value,
+): void {
+    foreach ([$value, '"'.$value.'"'] as $text) {
+        expect(
+            fn (): null|NodeInterface
+                => SearchParser::query('created:'.$text)
+                    ->allowedFields([AllowedField::date('created')])
+                    ->parse(),
+        )->toThrow(InvalidFieldValueException::class);
+    }
+})->with(['2024', '2024-03']);
+
+it('rejects relative values outside the supported years', function (): void {
+    $field = AllowedField::date('created');
+
+    expect($field->validate('today+999999y'))
+        ->toBeFalse()
+        ->and($field->validate('-999999w'))
+        ->toBeFalse();
+});
+
 it('rejects times and instant anchors on calendar date fields', function (string $value): void {
     $field = AllowedField::date('due')->withoutTime();
     $partial = AllowedField::date('due')->allowPartialDates()->withoutTime();
 
-    expect($field->validate($value))
-        ->toBeFalse()
-        ->and($partial->validate($value))
-        ->toBeFalse()
-        ->and(AllowedField::date('due')->validate($value))
-        ->toBeTrue();
+    expect($field->validate($value))->toBeFalse()->and($partial->validate($value))->toBeFalse();
 })->with([
     ['2024-03-15T10'],
     ['2024-03-15T10:30Z'],
@@ -38,38 +55,6 @@ it('rejects times and instant anchors on calendar date fields', function (string
     ['-7d'],
     ['+3d'],
 ]);
-
-it('requires an explicit opt-in for partial dates and preserves their text', function (
-    string $value,
-): void {
-    foreach ([$value, '"'.$value.'"'] as $text) {
-        expect(
-            fn (): null|NodeInterface
-                => SearchParser::query('created:'.$text)
-                    ->allowedFields([AllowedField::date('created')])
-                    ->parse(),
-        )
-            ->toThrow(InvalidFieldValueException::class)
-            ->and(
-                SearchParser::query('created:'.$text)
-                    ->allowedFields([AllowedField::date('created')->allowPartialDates()])
-                    ->parse()
-                    ->getValue(),
-            )
-            ->toBe($value);
-    }
-})->with(['2024', '2024-03']);
-
-it('validates relative values only when they resolve within the supported years', function (): void {
-    $field = AllowedField::date('created');
-
-    expect($field->validate('today-100y'))
-        ->toBeTrue()
-        ->and($field->validate('today+999999y'))
-        ->toBeFalse()
-        ->and($field->validate('-999999w'))
-        ->toBeFalse();
-});
 
 it('accepts calendar dates and day anchors on calendar date fields', function (
     string $value,
@@ -92,3 +77,34 @@ it('accepts dates matching the custom format exactly', function (string $value):
 
     expect($parser->build()['value'])->toBe($value);
 })->with([['29/02/2024'], ['01/01/2025']]);
+
+it('accepts relative values within the supported years', function (): void {
+    $field = AllowedField::date('created');
+
+    expect($field->validate('today-100y'))->toBeTrue();
+});
+
+it('accepts times and instant anchors on datetime fields', function (string $value): void {
+    expect(AllowedField::date('due')->validate($value))->toBeTrue();
+})->with([
+    ['2024-03-15T10'],
+    ['2024-03-15T10:30Z'],
+    ['2024-03-15T00:00:00+02:00'],
+    ['now'],
+    ['NOW-1d'],
+    ['-7d'],
+    ['+3d'],
+]);
+
+it('preserves partial date text with an explicit opt-in', function (
+    string $value,
+): void {
+    foreach ([$value, '"'.$value.'"'] as $text) {
+        expect(
+            SearchParser::query('created:'.$text)
+                ->allowedFields([AllowedField::date('created')->allowPartialDates()])
+                ->parse()
+                ->getValue(),
+        )->toBe($value);
+    }
+})->with(['2024', '2024-03']);

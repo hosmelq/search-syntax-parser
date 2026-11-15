@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
 use HosmelQ\SearchSyntaxParser\Validation\Validators\MinValidator;
 
 it('rejects arrays below the minimum size', function (
@@ -12,6 +13,10 @@ it('rejects arrays below the minimum size', function (
 
     expect($validator($value, 'items'))->toBeFalse();
 })->with(['too few' => [2, [1]]]);
+
+it('rejects non-finite configuration bounds', function (float $bound): void {
+    AllowedField::numeric('p')->min($bound);
+})->throws(InvalidArgumentException::class, 'Size bounds must be finite.')->with([INF, -INF, NAN]);
 
 it('rejects numbers below the minimum', function (
     float|int $min,
@@ -30,6 +35,14 @@ it('rejects strings below the minimum length', function (
 
     expect($validator($value, 'name'))->toBeFalse();
 })->with(['too short' => [3, 'ab']]);
+
+it('rejects values that cannot be converted to a finite size', function (
+    float|string $value,
+): void {
+    $validator = new MinValidator(5);
+
+    expect($validator($value, 'p'))->toBeFalse();
+})->with([INF, -INF, NAN, ' 5', '5 ']);
 
 it('accepts arrays within the minimum size', function (
     int $min,

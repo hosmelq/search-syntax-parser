@@ -9,7 +9,9 @@ use HosmelQ\SearchSyntaxParser\AST\Node\ExistsNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\InNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\RangeNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\TermNode;
+use HosmelQ\SearchSyntaxParser\AST\Node\UnaryOperatorNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\WildcardNode;
+use HosmelQ\SearchSyntaxParser\AST\Visitor\NegationNormalFormTransformer;
 use HosmelQ\SearchSyntaxParser\Exception\InvalidFieldOperatorException;
 use HosmelQ\SearchSyntaxParser\Support\FullText;
 use HosmelQ\SearchSyntaxParser\Support\LikePattern;
@@ -19,8 +21,8 @@ use HosmelQ\SearchSyntaxParser\Validation\TextMatch;
 final readonly class ClauseCompiler
 {
     /**
-     * Compile positive leaves from a negation-normalized AST; pass the surrounding NOT as $negated.
-     * Multiple clauses form an OR group, or an AND group when negated.
+     * Compile parsed leaves; $negated represents a surrounding NOT and combines with leaf inequality.
+     * Multiple clauses form an OR group, or an AND group when their negated flag is true.
      *
      * @return list<Clause>
      */
@@ -29,6 +31,14 @@ final readonly class ClauseCompiler
         ComparisonNode|ExistsNode|InNode|RangeNode|WildcardNode $node,
         bool $negated = false,
     ): array {
+        $node = new NegationNormalFormTransformer()->transform($node);
+
+        if ($node instanceof UnaryOperatorNode) {
+            $node = $node->getOperand();
+            $negated = ! $negated;
+        }
+
+        /** @var ComparisonNode|ExistsNode|InNode|RangeNode|WildcardNode $node */
         if ($node instanceof InNode && ($field->getTextMatch() === TextMatch::Words || array_any(
             array_keys($node->getValues()),
             static fn (int $index): bool

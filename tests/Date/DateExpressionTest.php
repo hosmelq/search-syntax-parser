@@ -74,17 +74,19 @@ it('rejects malformed relative dates in both validation and resolution', functio
     '7d',
 ]);
 
-it('rejects relative offsets longer than six digits so every accepted value resolves', function (): void {
+it('rejects relative offsets longer than six digits', function (): void {
     $field = AllowedField::date('created');
 
-    expect($field->validate('-99999d'))
-        ->toBeTrue()
-        ->and($field->validate('-999999h'))
-        ->toBeTrue()
-        ->and($field->validate('-1000000d'))
+    expect($field->validate('-1000000d'))
         ->toBeFalse()
         ->and($field->validate('today+99999999999999999999d'))
         ->toBeFalse();
+});
+
+it('accepts relative offsets up to six digits', function (): void {
+    $field = AllowedField::date('created');
+
+    expect($field->validate('-99999d'))->toBeTrue()->and($field->validate('-999999h'))->toBeTrue();
 });
 
 it('accepts the relative grammar without resolving its text', function (string $value): void {

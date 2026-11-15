@@ -16,19 +16,6 @@ use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
 use HosmelQ\SearchSyntaxParser\Validation\AllowedFieldItemRules;
 use HosmelQ\SearchSyntaxParser\Validation\Validators\InValidator;
 
-it('combines dates without time with partial dates in either order', function (): void {
-    foreach ([
-        AllowedField::date('due')->withoutTime()->allowPartialDates(),
-        AllowedField::date('due')->allowPartialDates()->withoutTime(),
-    ] as $field) {
-        expect($field->validate('2024'))->toBeTrue()
-            ->and($field->validate('2024-03'))->toBeTrue()
-            ->and($field->validate('now'))->toBeFalse();
-    }
-
-    expect(AllowedField::date('due')->withoutTime()->validate('2024'))->toBeFalse();
-});
-
 it('does not mistake a regex failure for a non-decimal value', function (): void {
     $limit = ini_get('pcre.backtrack_limit');
 
@@ -40,37 +27,6 @@ it('does not mistake a regex failure for a non-decimal value', function (): void
     } finally {
         ini_set('pcre.backtrack_limit', (string) $limit);
     }
-});
-
-it('opts in shared and positional date item rules separately', function (): void {
-    $shared = AllowedField::array('dates')->each(
-        fn (AllowedFieldItemRules $rules): AllowedFieldItemRules
-            => $rules->date()->allowPartialDates(),
-    );
-    $tuple = AllowedField::array('dates')
-        ->at(
-            0,
-            fn (AllowedFieldItemRules $rules): AllowedFieldItemRules
-                => $rules->date()->allowPartialDates(),
-        )
-        ->at(1, fn (AllowedFieldItemRules $rules): AllowedFieldItemRules => $rules->date());
-
-    expect(
-        SearchParser::query('dates:2024,2024-03')->allowedFields([$shared])->parse()->getValues(),
-    )
-        ->toBe(['2024', '2024-03'])
-        ->and(
-            SearchParser::query('dates:2024,2024-03-15')
-                ->allowedFields([$tuple])
-                ->parse()
-                ->getValues(),
-        )
-        ->toBe(['2024', '2024-03-15'])
-        ->and(
-            fn (): null|NodeInterface
-                => SearchParser::query('dates:2024,2024-03')->allowedFields([$tuple])->parse(),
-        )
-        ->toThrow(InvalidFieldValueException::class);
 });
 
 it('rejects enum rules without a backed enum', function (string $enum): void {
@@ -111,6 +67,27 @@ it('rejects invalid typed values instead of coercing them into valid ones', func
     [AllowedField::in('field', ['01', '02']), '1'],
 ]);
 
+it('rejects non-canonical members during validation without casting', function (): void {
+    $field = AllowedField::in('status', ['open', 'Été']);
+
+    expect($field->validate('OPEN'))->toBeFalse();
+});
+
+it('rejects partial dates at positions without the opt-in', function (): void {
+    $tuple = AllowedField::array('dates')
+        ->at(
+            0,
+            fn (AllowedFieldItemRules $rules): AllowedFieldItemRules
+                => $rules->date()->allowPartialDates(),
+        )
+        ->at(1, fn (AllowedFieldItemRules $rules): AllowedFieldItemRules => $rules->date());
+
+    expect(
+        fn (): null|NodeInterface
+                => SearchParser::query('dates:2024,2024-03')->allowedFields([$tuple])->parse(),
+    )->toThrow(InvalidFieldValueException::class);
+});
+
 it('rejects partial-date configuration on other types and custom formats', function (
     Closure $configure,
 ): void {
@@ -129,26 +106,22 @@ it('rejects partial-date configuration on other types and custom formats', funct
         => new AllowedFieldItemRules()->date()->allowPartialDates()->date('Y'),
 ]);
 
+it('rejects times and non-opted-in partial dates', function (): void {
+    foreach ([
+        AllowedField::date('due')->withoutTime()->allowPartialDates(),
+        AllowedField::date('due')->allowPartialDates()->withoutTime(),
+    ] as $field) {
+        expect($field->validate('now'))->toBeFalse();
+    }
+
+    expect(AllowedField::date('due')->withoutTime()->validate('2024'))->toBeFalse();
+});
+
 it('rejects values outside an enum', function (): void {
     SearchParser::query('value:other')
         ->allowedFields([AllowedField::enum('value', PublicationStatus::class)])
         ->build();
 })->throws(InvalidFieldValueException::class);
-
-it('returns canonical allowed strings for Unicode and quoted input', function (): void {
-    $field = AllowedField::in('status', ['open', 'Été']);
-
-    expect(SearchParser::query('status:OPEN,"ÉTÉ"')->allowedFields([$field])->parse()->getValues())
-        ->toBe(['open', 'Été'])
-        ->and($field->tryCast('éTé'))->toBe('Été')
-        ->and($field->validate('open'))->toBeTrue()
-        ->and($field->validate('OPEN'))->toBeFalse()
-        ->and(new InValidator(['open', 'Été'])(['open', 'Été'], 'status'))->toBeTrue()
-        ->and(
-            SearchParser::query('')->allowedFields([$field->default('OPEN')])->parse()->getValue(),
-        )
-        ->toBe('open');
-});
 
 it('accepts ULIDs within 128 bits and normalizes them to uppercase', function (
     string $value,
@@ -254,6 +227,15 @@ it('casts values according to the field schema regardless of quoting', function 
     [AllowedField::in('field', [true, false]), '1', true],
 ]);
 
+it('combines dates without time with partial dates in either order', function (): void {
+    foreach ([
+        AllowedField::date('due')->withoutTime()->allowPartialDates(),
+        AllowedField::date('due')->allowPartialDates()->withoutTime(),
+    ] as $field) {
+        expect($field->validate('2024'))->toBeTrue()->and($field->validate('2024-03'))->toBeTrue();
+    }
+});
+
 it('infers untyped values conservatively', function (
     string $input,
     bool|float|int|string $value,
@@ -315,6 +297,32 @@ it('matches boolean and float membership values by their inferred value', functi
     [AllowedField::in('field', [true, false, '']), '""', ''],
 ]);
 
+it('opts in shared and positional date item rules separately', function (): void {
+    $shared = AllowedField::array('dates')->each(
+        fn (AllowedFieldItemRules $rules): AllowedFieldItemRules
+            => $rules->date()->allowPartialDates(),
+    );
+    $tuple = AllowedField::array('dates')
+        ->at(
+            0,
+            fn (AllowedFieldItemRules $rules): AllowedFieldItemRules
+                => $rules->date()->allowPartialDates(),
+        )
+        ->at(1, fn (AllowedFieldItemRules $rules): AllowedFieldItemRules => $rules->date());
+
+    expect(
+        SearchParser::query('dates:2024,2024-03')->allowedFields([$shared])->parse()->getValues(),
+    )
+        ->toBe(['2024', '2024-03'])
+        ->and(
+            SearchParser::query('dates:2024,2024-03-15')
+                ->allowedFields([$tuple])
+                ->parse()
+                ->getValues(),
+        )
+        ->toBe(['2024', '2024-03-15']);
+});
+
 it('prefers backing values over another case name while accepting both forms', function (): void {
     $field = AllowedField::enum('status', OverlappingEnumTokens::class);
 
@@ -350,6 +358,20 @@ it('resolves integer-backed enum names and values regardless of case or quotes',
         );
     }
 })->with([['1', 1], ['Low', 1], ['LOW', 1], ['low', 1], ['High', 2], ['high', 2]]);
+
+it('returns canonical allowed strings for Unicode and quoted input', function (): void {
+    $field = AllowedField::in('status', ['open', 'Été']);
+
+    expect(SearchParser::query('status:OPEN,"ÉTÉ"')->allowedFields([$field])->parse()->getValues())
+        ->toBe(['open', 'Été'])
+        ->and($field->tryCast('éTé'))->toBe('Été')
+        ->and($field->validate('open'))->toBeTrue()
+        ->and(new InValidator(['open', 'Été'])(['open', 'Été'], 'status'))->toBeTrue()
+        ->and(
+            SearchParser::query('')->allowedFields([$field->default('OPEN')])->parse()->getValue(),
+        )
+        ->toBe('open');
+});
 
 it('supports enum names in shared and positional rules and range bounds', function (): void {
     $field = AllowedField::array('priority')

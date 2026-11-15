@@ -69,6 +69,8 @@ $value = $parser->parse()->getValue();
 
 Chain `min()`, `max()`, `between()`, and `size()` to constrain a value. Numbers and numeric strings use their numeric value; other strings use their Unicode character length; arrays use their item count. A `string()` field always measures length, including numeric-looking strings. Booleans fail size rules.
 
+Bounds must be finite: `INF`, `-INF`, and `NAN` throw `InvalidArgumentException` when configuring a size rule.
+
 Use `callback()` for application validation:
 
 ```php

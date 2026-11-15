@@ -6,20 +6,40 @@ namespace HosmelQ\SearchSyntaxParser\Validation\Concerns;
 
 use Brick\Math\BigNumber;
 use Brick\Math\Exception\MathException;
+use InvalidArgumentException;
 use Stringable;
 
 trait ValidatesAttributes
 {
+    protected function assertFinite(float|int ...$bounds): void
+    {
+        foreach ($bounds as $bound) {
+            if (! is_finite($bound)) {
+                throw new InvalidArgumentException('Size bounds must be finite.');
+            }
+        }
+    }
+
     protected function getSize(
         mixed $value,
         bool $length = false,
-    ): null|float|int|string {
-        return match (true) {
+    ): null|BigNumber {
+        $size = match (true) {
             is_int($value), is_float($value) => $value,
             is_string($value) => ! $length && is_numeric($value) ? $value : mb_strlen($value),
             is_array($value) => count($value),
             default => null,
         };
+
+        if ($size === null) {
+            return null;
+        }
+
+        try {
+            return BigNumber::of((string) $size);
+        } catch (MathException) {
+            return null;
+        }
     }
 
     /**
@@ -36,14 +56,8 @@ trait ValidatesAttributes
             return false;
         }
 
-        try {
-            $size = BigNumber::of((string) $size);
-
-            return $size->isGreaterThanOrEqualTo((string) $parameters[0])
-                && $size->isLessThanOrEqualTo((string) $parameters[1]);
-        } catch (MathException) {
-            return false;
-        }
+        return $size->isGreaterThanOrEqualTo((string) $parameters[0])
+            && $size->isLessThanOrEqualTo((string) $parameters[1]);
     }
 
     protected function validateBoolean(mixed $value): bool
@@ -141,11 +155,7 @@ trait ValidatesAttributes
             return false;
         }
 
-        try {
-            return BigNumber::of((string) $size)->isLessThanOrEqualTo((string) $parameters[0]);
-        } catch (MathException) {
-            return false;
-        }
+        return $size->isLessThanOrEqualTo((string) $parameters[0]);
     }
 
     /**
@@ -162,11 +172,7 @@ trait ValidatesAttributes
             return false;
         }
 
-        try {
-            return BigNumber::of((string) $size)->isGreaterThanOrEqualTo((string) $parameters[0]);
-        } catch (MathException) {
-            return false;
-        }
+        return $size->isGreaterThanOrEqualTo((string) $parameters[0]);
     }
 
     /**
@@ -191,11 +197,7 @@ trait ValidatesAttributes
             return false;
         }
 
-        try {
-            return BigNumber::of((string) $size)->isEqualTo((string) $parameters[0]);
-        } catch (MathException) {
-            return false;
-        }
+        return $size->isEqualTo((string) $parameters[0]);
     }
 
     protected function validateString(mixed $value): bool

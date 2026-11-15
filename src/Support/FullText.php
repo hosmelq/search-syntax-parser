@@ -21,9 +21,7 @@ final readonly class FullText
         $words = preg_split('/[^\p{L}\p{N}\p{M}]+/u', $value, flags: PREG_SPLIT_NO_EMPTY);
 
         if ($words === false) {
-            throw preg_last_error() === PREG_BAD_UTF8_ERROR
-                ? ParseException::invalidUtf8()
-                : ParseException::tokenizationFailed();
+            throw ParseException::invalidUtf8();
         }
 
         $this->words = $words;
