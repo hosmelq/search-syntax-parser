@@ -10,6 +10,29 @@ use HosmelQ\SearchSyntaxParser\AST\Node\UnaryOperatorNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\WildcardNode;
 use HosmelQ\SearchSyntaxParser\SearchParser;
 use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
+use HosmelQ\SearchSyntaxParser\Validation\AllowedFieldItemRules;
+
+it('round trips date expression text and quotes unchanged', function (string $query): void {
+    $fields = [
+        AllowedField::date('created')->allowPartialDates(),
+        AllowedField::date('due'),
+        AllowedField::array('dates')->each(
+            fn (AllowedFieldItemRules $rules): AllowedFieldItemRules
+                => $rules->date()->allowPartialDates(),
+        ),
+    ];
+    $parser = SearchParser::query($query)->allowedFields($fields);
+    $text = $parser->build('string');
+
+    expect($text)->toBe($query)
+        ->and(SearchParser::query($text)->allowedFields($fields)->build())->toBe($parser->build());
+})->with([
+    'created:2024', 'created:2024-03', 'created:[2023 TO 2024-06]',
+    'created:>-7d', 'due:<today', 'created:<=now-1h', 'created:NOW+1M',
+    'created:[-30d TO now]', 'created:[now-7d TO -1d]', 'created:[* TO tomorrow]',
+    'created:[today-1M TO *]', 'created:-7d,+3d,ToDaY,now+1m', 'created:"TODAY-7d"',
+    'created:2024-03-15T10+05:30', 'dates:2024,-7d,tomorrow+1w',
+]);
 
 it('normalizes queries into explicit syntax', function (string $query, string $expected): void {
     expect(SearchParser::query($query)->allowAnyField()->build('string'))->toBe($expected);

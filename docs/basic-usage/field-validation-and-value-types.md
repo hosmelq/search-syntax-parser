@@ -111,7 +111,7 @@ assert(Field::string('title')->min(1)->packageMethod() instanceof Field);
 
 ## Dates
 
-Without a format, `date()` accepts `YYYY-MM-DD` and `YYYY-MM-DDTHH:MM[:SS[.fraction]][Z|±HH[:MM]]`. Dates, hours, minutes, seconds, and timezone components must be valid: `2025-02-30`, `25:00`, and minute `60` are rejected. The `T` and `Z` markers are uppercase.
+Without a format, `date()` accepts `YYYY-MM-DD` and `YYYY-MM-DDTHH[:MM[:SS[.fraction]]][Z|±HH[:MM]]`, as well as the relative expressions below. Dates, hours, minutes, seconds, and timezone components must be valid: `2025-02-30`, `25:00`, and minute `60` are rejected. The `T` and `Z` markers are uppercase. The AST and both built-in adapters keep date text as written.
 
 With a format, PHP's `DateTimeImmutable::createFromFormat('!'.$format, $value)` must succeed without warnings or errors, and formatting the result with the same format must reproduce the input exactly. Date values stay strings; size rules retain their ordinary behavior and do not compare calendar dates.
 
@@ -127,6 +127,108 @@ assert(SearchParser::query('birthday:"29/02/2024"')->allowedFields([
     AllowedField::date('birthday', 'd/m/Y'),
 ])->build()['value'] === '29/02/2024');
 ```
+
+### Partial dates
+
+Call `AllowedField::date('created')->allowPartialDates()` to also accept `YYYY` for a whole year and `YYYY-MM` for a whole month. Without this opt-in, partial dates fail validation. The same `allowPartialDates()` method is available after `date()` in `each()` and `at()` item rules. Configuring partial dates on another type or a date with a custom format throws `InvalidArgumentException`.
+
+```php
+use HosmelQ\SearchSyntaxParser\SearchParser;
+use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
+
+$fields = [AllowedField::date('created')->allowPartialDates()];
+$range = SearchParser::query('created:[2023 TO 2024-06]')->allowedFields($fields)->parse();
+
+assert($range->getFrom() === '2023');
+assert($range->getTo() === '2024-06');
+assert(SearchParser::query('created:2024')->allowedFields($fields)->parse()->getValue() === '2024');
+```
+
+### Relative dates
+
+Every format-less date field accepts these expressions without an additional opt-in:
+
+- `now` is an instant. `today`, `yesterday`, and `tomorrow` represent whole days. Anchors ignore case, so `TODAY` and `NoW` are valid.
+- An anchor may have one offset: `[+-]Nunit`, where `N` is a non-negative integer of at most six digits. Units are case-sensitive: `y` years, `M` months, `w` weeks, `d` days, `h` hours, and `m` minutes. `now-7d`, `now+2h`, and `now+1M` are valid; `now-1D` and `now+1s` are not.
+- A bare offset, such as `-7d` or `+3d`, uses `now` as its anchor.
+- Day anchors accept only `y`, `M`, `w`, and `d`, and keep whole-day precision. Examples include `today-7d` and `tomorrow+1w`; `today+1h` fails validation.
+
+Offsets contain no spaces or decimal amounts, and cannot be chained. Relative values work in comparisons (`created:>-7d`, `due:<today`, `created:<=now-1h`), lists (`created:-7d,today,tomorrow+1w`), and either range bound (`created:[-30d TO now]`). A leading minus must touch the value. `StringAdapter` preserves the expression's spelling and case. String defaults such as `AllowedField::date('due')->default('today')` remain text and are resolved by the adapter for each request.
+
+### Resolving date intervals
+
+Use `HosmelQ\SearchSyntaxParser\Date\DateValue::parse(string $text, DateTimeZone $zone, null|DateTimeImmutable $now = null): self` in an adapter to resolve format-less date text. It accepts full, partial, and relative dates; invalid expressions throw `InvalidArgumentException`. Field validation still controls whether a query may contain a partial date. Custom-format fields need their own conversion.
+
+`start()` is inclusive and `end()` is exclusive. `precision()` returns a `DatePrecision` case: `Year`, `Month`, `Day`, `Hour`, `Minute`, `Second`, `Fraction`, or `Instant`. `isRelative()` identifies relative text, and `hasExplicitOffset()` identifies a written `Z` or numeric offset. An absolute value spans its written precision: `2024` covers `[2024-01-01, 2025-01-01)`, and `2024-03-15T10:30` covers one minute. Fractional seconds use `Fraction` precision at the written number of digits: `.1` covers a tenth of a second and `.123` a millisecond. PHP represents at most six fractional digits, so longer fractions are truncated to microseconds. Relative instants, including `now-7d`, span one microsecond.
+
+```php
+use HosmelQ\SearchSyntaxParser\Date\DatePrecision;
+use HosmelQ\SearchSyntaxParser\Date\DateValue;
+
+$zone = new DateTimeZone('America/New_York');
+$value = DateValue::parse('2024-03-15T10:30', $zone);
+
+assert($value->start()->format('Y-m-d H:i:sP') === '2024-03-15 10:30:00-04:00');
+assert($value->end()->format('H:i:s') === '10:31:00');
+assert($value->precision() === DatePrecision::Minute);
+assert(!$value->isRelative());
+assert(!$value->hasExplicitOffset());
+
+$bounds = $value->bounds('>');
+assert($bounds->from == $value->end());
+assert($bounds->to === null);
+```
+
+`bounds($operator = '=')` returns a readonly `DateBounds` with nullable `from` and `to` properties. Apply `stored >= from` and `stored < to` for non-null bounds. With `S = start()` and `E = end()`:
+
+| Query | Inclusive `from` | Exclusive `to` |
+| --- | --- | --- |
+| `= value` | S | E |
+| `> value` | E | null |
+| `>= value` | S | null |
+| `< value` | null | S |
+| `<= value` | null | E |
+| `[a TO b]` | S(a), or null for `*` | E(b), or null for `*` |
+
+`DateBounds::range(null|DateValue $from, null|DateValue $to)` converts the language's inclusive written range into half-open bounds. Resolve both ends with the same request time:
+
+```php
+use HosmelQ\SearchSyntaxParser\Date\DateBounds;
+use HosmelQ\SearchSyntaxParser\Date\DateValue;
+
+$zone = new DateTimeZone('UTC');
+$now = new DateTimeImmutable('2024-03-15T12:00:00Z');
+$bounds = DateBounds::range(
+    DateValue::parse('-30d', $zone, $now),
+    DateValue::parse('now', $zone, $now),
+);
+
+assert($bounds->from->format('Y-m-d H:i:s') === '2024-02-14 12:00:00');
+assert($bounds->to->format('Y-m-d H:i:s.u') === '2024-03-15 12:00:00.000001');
+assert(DateBounds::range(null, DateValue::parse('2024-06', $zone))->to->format('Y-m-d') === '2024-07-01');
+```
+
+`!=` is the set complement of `=` and cannot be represented by one interval. Adapters negate the equality interval and include missing values for `nullable()` fields. Calling `bounds('!=')` throws `InvalidArgumentException`. Lists combine their equality intervals with OR; not-equal lists negate that union.
+
+### Time zones and daylight saving time
+
+Text without an offset is interpreted in `$zone`. A written `Z` or numeric offset identifies an exact fixed offset and takes precedence over `$zone`. Relative values use `$now` converted to `$zone`, or the current time when `$now` is omitted. Capture one `DateTimeImmutable` per request and reuse it for every relative value, including defaults and range ends.
+
+Calendar offsets (`y`, `M`, `w`, `d`) keep the local wall-clock time, and month and year offsets clamp to the last day of the target month: on March 31, `today-1M` is the last day of February, and `today+1y` from February 29 is February 28. So `now-7d` is the same local time seven days earlier, which is 167 or 169 elapsed hours across a DST change. Hours and minutes are elapsed durations: `now-168h` is always 168 hours earlier. A relative value must resolve within the years 0001 to 9999: field validation rejects one that does not, checking in UTC at the time of the request, and `DateValue::parse()` throws `InvalidArgumentException` for it in the zone it resolves.
+
+Every start is the earliest instant whose local time is the written wall-clock time. Days, months, and years run from one local midnight to the next, so a DST day can last 23 or 25 hours. A repeated midnight starts the day at its first occurrence, as on 2021-10-29 in `Asia/Amman`; a skipped midnight starts it at the first instant after the gap, so in `America/Santiago` 2024-09-08 begins at 01:00 and ends at 00:00 the next day. An hour, minute, second, or fraction skipped by a DST change is an empty interval, and a repeated one refers to its first occurrence: in `America/New_York`, `2024-11-03T01` covers 01:00 to 02:00 EDT only. Both absolute days and relative day anchors use these boundaries.
+
+```php
+use HosmelQ\SearchSyntaxParser\Date\DateValue;
+
+$day = DateValue::parse('2024-09-08', new DateTimeZone('America/Santiago'));
+
+assert($day->start()->format('Y-m-d H:i:sP') === '2024-09-08 01:00:00-03:00');
+assert($day->end()->format('Y-m-d H:i:sP') === '2024-09-09 00:00:00-03:00');
+assert($day->end()->getTimestamp() - $day->start()->getTimestamp() === 23 * 3600);
+```
+
+Adapters resolve the AST's date strings at request time, translate the bounds into their backend's comparisons, and implement complements and missing-value semantics. The resolver supplies dates and metadata without a framework or clock dependency; neither built-in adapter resolves relative dates automatically.
 
 ## Backed enums
 

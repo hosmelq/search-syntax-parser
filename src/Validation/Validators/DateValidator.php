@@ -5,13 +5,31 @@ declare(strict_types=1);
 namespace HosmelQ\SearchSyntaxParser\Validation\Validators;
 
 use DateTimeImmutable;
+use DateTimeZone;
+use HosmelQ\SearchSyntaxParser\Date\DateExpression;
+use HosmelQ\SearchSyntaxParser\Date\DateValue;
 use HosmelQ\SearchSyntaxParser\Validation\ValidatorInterface;
+use InvalidArgumentException;
 use Override;
 use ValueError;
 
 final readonly class DateValidator implements ValidatorInterface
 {
-    public function __construct(private null|string $format = null) {}
+    public function __construct(
+        private null|string $format = null,
+        private bool $allowPartialDates = false,
+    ) {}
+
+    public function withPartialDates(): self
+    {
+        if ($this->format !== null) {
+            throw new InvalidArgumentException(
+                'Partial dates require a date rule without a format.',
+            );
+        }
+
+        return new self(allowPartialDates: true);
+    }
 
     #[Override]
     public function __invoke(mixed $value, string $attribute): bool
@@ -31,19 +49,23 @@ final readonly class DateValidator implements ValidatorInterface
                 && $date->format($this->format) === $value;
         }
 
-        if (preg_match(
-            '/^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?(?:Z|[+-](\d{2})(?::(\d{2}))?)?)?$/D',
-            $value,
-            $parts,
-        ) !== 1) {
+        $parts = DateExpression::absolute($value);
+
+        if ($parts !== null) {
+            return $this->allowPartialDates || isset($parts['day']);
+        }
+
+        if (DateExpression::relative($value) === null) {
             return false;
         }
 
-        return checkdate((int) $parts[2], (int) $parts[3], (int) $parts[1])
-            && (int) ($parts[4] ?? 0) < 24
-            && (int) ($parts[5] ?? 0) < 60
-            && (int) ($parts[6] ?? 0) < 60
-            && (int) ($parts[7] ?? 0) < 24
-            && (int) ($parts[8] ?? 0) < 60;
+        // Accept a relative value only when it resolves to a supported year right now.
+        try {
+            DateValue::parse($value, new DateTimeZone('UTC'));
+        } catch (InvalidArgumentException) {
+            return false;
+        }
+
+        return true;
     }
 }

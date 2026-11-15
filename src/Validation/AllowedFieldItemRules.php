@@ -35,6 +35,8 @@ final class AllowedFieldItemRules
      */
     private array $caseNames = [];
 
+    private bool $partialDates = false;
+
     /**
      * @var null|'boolean'|'date'|'decimal'|'in'|'integer'|'numeric'|'string'|'ulid'|'uuid'
      */
@@ -89,6 +91,28 @@ final class AllowedFieldItemRules
     }
 
     /**
+     * Accept whole years and months with a date rule without a format.
+     */
+    public function allowPartialDates(): self
+    {
+        if ($this->type !== 'date') {
+            throw new InvalidArgumentException(
+                'Partial dates require a date rule without a format.',
+            );
+        }
+
+        foreach ($this->validators as $index => $validator) {
+            if ($validator instanceof DateValidator) {
+                $this->validators[$index] = $validator->withPartialDates();
+            }
+        }
+
+        $this->partialDates = true;
+
+        return $this;
+    }
+
+    /**
      * Require size/value between min and max for each item.
      */
     public function between(float|int $min, float|int $max): self
@@ -103,7 +127,8 @@ final class AllowedFieldItemRules
      */
     public function boolean(): self
     {
-        $this->type = 'boolean';
+        $this->setType('boolean');
+
         $this->validators[] = new BooleanValidator();
 
         return $this;
@@ -151,8 +176,11 @@ final class AllowedFieldItemRules
      */
     public function date(null|string $format = null): self
     {
-        $this->type = 'date';
-        $this->validators[] = new DateValidator($format);
+        $validator = new DateValidator($format);
+
+        $this->setType('date');
+
+        $this->validators[] = $this->partialDates ? $validator->withPartialDates() : $validator;
 
         return $this;
     }
@@ -162,7 +190,8 @@ final class AllowedFieldItemRules
      */
     public function decimal(int $min, null|int $max = null): self
     {
-        $this->type = 'decimal';
+        $this->setType('decimal');
+
         $this->validators[] = new DecimalValidator($min, $max);
 
         return $this;
@@ -244,7 +273,9 @@ final class AllowedFieldItemRules
     {
         $validator = new InValidator($values);
         $this->caseNames = [];
-        $this->type = 'in';
+
+        $this->setType('in');
+
         $this->values = $values;
         $this->validators[] = $validator;
 
@@ -256,7 +287,8 @@ final class AllowedFieldItemRules
      */
     public function integer(): self
     {
-        $this->type = 'integer';
+        $this->setType('integer');
+
         $this->validators[] = new IntegerValidator();
 
         return $this;
@@ -295,7 +327,8 @@ final class AllowedFieldItemRules
      */
     public function numeric(): self
     {
-        $this->type = 'numeric';
+        $this->setType('numeric');
+
         $this->validators[] = new NumericValidator();
 
         return $this;
@@ -316,7 +349,8 @@ final class AllowedFieldItemRules
      */
     public function string(): self
     {
-        $this->type = 'string';
+        $this->setType('string');
+
         $this->validators[] = new StringValidator();
 
         return $this;
@@ -327,7 +361,8 @@ final class AllowedFieldItemRules
      */
     public function ulid(): self
     {
-        $this->type = 'ulid';
+        $this->setType('ulid');
+
         $this->validators[] = new UlidValidator();
 
         return $this;
@@ -338,7 +373,8 @@ final class AllowedFieldItemRules
      */
     public function uuid(): self
     {
-        $this->type = 'uuid';
+        $this->setType('uuid');
+
         $this->validators[] = new UuidValidator();
 
         return $this;
@@ -390,6 +426,20 @@ final class AllowedFieldItemRules
         }
 
         return $this->caseNames[mb_strtolower($value)] ?? $value;
+    }
+
+    /**
+     * @param 'boolean'|'date'|'decimal'|'in'|'integer'|'numeric'|'string'|'ulid'|'uuid' $type
+     */
+    private function setType(string $type): void
+    {
+        if ($this->partialDates && $type !== 'date') {
+            throw new InvalidArgumentException(
+                'Partial dates require a date rule without a format.',
+            );
+        }
+
+        $this->type = $type;
     }
 
     /**

@@ -13,7 +13,7 @@ final class SearchLexer
 {
     private const string PATTERN = '/\G(\s*+)\K(?:'
         // A word starting with an ISO 8601 datetime may contain colons.
-        .'\d{4}-\d{2}-\d{2}[Tt]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:[Zz]|[+-]\d{2}(?::?\d{2})?)?'
+        .'\d{4}-\d{2}-\d{2}[Tt]\d{2}(?::\d{2}(?::\d{2}(?:\.\d+)?)?)?(?:[Zz]|[+-]\d{2}(?::?\d{2})?)?'
         .self::WORD_TAIL
         .'(*MARK:w)'
         .'|"[^"\\\\]*+(?:\\\\.[^"\\\\]*+)*+"(?:\*(*MARK:qs)|(*MARK:q))'

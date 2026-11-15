@@ -46,20 +46,20 @@ $result = SearchParser::query('location:37.7749,-122.4194')->allowedFields([
 assert($result['values'] === [37.7749, -122.4194]);
 ```
 
-Dates retain their input text at any position.
+Dates retain their input text at any position, including relative expressions. Call `date()->allowPartialDates()` on an item rule to also accept whole years and months; see [dates](field-validation-and-value-types#dates).
 
 ```php
 use HosmelQ\SearchSyntaxParser\SearchParser;
 use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
 use HosmelQ\SearchSyntaxParser\Validation\AllowedFieldItemRules;
 
-$result = SearchParser::query('dates:2024-02-29,2025-01-01')->allowedFields([
+$result = SearchParser::query('dates:2024-02-29,2025-01,today')->allowedFields([
     AllowedField::array('dates')->each(
-        fn (AllowedFieldItemRules $rules): AllowedFieldItemRules => $rules->date(),
+        fn (AllowedFieldItemRules $rules): AllowedFieldItemRules => $rules->date()->allowPartialDates(),
     ),
 ])->build();
 
-assert($result['values'] === ['2024-02-29', '2025-01-01']);
+assert($result['values'] === ['2024-02-29', '2025-01', 'today']);
 ```
 
 A list containing patterns removes ignored literal items, then validates the remaining collection and its items before expanding into wildcard and comparison leaves. Patterns are never removed by `ignore()`. Defaults for array fields pass through the same collection and item validation; see [defaults](defaults).

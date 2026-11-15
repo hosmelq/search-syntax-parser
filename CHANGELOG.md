@@ -11,6 +11,9 @@ This release includes breaking changes to field permissions, ignored values, ope
 
 ### Added
 
+- Add opt-in `allowPartialDates()` for format-less date fields and array items, preserving whole-year and whole-month text.
+- Accept relative date anchors and single calendar or time offsets on every format-less date field, including comparisons, lists, ranges, and text defaults.
+- Add framework-independent `DateValue`, `DatePrecision`, and `DateBounds` for precision intervals, request-time relative resolution, explicit offsets, DST-aware calendar boundaries, and half-open adapter bounds.
 - Add `AllowedField::prefix()`, `contains()`, and `words()` with `TextMatch` metadata and per-value quoted overrides to exact matching.
 - Add storage conversions through `AllowedField::scale()`, `map()`, and `toStorage()`, applied to comparison, list, and range values by the array adapter while preserving the AST and string output.
 - Add `uuid()` and `ulid()` field factories and item rules with format validation and canonical letter case.
@@ -30,6 +33,7 @@ This release includes breaking changes to field permissions, ignored values, ope
 
 ### Changed
 
+- Accept hour-precision ISO datetimes such as `2024-03-15T10` on format-less date fields.
 - Require brick/math 0.14.4 or newer, up to 1.x.
 - Match `in()` strings and `ignore()` values case-insensitively, returning canonical allowed members and rejecting duplicate allowed strings ignoring case; alias tokens remain case-sensitive.
 - Accept backed enum values or case names ignoring case, prefer backing values over overlapping names, and reject ambiguous backing values or case names at configuration time.

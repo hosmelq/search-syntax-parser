@@ -272,6 +272,22 @@ class AllowedField
     }
 
     /**
+     * Accept whole years and months on a date field without a format.
+     */
+    public function allowPartialDates(): static
+    {
+        if ($this->expectsArray) {
+            throw new InvalidArgumentException(
+                'On array fields, allow partial dates on the each() or at() date rules.',
+            );
+        }
+
+        $this->rules->allowPartialDates();
+
+        return $this;
+    }
+
+    /**
      * Throw when the clause kind is disabled for this field.
      *
      * @internal
