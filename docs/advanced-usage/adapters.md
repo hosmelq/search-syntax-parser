@@ -26,7 +26,7 @@ The result is:
 ]
 ```
 
-Array output describes filters. [Directives and sorting](../basic-usage/directives-and-sorting) remain separate parser results, and the adapter does not execute a search.
+For backend execution, consume the grouped clauses from [`SearchParser::compile()`](compiling-clauses#compile-a-query). Array output describes filters. [Directives and sorting](../basic-usage/directives-and-sorting) remain separate parser results, and the adapter does not execute a search.
 
 ## Read node output
 

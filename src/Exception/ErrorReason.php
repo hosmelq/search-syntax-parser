@@ -13,6 +13,7 @@ enum ErrorReason: string
     case ExpectedValue = 'syntax.expected_value';
     case FieldNotAllowed = 'field.not_allowed';
     case InvalidFieldValue = 'field.invalid_value';
+    case InvalidType = 'query.invalid_type';
     case InvalidUtf8 = 'query.invalid_utf8';
     case InvalidWildcardPattern = 'wildcard.invalid_pattern';
     case InvalidWildcardUsage = 'wildcard.invalid_usage';

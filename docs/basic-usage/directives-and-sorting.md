@@ -27,7 +27,7 @@ $settings = $parser->getDirectives();
 
 Aliases, casts, validation, and ignored values work as they do on filter fields. Results use public field names and cast values; internal names and storage conversions do not change them. Numeric names follow PHP's array-key conversion rules.
 
-`getDirectives()` returns resolved values, including defaults. `getTypedDirectives()` returns explicitly supplied, non-ignored values in configuration order. Both read the latest parse or build result without parsing again.
+`getDirectives()` returns resolved values, including defaults. `getTypedDirectives()` returns explicitly supplied, non-ignored values in configuration order. Both read the latest parse, build, or compile result without parsing again.
 
 Directive defaults must be scalar. Array fields, pattern fields, null defaults, and list defaults are configuration errors. An ignored explicit value suppresses its default. See [field defaults](defaults#set-directive-and-sort-defaults).
 
@@ -120,4 +120,4 @@ $parser = SearchParser::query('')
 $json = json_encode($parser, JSON_THROW_ON_ERROR);
 ```
 
-The `created` sort serializes as `{"direction":"desc","name":"created"}`. See [field descriptions](field-validation-and-value-types#describe-fields) for the keys of each field. `getAllowedFields()` and `getAllowedSorts()` return the same `Field` and `AllowedSort` definitions keyed by public name; both classes implement `JsonSerializable`.
+The `created` sort serializes as `{"direction":"desc","name":"created"}`. See [field descriptions](field-validation-and-value-types#describe-fields) for the keys of each field. `getAllowedFields()` returns authorized `Field` definitions and `getAllowedSorts()` returns the independent `AllowedSort` allowlist, keyed by public name; both classes implement `JsonSerializable`.

@@ -15,6 +15,9 @@ use HosmelQ\SearchSyntaxParser\Exception\InvalidFieldException;
 use HosmelQ\SearchSyntaxParser\Exception\InvalidFieldOperatorException;
 use HosmelQ\SearchSyntaxParser\Exception\InvalidFieldValueException;
 use HosmelQ\SearchSyntaxParser\Exception\ParseException;
+use HosmelQ\SearchSyntaxParser\Query\Clause;
+use HosmelQ\SearchSyntaxParser\Query\ClauseGroup;
+use HosmelQ\SearchSyntaxParser\Query\Operator;
 use HosmelQ\SearchSyntaxParser\SearchParser;
 use HosmelQ\SearchSyntaxParser\Sorting\AllowedSort;
 use HosmelQ\SearchSyntaxParser\Validation\Field;
@@ -74,6 +77,50 @@ it('rejects defaults that fail field validation when they apply', function (
         Field::string('status')->min(3)->default(['open', 'ab']),
     ],
 ]);
+
+it('rejects denied defaults that fail validation', function (Field $field): void {
+    SearchParser::query('')->allowedFields([
+        $field->authorize(static fn (): bool => false),
+    ])->compile();
+})->throws(InvalidArgumentException::class, "Invalid default for field 'value'.")->with([
+    Field::integer('value')->default('invalid'),
+    Field::integer('value')->directive()->default('invalid'),
+    Field::array('value')
+        ->each(fn (FieldItemRules $rules): FieldItemRules => $rules->integer())
+        ->default(['bad']),
+]);
+
+it('rejects denied names without reopening them through patterns or allowAnyField', function (
+    string $name,
+    bool $any,
+): void {
+    $parser = SearchParser::query($name.':x')->allowedFields([
+        Field::string('meta.*')->keys('/^.+$/'),
+        Field::string('meta.secret')->authorize(static fn (): bool => false),
+        Field::string('meta.private.*')->keys('/^.+$/')->authorize(static fn (): bool => false),
+        Field::string('mode')->directive()->authorize(static fn (): bool => false),
+    ]);
+
+    if ($any) {
+        $parser->allowAnyField();
+    }
+
+    expect($parser->isFieldAllowed($name))->toBeFalse()
+        ->and($parser->getAllowedField($name))->toBeNull()
+        ->and($parser->getAllowedFieldNames())->toBe(['meta.*']);
+
+    try {
+        $parser->parse();
+
+        test()->fail('Expected a denied field error.');
+    } catch (InvalidFieldException $invalidFieldException) {
+        expect($invalidFieldException->getReason())->toBe(ErrorReason::FieldNotAllowed)
+            ->and($invalidFieldException->getParameters())->toBe([
+                'field' => $name,
+                'allowed' => ['meta.*'],
+            ]);
+    }
+})->with(['meta.secret', 'meta.private.key', 'mode'])->with([false, true]);
 
 it('rejects duplicate sort names ignoring case', function (): void {
     SearchParser::query('')->allowedSorts(['created', 'CREATED']);
@@ -154,6 +201,24 @@ it('rejects invalid keys without falling through to a broader pattern or allowAn
     }
 })->with([false, true]);
 
+it('rejects invalid raw query types through every query entry point', function (
+    mixed $input,
+    string $method,
+): void {
+    $parser = SearchParser::query($input);
+
+    try {
+        $parser->$method();
+
+        test()->fail('Expected an invalid type error.');
+    } catch (ParseException $parseException) {
+        expect($parseException->getReason())->toBe(ErrorReason::InvalidType)
+            ->and($parseException->getPosition())->toBeNull()
+            ->and($parseException->getParameters())->toBeEmpty();
+    }
+})->with([[false], [true], [0], [1.5], [[]], [new stdClass()]])
+    ->with(['parse', 'build', 'compile']);
+
 it('rejects non-string defaults whose type the field never produces from text', function (
     Field $field,
 ): void {
@@ -206,6 +271,56 @@ it('rejects queries longer than the default length before tokenizing', function 
             'Search query exceeds the maximum length of 10000 characters.',
         );
 });
+
+it('rejects reserved sort fields even when denied', function (bool $sortsFirst): void {
+    $parser = SearchParser::query('');
+    $field = Field::string('sort')->authorize(static fn (): bool => false);
+
+    if ($sortsFirst) {
+        $parser->allowedSorts(['name'])->allowedFields([$field]);
+    } else {
+        $parser->allowedFields([$field])->allowedSorts(['name']);
+    }
+})->throws(InvalidArgumentException::class, 'reserved')->with([false, true]);
+
+it('rejects resource query input without a source position', function (): void {
+    $stream = fopen('php://memory', 'r');
+
+    try {
+        SearchParser::query($stream)->compile();
+
+        test()->fail('Expected an invalid type error.');
+    } catch (ParseException $parseException) {
+        expect($parseException->getReason())->toBe(ErrorReason::InvalidType)
+            ->and($parseException->getPosition())->toBeNull();
+    } finally {
+        fclose($stream);
+    }
+});
+
+it('rejects term configuration even when unused or denied', function (
+    array $fields,
+    string $name,
+    bool $denied,
+    string $query,
+): void {
+    foreach ($fields as $field) {
+        $field->authorize(static fn (): bool => ! $denied);
+    }
+
+    SearchParser::query($query)->allowedFields($fields)->allowAnyField()->terms([$name])->compile();
+})->throws(InvalidArgumentException::class, 'must be an exact configured field')->with([
+    'unknown' => [[], 'missing'],
+    'case' => [[Field::string('title')], 'TITLE'],
+    'pattern' => [[Field::string('meta.*')->keys('/^.+$/')], 'meta.*'],
+    'dynamic key' => [[Field::string('meta.*')->keys('/^.+$/')], 'meta.key'],
+    'directive' => [[Field::string('mode')->directive()], 'mode'],
+    'date' => [[Field::date('created')], 'created'],
+    'shared date items' => [
+        [Field::array('dates')->each(fn (FieldItemRules $rules): FieldItemRules => $rules->date())],
+        'dates',
+    ],
+])->with([false, true])->with(['', 'unused:value']);
 
 it('rejects time defaults on fields without time regardless of configuration order', function (
     Closure $field,
@@ -364,6 +479,19 @@ it('accepts non-string defaults that already have the cast type', function (
     'untyped' => [new Field('value')->default(true), true],
 ]);
 
+it('accepts null and stringable request input', function (): void {
+    $query = new class () implements Stringable {
+        public function __toString(): string
+        {
+            return 'title:coffee';
+        }
+    };
+
+    expect(new SearchParser(null)->compile())->toBeNull()
+        ->and(SearchParser::query($query)->allowedFields(['title'])->compile()->children[0]->value)
+        ->toBe('coffee');
+});
+
 it('accepts null defaults for typed and array fields without running their value rules', function (
     Field $field,
 ): void {
@@ -515,6 +643,100 @@ it('casts list default items by position on array fields', function (): void {
     expect(SearchParser::query('')->allowedFields([$field])->parse()->getValues())->toBe([1.5, 2]);
 });
 
+it('compiles boolean chains without flattening field leaf groups', function (bool $negated): void {
+    $query = 'title:coffee,tea OR title:cocoa OR (title:juice AND count:2)';
+    $group = SearchParser::query($negated ? 'NOT ('.$query.')' : $query)->allowedFields([
+        Field::string('title')->contains(),
+        Field::integer('count'),
+    ])->compile();
+
+    expect($group)->toBeInstanceOf(ClauseGroup::class)
+        ->and($group->and)->toBe($negated)
+        ->and($group->field)->toBeNull()
+        ->and($group->children)->toHaveCount(3);
+
+    $leaf = $group->children[0];
+
+    expect($leaf)->toBeInstanceOf(ClauseGroup::class)
+        ->and($leaf->field)->toBe('title')
+        ->and($leaf->and)->toBe($negated)
+        ->and(array_column($leaf->children, 'value'))->toBe(['%coffee%', '%tea%'])
+        ->and(array_column($leaf->children, 'negated'))->toBe([$negated, $negated])
+        ->and($group->children[1])->toBeInstanceOf(Clause::class)
+        ->and($group->children[2]->and)->toBe(! $negated);
+})->with([false, true]);
+
+it('compiles parsed wildcard lists as boolean groups', function (): void {
+    $group = SearchParser::query('title:coffee,te*')
+        ->allowedFields([Field::string('title')])
+        ->compile();
+
+    expect($group->and)->toBeFalse()
+        ->and($group->field)->toBeNull()
+        ->and(array_column($group->children, 'operator'))->toBe([Operator::Equal, Operator::Like]);
+});
+
+it('compiles terms in their configured order and keeps their groups separate', function (
+    bool $negated,
+): void {
+    $group = SearchParser::query($negated ? 'NOT (coffee OR tea)' : 'coffee OR tea')
+        ->allowedFields([Field::string('title'), Field::integer('count'), Field::string('body')])
+        ->terms(['body', 'count', 'title'])
+        ->compile();
+
+    expect($group->and)->toBe($negated)->and($group->children)->toHaveCount(2);
+
+    foreach ($group->children as $term) {
+        expect($term->and)->toBe($negated)
+            ->and($term->field)->toBeNull()
+            ->and(array_column($term->children, 'field'))->toBe(['body', 'title']);
+    }
+})->with([false, true]);
+
+it('compiles unmatched terms into empty groups', function (string $query, bool $and): void {
+    $group = SearchParser::query($query)
+        ->allowedFields([Field::integer('count')])
+        ->terms(['count'])
+        ->compile();
+
+    expect($group->and)->toBe($and)
+        ->and($group->children)->toBeEmpty()
+        ->and($group->field)->toBeNull();
+})->with([['coffee', false], ['NOT coffee', true], ['coff*', false], ['NOT coff*', true]]);
+
+it('decides authorization once per parser and resets it with allowedFields', function (): void {
+    $calls = 0;
+    $allowed = true;
+    $field = Field::string('title')->default('coffee')->authorize(
+        function () use (&$calls, &$allowed): bool {
+            $calls++;
+
+            return $allowed;
+        },
+    );
+    $parser = SearchParser::query('')->allowedFields([$field])->terms(['title']);
+
+    $parser->compile();
+
+    $allowed = false;
+
+    expect($parser->getAllowedFields())->toBe(['title' => $field])
+        ->and($parser->getAllowedField('title'))->toBe($field)
+        ->and($parser->isFieldAllowed('title'))->toBeTrue()
+        ->and($parser->getTermFields())->toBe([$field])
+        ->and($parser->jsonSerialize()['fields'])->toHaveCount(1)
+        ->and($parser->compile())->not->toBeNull()
+        ->and($calls)->toBe(1);
+
+    $second = SearchParser::query('')->allowedFields([$field]);
+
+    expect($second->compile())->toBeNull()->and($calls)->toBe(2);
+
+    $parser->allowedFields([$field]);
+
+    expect($parser->compile())->toBeNull()->and($calls)->toBe(3);
+});
+
 it('describes allowed fields and sorts as ordered lists without parsing', function (): void {
     $parser = SearchParser::query('unknown:invalid')
         ->allowedFields(['status', Field::in('mode', ['active', 'all'])->directive()])
@@ -621,6 +843,29 @@ it('flags both nodes of a null default', function (): void {
     expect($node)->toBeInstanceOf(UnaryOperatorNode::class)
         ->and($node->isDefault())->toBeTrue()
         ->and($node->getOperand()->isDefault())->toBeTrue();
+});
+
+it('keeps a denied authorization decision for every parser read', function (): void {
+    $allowed = false;
+    $calls = 0;
+    $field = Field::string('title')->authorize(function () use (&$allowed, &$calls): bool {
+        $calls++;
+
+        return $allowed;
+    });
+    $parser = SearchParser::query('coffee')->allowedFields([$field])->terms(['title']);
+
+    expect($parser->getAllowedFields())->toBeEmpty();
+
+    $allowed = true;
+
+    expect($parser->compile()->children)->toBeEmpty()
+        ->and($parser->getTermFields())->toBeEmpty()
+        ->and($parser->getAllowedField('title'))->toBeNull()
+        ->and($parser->getAllowedFieldNames())->toBeEmpty()
+        ->and($parser->isFieldAllowed('title'))->toBeFalse()
+        ->and($parser->jsonSerialize()['fields'])->toBeEmpty()
+        ->and($calls)->toBe(1);
 });
 
 it('keeps a sort directive name free when no sorts are configured', function (): void {
@@ -742,6 +987,24 @@ it('omits defaults for fields referenced anywhere in the AST', function (string 
     'status:*', 'NOT status:*', 'status:act*', 'status:act*,draft',
     'coffee OR (tea AND NOT status:active)',
 ]);
+
+it('omits denied defaults terms and exported fields without restricting sorts', function (): void {
+    $parser = SearchParser::query('')->allowedFields([
+        Field::integer('secret')->default(42)->authorize(static fn (): bool => false),
+        Field::string('mode')
+            ->directive()
+            ->default('hidden')
+            ->authorize(static fn (): bool => false),
+        Field::string('title'),
+    ])->terms(['secret', 'title'])->allowedSorts(['secret'])->defaultSort('secret');
+
+    expect($parser->compile())->toBeNull()
+        ->and($parser->getDirectives())->toBeEmpty()
+        ->and(array_map(fn (Field $field): string => $field->getName(), $parser->getTermFields()))
+        ->toBe(['title'])
+        ->and(array_column($parser->jsonSerialize()['fields'], 'name'))->toBe(['title'])
+        ->and($parser->getSort()->getName())->toBe('secret');
+});
 
 it('prefers exact fields then the longest prefix regardless of configuration order', function (
     bool $reverse,
@@ -895,6 +1158,13 @@ it('returns default adapter and memoizes instance', function (): void {
 
     expect($adapterA)->toBeInstanceOf(ArrayAdapter::class)->and($adapterA)->toBe($adapterB);
 });
+
+it('returns null when no filter survives compilation', function (string $query): void {
+    expect(SearchParser::query($query)->allowedFields([
+        Field::string('title')->ignore('all'),
+        Field::integer('limit')->directive(),
+    ])->compile())->toBeNull();
+})->with(['', 'title:all', 'limit:2']);
 
 it('returns null without calling the adapter when no constraints remain', function (
     string $query,
@@ -1153,3 +1423,15 @@ it('validates defaults with the complete collection and internal field name', fu
     expect(SearchParser::query('')->allowedFields([$field, $callback])->build()['left']['values'])
         ->toBe($values);
 });
+it('wraps single field and term clauses in an and root', function (string $query): void {
+    $group = SearchParser::query($query)
+        ->allowedFields([Field::string('title')])
+        ->terms(['title'])
+        ->allowAnyField()
+        ->compile();
+
+    expect($group->and)->toBeTrue()
+        ->and($group->field)->toBeNull()
+        ->and($group->children)->toHaveCount(1)
+        ->and($group->children[0])->toBeInstanceOf(Clause::class);
+})->with(['title:coffee', 'other:coffee', 'coffee', 'coff*']);

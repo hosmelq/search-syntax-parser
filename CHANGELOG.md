@@ -11,12 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Rename `AllowedField` to `Field` and `AllowedFieldItemRules` to `FieldItemRules`.
 - Require configured fields, return null when no filter or default remains, apply validated defaults, and remove ignored values.
 - Preserve typed values, decimal strings, quoted text, and Unicode source positions, and compare members and ignored strings ignoring case.
-- Add operator restrictions, aliases, dynamic fields, text matching, storage conversions, leading wildcard permissions, and query limits.
-- Add date, enum, UUID, and ULID rules, including partial and relative dates.
+- Add field authorization, operator restrictions, aliases, dynamic fields, text matching, storage conversions, leading wildcard permissions, and query limits.
+- Add date, enum, UUID, and ULID rules, including partial and relative dates, clause intervals, and storage bounds.
 - Add wildcard nodes, compact ranges, string serialization, and directives and sorts outside the filter tree.
-- Add AST transformers and a shared clause compiler for adapters, which complements inequalities and keeps surrounding negation.
+- Add AST transformers, a shared clause compiler, and `compile()` clause trees with term targets and set complements for adapters.
 - Add `Query\Matcher` for in-memory matching, JSON descriptions of parsers, fields, and sorts, and `getAllowedFields()`.
-- Throw `SearchSyntaxException` with grouped error reasons, and reject non-finite size bounds.
+- Accept raw query input, throw `SearchSyntaxException` with grouped reasons and parameters, and reject non-finite size bounds.
 - Replace the lexer, make the lexer and parser internal, and remove unused validation APIs.
 - Move the documentation from the README to `docs/`, excluded from archives, align the tooling, reorganize the tests, and drop the redundant framework CI job.
 

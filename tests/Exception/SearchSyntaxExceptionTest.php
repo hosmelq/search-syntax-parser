@@ -56,7 +56,7 @@ it('exposes a machine-readable reason and parameters for query failures', functi
         ['field' => 'status', 'allowed' => ['age', 'name']],
     ],
     ['age:old', ErrorReason::InvalidFieldValue, ['field' => 'age']],
-    ['age:>10', ErrorReason::OperatorNotAllowed, ['field' => 'age', 'operator' => '>']],
+    ['age:>10', ErrorReason::OperatorNotAllowed, ['field' => 'age', 'operation' => '>']],
 ]);
 
 it('preserves structured context for adapter exceptions', function (): void {

@@ -10,19 +10,9 @@ use Closure;
 use DateTimeImmutable;
 use DateTimeInterface;
 use DateTimeZone;
-use HosmelQ\SearchSyntaxParser\AST\Node\BinaryOperatorNode;
-use HosmelQ\SearchSyntaxParser\AST\Node\ComparisonNode;
-use HosmelQ\SearchSyntaxParser\AST\Node\ExistsNode;
-use HosmelQ\SearchSyntaxParser\AST\Node\InNode;
-use HosmelQ\SearchSyntaxParser\AST\Node\NodeInterface;
-use HosmelQ\SearchSyntaxParser\AST\Node\RangeNode;
-use HosmelQ\SearchSyntaxParser\AST\Node\TermNode;
-use HosmelQ\SearchSyntaxParser\AST\Node\UnaryOperatorNode;
-use HosmelQ\SearchSyntaxParser\AST\Node\WildcardNode;
 use HosmelQ\SearchSyntaxParser\Date\DateBounds;
 use HosmelQ\SearchSyntaxParser\Date\DatePrecision;
 use HosmelQ\SearchSyntaxParser\Date\DateValue;
-use HosmelQ\SearchSyntaxParser\Exception\InvalidFieldValueException;
 use HosmelQ\SearchSyntaxParser\SearchParser;
 use HosmelQ\SearchSyntaxParser\Support\Decimal;
 use HosmelQ\SearchSyntaxParser\Support\FullText;
@@ -59,12 +49,8 @@ final class Matcher
 
     private mixed $wordValue = null;
 
-    /**
-     * @param list<string> $terms
-     */
     public function __construct(
         SearchParser $parser,
-        array $terms = [],
         null|DateTimeZone $timezone = null,
         null|DateTimeZone $storageTimezone = null,
         null|DateTimeInterface $now = null,
@@ -74,7 +60,7 @@ final class Matcher
         $this->now = $now instanceof DateTimeInterface
             ? DateTimeImmutable::createFromInterface($now)
             : new DateTimeImmutable('now', $this->timezone);
-        $fields = $parser->getAllowedFields();
+        $fields = $parser->getConfiguredFields();
 
         foreach ($fields as $field) {
             if (! $field->isDirective() && $field->hasCustomDateFormat()) {
@@ -85,30 +71,10 @@ final class Matcher
             }
         }
 
-        $termFields = [];
-
-        foreach ($terms as $name) {
-            $field = $fields[$name] ?? null;
-
-            if (
-                $field === null
-                || $field->isPattern()
-                || $field->isDirective()
-                || $field->getValueType() === 'date'
-            ) {
-                throw new InvalidArgumentException(sprintf(
-                    "Term field '%s' must be an exact configured field without a date type or directive.",
-                    $name,
-                ));
-            }
-
-            $termFields[] = $field;
-        }
-
-        $node = $parser->parse();
+        $group = $parser->compile();
         $paths = [];
-        $this->predicate = $node instanceof NodeInterface
-            ? $this->compile($node, $parser, $termFields, $paths)
+        $this->predicate = $group instanceof ClauseGroup
+            ? $this->compile($group, $parser, $paths)
             : static fn (array $values): bool => true;
         $this->paths = $paths;
     }
@@ -257,94 +223,39 @@ final class Matcher
     }
 
     /**
-     * @param list<Field> $terms
      * @param array<string, list<string>> $paths
      *
      * @return Closure(array<array-key, mixed>): bool
      */
     private function compile(
-        NodeInterface $node,
+        Clause|ClauseGroup $clause,
         SearchParser $parser,
-        array $terms,
         array &$paths,
     ): Closure {
-        if ($node instanceof BinaryOperatorNode) {
-            return $this->combine([
-                $this->compile($node->getLeft(), $parser, $terms, $paths),
-                $this->compile($node->getRight(), $parser, $terms, $paths),
-            ], $node->getOperator() === 'AND');
+        if ($clause instanceof Clause) {
+            return $this->clause(
+                $parser->getAllowedField($clause->field) ?? new Field($clause->field),
+                $clause,
+                $parser,
+                $paths,
+            );
         }
 
-        if ($node instanceof UnaryOperatorNode) {
-            $predicate = $this->compile($node->getOperand(), $parser, $terms, $paths);
-
-            return static fn (array $values): bool => ! $predicate($values);
-        }
-
-        $compiler = new ClauseCompiler();
-
-        if (
-            $node instanceof TermNode
-            || ($node instanceof WildcardNode && $node->getField() === null)
-        ) {
-            $predicates = [];
-
-            foreach ($terms as $field) {
-                $clause = $compiler->term($field, $node);
-
-                if ($clause instanceof Clause) {
-                    $predicates[] = $this->clause($field, $clause, $parser, $paths);
-                }
-            }
-
-            return $this->combine($predicates);
-        }
-
-        /**
-         * @var ComparisonNode|ExistsNode|InNode|RangeNode|WildcardNode $node
-         * @var string $name
-         */
-        $name = $node->getField();
-        $field = $parser->getAllowedField($name) ?? new Field($name);
-        $clauses = $compiler->compile($field, $node);
         $predicates = [];
 
-        foreach ($clauses as $clause) {
-            $predicates[] = $this->clause($field, $clause, $parser, $paths);
+        foreach ($clause->children as $child) {
+            $predicates[] = $this->compile($child, $parser, $paths);
         }
 
-        return $this->combine($predicates, $clauses[0]->negated);
+        return $this->combine($predicates, $clause->and);
     }
 
     /**
      * @return Closure(mixed): bool
      */
-    private function dates(Field $field, Clause $clause, Operator $operator): Closure
+    private function dates(Field $field, Clause $clause): Closure
     {
-        $parse = function (bool|float|int|string $value) use ($clause): DateValue {
-            try {
-                return DateValue::parse((string) $value, $this->timezone, $this->now);
-            } catch (InvalidArgumentException) {
-                throw InvalidFieldValueException::invalidValue($clause->field, $clause->position);
-            }
-        };
-        $value = $clause->value;
-
-        if ($value instanceof Bounds) {
-            $intervals = [DateBounds::range(
-                $value->from === null ? null : $parse($value->from),
-                $value->to === null ? null : $parse($value->to),
-            )];
-        } elseif (is_array($value)) {
-            $intervals = array_map(
-                static fn (bool|float|int|string $item): DateBounds => $parse($item)->bounds(),
-                $value,
-            );
-        } else {
-            /** @var bool|float|int|string $value */
-            $intervals = [$parse($value)->bounds($operator->value)];
-        }
-
+        $intervals = DateBounds::forClause($clause, $this->timezone, $this->now);
         $calendar = ($field->getDateOptions()['time'] ?? null) === false;
 
         return function (mixed $value) use ($intervals, $calendar): bool {
@@ -483,7 +394,7 @@ final class Matcher
     private function positive(Field $field, Clause $clause, Operator $operator): Closure
     {
         if ($field->getValueType() === 'date') {
-            return $this->dates($field, $clause, $operator);
+            return $this->dates($field, $clause);
         }
 
         if ($clause->fullText instanceof FullText) {

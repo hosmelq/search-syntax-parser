@@ -4,7 +4,7 @@ description: "Create output formats with AST visitors, transform query trees, an
 weight: 3
 ---
 
-Implement `QueryAdapterInterface` to produce another output format. Register a creator with `extend()` and select it by name:
+For a database, search engine, or another execution backend, consume [`SearchParser::compile()`](compiling-clauses#compile-a-query), which resolves groups, terms, and negation. Implement `QueryAdapterInterface` to produce another AST output format. Register a creator with `extend()` and select it by name:
 
 ```php
 use HosmelQ\SearchSyntaxParser\Adapter\QueryAdapterInterface;
@@ -85,7 +85,7 @@ When replacing nodes, preserve the metadata they expose:
 
 ## Negation normal form
 
-Use `NegationNormalFormTransformer` before compiling backend clauses. It moves NOT directly around leaves, applies De Morgan's laws, and removes double negation. Not-equal comparisons, lists, and wildcards become NOT around their positive form.
+`SearchParser::compile()` applies `NegationNormalFormTransformer` automatically. Use the transformer directly for AST rewrites. It moves NOT directly around leaves, applies De Morgan's laws, and removes double negation. Not-equal comparisons, lists, and wildcards become NOT around their positive form.
 
 ```php
 use HosmelQ\SearchSyntaxParser\Adapter\StringAdapter;
@@ -154,7 +154,7 @@ final class UnsupportedQueryException extends SearchSyntaxException {}
 $exception = new UnsupportedQueryException(
     'Ranges are not supported by this adapter.',
     ErrorReason::OperatorNotAllowed,
-    ['field' => 'price', 'clause' => 'ranges'],
+    ['field' => 'price', 'operation' => 'ranges'],
     0,
 );
 ```

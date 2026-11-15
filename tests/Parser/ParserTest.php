@@ -168,7 +168,7 @@ it('rejects compact ranges before resolving aliases when ranges are disabled', f
             )
             ->and($invalidFieldOperatorException->getParameters())->toBe([
                 'field' => 'x',
-                'clause' => 'ranges',
+                'operation' => 'ranges',
             ])
             ->and($invalidFieldOperatorException->getPosition())->toBe(4);
     }

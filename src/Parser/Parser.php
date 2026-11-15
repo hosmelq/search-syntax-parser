@@ -30,8 +30,6 @@ use HosmelQ\SearchSyntaxParser\Validation\FieldItemRules;
  */
 class Parser
 {
-    private readonly bool $anyField;
-
     private int $clauses = 0;
 
     /**
@@ -82,7 +80,6 @@ class Parser
         private readonly int $maxClauses,
     ) {
         $this->hasSorts = $searchParser->getAllowedSorts() !== [];
-        $this->anyField = $searchParser->allowsAnyField();
         $this->leadingWildcards = $searchParser->allowsLeadingWildcards();
     }
 
@@ -394,7 +391,7 @@ class Parser
 
         $allowed = $this->searchParser->getAllowedField($field);
 
-        if (! ($allowed?->accepts($field) ?? $this->anyField)) {
+        if (! $this->searchParser->isFieldAllowed($field)) {
             throw InvalidFieldException::fieldNotAllowed(
                 $field,
                 $this->searchParser->getAllowedFieldNames(),

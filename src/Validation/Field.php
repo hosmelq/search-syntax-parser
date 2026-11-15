@@ -53,6 +53,11 @@ class Field implements JsonSerializable
 
     private bool $allowsLeadingWildcards = false;
 
+    /**
+     * @var null|Closure(): bool
+     */
+    private null|Closure $authorization = null;
+
     private bool $decimalKeyCollision = false;
 
     private bool $directive = false;
@@ -378,6 +383,16 @@ class Field implements JsonSerializable
         return $this;
     }
 
+    /**
+     * @param Closure(): bool $callback
+     */
+    public function authorize(Closure $callback): static
+    {
+        $this->authorization = $callback;
+
+        return $this;
+    }
+
     public function between(float|int $min, float|int $max): static
     {
         $this->rules->between($min, $max);
@@ -491,8 +506,6 @@ class Field implements JsonSerializable
     }
 
     /**
-     * @internal
-     *
      * @return null|array{format: null|string, partial: bool, time: bool}
      */
     public function getDateOptions(): null|array
@@ -529,9 +542,6 @@ class Field implements JsonSerializable
         return $quoted ? TextMatch::Exact : $this->textMatch;
     }
 
-    /**
-     * @internal
-     */
     public function getValueType(): null|string
     {
         return ($this->expectsArray ? $this->itemRules : $this->rules)->getType();
@@ -559,9 +569,6 @@ class Field implements JsonSerializable
             : $this->itemRules->hasCastType($value);
     }
 
-    /**
-     * @internal
-     */
     public function hasCustomDateFormat(): bool
     {
         return array_any(
@@ -589,6 +596,11 @@ class Field implements JsonSerializable
         $this->ignored = array_merge($this->ignored, $values);
 
         return $this;
+    }
+
+    public function isAuthorized(): bool
+    {
+        return ! $this->authorization instanceof Closure || ($this->authorization)();
     }
 
     public function isDirective(): bool

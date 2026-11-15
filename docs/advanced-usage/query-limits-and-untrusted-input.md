@@ -19,6 +19,10 @@ $filters = SearchParser::query('NOT (title:Coffee OR title:Tea)')
 
 The limits are checked before the adapter runs. Exceeding one throws `ParseException` with a reason and source position.
 
+## Accept raw request input
+
+`SearchParser::query()` and the constructor accept strings, `Stringable` values, and null. Null is an empty query. Arrays, numbers, booleans, resources, and other objects raise `ParseException` with reason `query.invalid_type` and no position when the query is parsed, built, or compiled.
+
 ## Set limits
 
 | Method | Default | Counts |
@@ -37,12 +41,12 @@ All limits must be positive integers. Choose bounds appropriate for the applicat
 
 Use [field definitions](../basic-usage/field-validation-and-value-types) to validate names and values. `allowAnyField()` accepts arbitrary field names, so enable it only when the backend can handle them.
 
-Map accepted names to trusted backend identifiers and bind values as parameters. The [clause compiler](compiling-clauses) prepares operators, storage values, and text patterns. Your adapter still applies backend comparisons, ranges, complements, and query execution.
+Map accepted names to trusted backend identifiers and bind values as parameters. The [clause compiler](compiling-clauses) returns the grouped operators, storage values, and text patterns through `compile()`. Your adapter still applies backend comparisons, ranges, complements, and query execution.
 
 [Defaults](../basic-usage/defaults) can be overridden by field references. Apply mandatory authorization filters independently.
 
 ## Handle an empty result
 
-An ignored clause suppresses its field's default. If every filter disappears and no default applies, `parse()` and array or custom `build()` return null. The adapter is resolved but is not called for that tree.
+An ignored clause suppresses its field's default. If every filter disappears and no default applies, `parse()`, `compile()`, and array or custom `build()` return null. The adapter is resolved but is not called for that tree.
 
 Decide whether an unconstrained search is allowed in your application. Use [structured errors and positions](../basic-usage/error-handling) to report invalid input without exposing backend details.

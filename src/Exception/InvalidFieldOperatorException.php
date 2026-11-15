@@ -34,7 +34,7 @@ class InvalidFieldOperatorException extends SearchSyntaxException
             ),
             $field,
             ErrorReason::OperatorNotAllowed,
-            ['clause' => $clause],
+            ['operation' => $clause],
             $position,
         );
     }
@@ -85,7 +85,7 @@ class InvalidFieldOperatorException extends SearchSyntaxException
             sprintf("Operator '%s' is not allowed for field '%s'.", $operator, $field),
             $field,
             ErrorReason::OperatorNotAllowed,
-            ['operator' => $operator],
+            ['operation' => $operator],
             $position,
         );
     }

@@ -43,7 +43,7 @@ Positions are zero-based Unicode code point offsets in the exact input, includin
 | Misplaced or duplicate directive | Field token. |
 | Invalid directive shape | Operator or value start. |
 | Invalid value | First value token; `[` for bracket ranges or the first compact bound. |
-| Invalid UTF-8 or tokenization failure | Null. |
+| Invalid input type, invalid UTF-8, or tokenization failure | Null. |
 
 An invalid list value points to the first item. Leading-wildcard and minimum-length failures point to the offending pattern item. Invalid sort values point to the sort value.
 
@@ -60,7 +60,8 @@ An empty query, or a query whose filters are all ignored, is not an error. Witho
 | `directive.not_top_level` | `field` |
 | `field.invalid_value` | `field` |
 | `field.not_allowed` | `field`, `allowed` |
-| `field.operator_not_allowed` | `field`, and `operator` or `clause` |
+| `field.operator_not_allowed` | `field`, `operation` |
+| `query.invalid_type` | None. |
 | `query.invalid_utf8` | None. |
 | `query.maximum_clauses` | `limit` |
 | `query.maximum_depth` | `limit` |
@@ -77,7 +78,9 @@ An empty query, or a query whose filters are all ignored, is not an error. Witho
 | `wildcard.too_short` | `field`, `minimum` |
 | `wildcard.word_not_allowed` | `field` |
 
-Rejected dynamic keys use `field.not_allowed` with the complete typed name and configured patterns in `allowed`. With no configured fields, `allowed` is empty and the message says "No fields are allowed."
+`operation` contains the rejected operator or clause form, such as `>` or `ranges`. Invalid raw input uses `query.invalid_type` without a position.
+
+Rejected dynamic keys use `field.not_allowed` with the complete typed name and authorized configured patterns in `allowed`. Denied fields are never suggested. With no authorized fields, `allowed` is empty and the message says "No fields are allowed."
 
 Directive placement, duplicates, and shape errors use `InvalidFieldOperatorException`, including `sort:`. Unknown sort keys and directions use `InvalidFieldValueException` for `sort`. Leading wildcard failures in bare terms use `ParseException`; field wildcard failures use `InvalidFieldOperatorException`.
 
@@ -85,14 +88,14 @@ Directive placement, duplicates, and shape errors use `InvalidFieldOperatorExcep
 
 Invalid application configuration throws `InvalidArgumentException` without a query reason or position. Examples include:
 
-- Unknown adapters, non-positive limits, or invalid defaults.
+- Unknown adapters, non-positive limits, invalid term targets, or invalid defaults.
 - Unsupported configured operators, invalid alias results, or ambiguous allowed values and enum names.
 - Invalid storage conversions, colliding map keys, or text modes on non-text fields.
 - Dynamic patterns without key rules, invalid key expressions, or defaults on patterns.
 - Invalid directive declarations, conflicting sort names, or invalid sort directions.
 - Invalid LIKE escape characters or whole-word matching requested from `LikePattern`.
 
-A default that fails validation throws when applied, naming its field. A default sort with an unknown key or direction also fails when applied. These are configuration problems rather than invalid user input.
+A default that fails validation throws whenever its field is not referenced, even for a denied field, and names the field. A default sort with an unknown key or direction also fails when applied. These are configuration problems rather than invalid user input.
 
 The string adapter throws `LogicException` for values it cannot represent, such as non-finite floats or programmatic wildcard segments outside the grammar.
 

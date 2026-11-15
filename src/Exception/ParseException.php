@@ -24,6 +24,11 @@ class ParseException extends SearchSyntaxException
         return new self('Expected value.', ErrorReason::ExpectedValue, [], $position);
     }
 
+    public static function invalidType(): self
+    {
+        return new self('Search query must be a string.', ErrorReason::InvalidType);
+    }
+
     public static function invalidUtf8(): self
     {
         return new self('Search query must be valid UTF-8.', ErrorReason::InvalidUtf8, []);

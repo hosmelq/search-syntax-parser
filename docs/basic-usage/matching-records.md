@@ -21,11 +21,10 @@ $parser = SearchParser::query('coffee price:<10')->allowedFields([
     Field::string('title'),
     Field::string('sku'),
     Field::decimal('price', 0, 2)->scale(100),
-]);
+])->terms(['title', 'sku']);
 
 $matcher = new Matcher(
     $parser,
-    terms: ['title', 'sku'],
     timezone: new DateTimeZone('UTC'),
     now: new DateTimeImmutable('2024-03-15T12:00:00Z'),
 );
@@ -44,22 +43,25 @@ $matchesFirst = $matcher->matches($records[0]);
 | Argument | Purpose |
 | --- | --- |
 | `parser` | The query and its field definitions. |
-| `terms` | Exact public field names to search for bare terms; defaults to an empty list. |
 | `timezone` | A `DateTimeZone` for query dates without an offset; defaults to `date_default_timezone_get()`. |
 | `storageTimezone` | A `DateTimeZone` for stored datetime strings without an offset; defaults to the resolved `timezone`. |
 | `now` | A `DateTimeInterface` used for relative query dates; defaults to the current time. |
 
-The constructor parses once and prepares clauses, date intervals, patterns, and query words. Every record uses the same captured clock. Construct a new matcher after changing the parser or its fields. An empty filter tree matches every record. Field defaults participate as ordinary filters.
+The constructor calls `compile()` once and prepares clauses, date intervals, patterns, and query words. Every record uses the same captured clock. Construct a new matcher after changing the parser or its fields. An empty filter tree matches every record. Field defaults participate as ordinary filters.
 
 The constructor throws the parser's `SearchSyntaxException` subclasses for invalid queries. A relative date outside years 0001 through 9999 in the supplied zone raises `InvalidFieldValueException` at its clause. Invalid term configuration, or a custom date format on a field other than a directive, raises `InvalidArgumentException` even if the query does not use that field.
 
 ## Search bare terms
 
-A term matches when any eligible term field matches. Text terms search for a substring, while `words()` fields use word matching. Other types cast and validate the term before comparing it. Bare wildcards use each field's wildcard rules.
+Configure `terms()` on the parser; it defaults to an empty list. A term matches when any eligible term field matches. Text terms search for a substring, while `words()` fields use word matching. Other types cast and validate the term before comparing it. Bare wildcards use each field's wildcard rules.
 
 A field participates only when its value rules, equality operator, and applicable wildcard rules accept the term. A term with no eligible field matches nothing; its negation matches everything.
 
 Term names must identify exact configured fields. Unknown names, dynamic patterns, directives, and date fields or shared date items are configuration errors. `allowAnyField()` permits unconfigured field clauses, but does not make them term targets.
+
+## Authorize fields
+
+Use [field authorization](field-validation-and-value-types#authorize-fields) when matching in memory. The parser rejects denied field names and omits their defaults and term targets. Decisions are captured once per parser; create a new parser and matcher for another user. Invalid term targets, defaults, and unsupported custom date formats still raise configuration errors on denied fields.
 
 ## Read stored values
 

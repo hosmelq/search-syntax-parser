@@ -34,7 +34,7 @@ Scalars can be booleans, integers, floats, or strings. Empty, associative, or ne
 
 Strings follow the same aliases and casting as unquoted query values. For example, `Field::integer('age')->default('18')` produces the integer `18`. Other scalar defaults must already have the type the field accepts. A string containing `*` stays literal text.
 
-When applied, defaults pass through the field's validation rules. An invalid default throws `InvalidArgumentException` naming the field. Scalar fields validate every member of a list. Array fields validate the whole collection and its shared and positional item rules. Null defaults skip value validation.
+Unreferenced defaults pass through the field's validation rules. An invalid default throws `InvalidArgumentException` naming the field. Scalar fields validate every member of a list. Array fields validate the whole collection and its shared and positional item rules. Null defaults skip value validation. A denied field still has its default validated, but contributes no filter or directive.
 
 Defaults bypass `ignore()`, operator and clause restrictions, and depth and clause limits. The original query still obeys the length limit. Relative date defaults remain text and are resolved at request time by the backend adapter.
 

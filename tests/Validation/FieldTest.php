@@ -374,7 +374,7 @@ it('rejects negated wildcard patterns when wildcards are disabled', function (st
     } catch (InvalidFieldOperatorException $invalidFieldOperatorException) {
         expect($invalidFieldOperatorException->getParameters())->toBe([
             'field' => 'x',
-            'clause' => 'wildcards',
+            'operation' => 'wildcards',
         ]);
 
         return;
@@ -478,91 +478,91 @@ it('rejects restricted comparisons and clauses at their operator or value start'
         'operators',
         9,
         "Operator '>' is not allowed for field 'status'.",
-        ['operator' => '>'],
+        ['operation' => '>'],
     ],
     [
         'status<=bad',
         'operators',
         6,
         "Operator '<=' is not allowed for field 'status'.",
-        ['operator' => '<='],
+        ['operation' => '<='],
     ],
     [
         'status:>bad,word',
         'operators',
         7,
         "Operator '>' is not allowed for field 'status'.",
-        ['operator' => '>'],
+        ['operation' => '>'],
     ],
     [
         'status:>bad*',
         'operators',
         7,
         "Operator '>' is not allowed for field 'status'.",
-        ['operator' => '>'],
+        ['operation' => '>'],
     ],
     [
         'é status:@me',
         'equality',
         9,
         "Operator '=' is not allowed for field 'status'.",
-        ['operator' => '='],
+        ['operation' => '='],
     ],
     [
         'status:@me,bad',
         'lists',
         7,
         "Lists are not allowed for field 'status'.",
-        ['clause' => 'lists'],
+        ['operation' => 'lists'],
     ],
     [
         'status:!=@me,bad',
         'lists',
         7,
         "Lists are not allowed for field 'status'.",
-        ['clause' => 'lists'],
+        ['operation' => 'lists'],
     ],
     [
         'é status:[@me TO bad]',
         'ranges',
         9,
         "Ranges are not allowed for field 'status'.",
-        ['clause' => 'ranges'],
+        ['operation' => 'ranges'],
     ],
     [
         'status:bad*',
         'wildcards',
         7,
         "Wildcards are not allowed for field 'status'.",
-        ['clause' => 'wildcards'],
+        ['operation' => 'wildcards'],
     ],
     [
         'status:@me,bad*',
         'wildcards',
         7,
         "Wildcards are not allowed for field 'status'.",
-        ['clause' => 'wildcards'],
+        ['operation' => 'wildcards'],
     ],
     [
         'status:!=@me,"bad"*',
         'wildcards',
         7,
         "Wildcards are not allowed for field 'status'.",
-        ['clause' => 'wildcards'],
+        ['operation' => 'wildcards'],
     ],
     [
         'status:@me,-bad*',
         'wildcards',
         7,
         "Wildcards are not allowed for field 'status'.",
-        ['clause' => 'wildcards'],
+        ['operation' => 'wildcards'],
     ],
     [
         'é status:*',
         'exists',
         9,
         "Exists queries are not allowed for field 'status'.",
-        ['clause' => 'exists'],
+        ['operation' => 'exists'],
     ],
 ]);
 
@@ -1197,6 +1197,23 @@ it('describes text match modes on strings and shared string items', function (st
             $mode,
         );
 })->with(['prefix', 'contains', 'words']);
+
+it('evaluates authorization on each direct call', function (): void {
+    $allowed = true;
+    $field = Field::string('title');
+
+    expect($field->isAuthorized())->toBeTrue();
+
+    $field->authorize(function () use (&$allowed): bool {
+        return $allowed;
+    });
+
+    expect($field->isAuthorized())->toBeTrue();
+
+    $allowed = false;
+
+    expect($field->isAuthorized())->toBeFalse();
+});
 
 it('ignores and validates user values before storage conversion including defaults', function (): void {
     $field = Field::integer('amount')->max(10)->ignore('all', 0)->scale(100)->default('5');

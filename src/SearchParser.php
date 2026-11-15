@@ -13,16 +13,24 @@ use HosmelQ\SearchSyntaxParser\AST\Node\ComparisonNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\ExistsNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\InNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\NodeInterface;
+use HosmelQ\SearchSyntaxParser\AST\Node\RangeNode;
+use HosmelQ\SearchSyntaxParser\AST\Node\TermNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\UnaryOperatorNode;
+use HosmelQ\SearchSyntaxParser\AST\Node\WildcardNode;
+use HosmelQ\SearchSyntaxParser\AST\Visitor\NegationNormalFormTransformer;
 use HosmelQ\SearchSyntaxParser\Exception\InvalidFieldValueException;
 use HosmelQ\SearchSyntaxParser\Exception\ParseException;
 use HosmelQ\SearchSyntaxParser\Parser\Parser;
+use HosmelQ\SearchSyntaxParser\Query\Clause;
+use HosmelQ\SearchSyntaxParser\Query\ClauseCompiler;
+use HosmelQ\SearchSyntaxParser\Query\ClauseGroup;
 use HosmelQ\SearchSyntaxParser\Sorting\AllowedSort;
 use HosmelQ\SearchSyntaxParser\Sorting\Sort;
 use HosmelQ\SearchSyntaxParser\Validation\Field;
 use InvalidArgumentException;
 use JsonSerializable;
 use Override;
+use Stringable;
 
 class SearchParser implements JsonSerializable
 {
@@ -44,6 +52,11 @@ class SearchParser implements JsonSerializable
     private bool $allowsAnyField = false;
 
     private bool $allowsLeadingWildcards = false;
+
+    /**
+     * @var array<string, bool>
+     */
+    private array $authorization = [];
 
     private int $clauseLimit = 1_024;
 
@@ -72,9 +85,14 @@ class SearchParser implements JsonSerializable
      */
     private null|array $settings = null;
 
-    public function __construct(private readonly string $query = '') {}
+    /**
+     * @var list<string>
+     */
+    private array $terms = [];
 
-    public static function query(string $query): self
+    public function __construct(private readonly mixed $query = '') {}
+
+    public static function query(mixed $query): self
     {
         return new self($query);
     }
@@ -103,6 +121,7 @@ class SearchParser implements JsonSerializable
         }
 
         $this->allowedFields = [];
+        $this->authorization = [];
         $this->patternFields = [];
 
         foreach ($fields as $field) {
@@ -206,6 +225,24 @@ class SearchParser implements JsonSerializable
                 : null;
     }
 
+    public function compile(): null|ClauseGroup
+    {
+        $terms = $this->getTermFields();
+        $node = $this->parse();
+
+        if (! $node instanceof NodeInterface) {
+            return null;
+        }
+
+        $clause = $this->compileNode(
+            new NegationNormalFormTransformer()->transform($node),
+            new ClauseCompiler(),
+            $terms,
+        );
+
+        return $clause instanceof ClauseGroup ? $clause : new ClauseGroup(true, [$clause]);
+    }
+
     public function defaultSort(string $sort): self
     {
         $this->defaultSort = $sort;
@@ -225,19 +262,11 @@ class SearchParser implements JsonSerializable
 
     public function getAllowedField(string $field): null|Field
     {
-        if (isset($this->allowedFields[$field])) {
-            return $this->allowedFields[$field];
-        }
+        $configured = $this->getConfiguredField($field);
 
-        foreach ($this->patternFields as $pattern) {
-            // Names with the prefix resolve to the pattern even with an empty key, so the
-            // pattern's key rule rejects them instead of allowAnyField() accepting them.
-            if (str_starts_with($field, mb_substr($pattern->getName(), 0, -1))) {
-                return $pattern;
-            }
-        }
-
-        return null;
+        return $configured instanceof Field && $this->isAuthorized($configured)
+            ? $configured
+            : null;
     }
 
     /**
@@ -245,7 +274,7 @@ class SearchParser implements JsonSerializable
      */
     public function getAllowedFieldNames(): array
     {
-        return array_keys($this->allowedFields);
+        return array_keys($this->getAllowedFields());
     }
 
     /**
@@ -253,7 +282,7 @@ class SearchParser implements JsonSerializable
      */
     public function getAllowedFields(): array
     {
-        return $this->allowedFields;
+        return array_filter($this->allowedFields, $this->isAuthorized(...));
     }
 
     /**
@@ -262,6 +291,14 @@ class SearchParser implements JsonSerializable
     public function getAllowedSorts(): array
     {
         return $this->allowedSorts;
+    }
+
+    /**
+     * @return array<string, Field>
+     */
+    public function getConfiguredFields(): array
+    {
+        return $this->allowedFields;
     }
 
     public function getDefaultAdapter(): string
@@ -277,9 +314,6 @@ class SearchParser implements JsonSerializable
         return $this->settings['directives'] ?? [];
     }
 
-    /**
-     * @internal
-     */
     public function getInternalFieldName(string $field): string
     {
         $allowedField = $this->getAllowedField($field);
@@ -298,6 +332,33 @@ class SearchParser implements JsonSerializable
     }
 
     /**
+     * @return list<Field>
+     */
+    public function getTermFields(): array
+    {
+        foreach ($this->terms as $name) {
+            $field = $this->allowedFields[$name] ?? null;
+
+            if (
+                $field === null
+                || $field->isPattern()
+                || $field->isDirective()
+                || $field->getValueType() === 'date'
+            ) {
+                throw new InvalidArgumentException(sprintf(
+                    "Term field '%s' must be an exact configured field without a date type or directive.",
+                    $name,
+                ));
+            }
+        }
+
+        return array_values(array_filter(
+            array_map(fn (string $name): Field => $this->allowedFields[$name], $this->terms),
+            $this->isAuthorized(...),
+        ));
+    }
+
+    /**
      * Get only directives explicitly supplied by the query, in configuration order.
      *
      * @return array<int|string, bool|float|int|string>
@@ -309,7 +370,11 @@ class SearchParser implements JsonSerializable
 
     public function isFieldAllowed(string $field): bool
     {
-        return $this->getAllowedField($field)?->accepts($field) ?? $this->allowsAnyField;
+        $configured = $this->getConfiguredField($field);
+
+        return $configured instanceof Field
+            ? $this->isAuthorized($configured) && $configured->accepts($field)
+            : $this->allowsAnyField;
     }
 
     /**
@@ -324,7 +389,7 @@ class SearchParser implements JsonSerializable
         return [
             'fields' => array_map(
                 static fn (Field $field): array => $field->jsonSerialize(),
-                array_values($this->allowedFields),
+                array_values($this->getAllowedFields()),
             ),
             'sorts' => array_map(
                 static fn (AllowedSort $sort): array => $sort->jsonSerialize(),
@@ -370,7 +435,17 @@ class SearchParser implements JsonSerializable
     {
         $this->settings = null;
 
-        if (mb_strlen($this->query) > $this->lengthLimit) {
+        if (
+            $this->query !== null
+            && ! is_string($this->query)
+            && ! $this->query instanceof Stringable
+        ) {
+            throw ParseException::invalidType();
+        }
+
+        $query = (string) $this->query;
+
+        if (mb_strlen($query) > $this->lengthLimit) {
             throw ParseException::maximumLength($this->lengthLimit);
         }
 
@@ -383,7 +458,7 @@ class SearchParser implements JsonSerializable
         }
 
         $parser = new Parser($this, $this->depthLimit, $this->clauseLimit);
-        $ast = $parser->parse($this->query, $defaults !== []);
+        $ast = $parser->parse($query, $defaults !== []);
 
         if ($defaults === [] && ! $parser->hasSettings() && $this->defaultSort === null) {
             return $ast;
@@ -418,11 +493,15 @@ class SearchParser implements JsonSerializable
                         )
                         : $this->castDefault($field, $value, 0);
 
-                    if (! $this->validateField($name, $value)) {
+                    if (! $this->validateValue($field, $value)) {
                         throw new InvalidArgumentException(
                             sprintf("Invalid default for field '%s'.", $name),
                         );
                     }
+                }
+
+                if (! $this->isAuthorized($field)) {
+                    continue;
                 }
 
                 if ($field->isDirective()) {
@@ -469,23 +548,21 @@ class SearchParser implements JsonSerializable
         return $ast;
     }
 
+    /**
+     * @param list<string> $names
+     */
+    public function terms(array $names): self
+    {
+        $this->terms = $names;
+
+        return $this;
+    }
+
     public function validateField(string $field, mixed $value): bool
     {
         $allowed = $this->getAllowedField($field);
 
-        if ($allowed instanceof Field) {
-            if ($allowed->expectsArray()) {
-                return $allowed->validate(is_array($value) ? $value : [$value]);
-            }
-
-            if (is_array($value)) {
-                return array_all($value, fn (mixed $item): bool => $allowed->validate($item));
-            }
-
-            return $allowed->validate($value);
-        }
-
-        return true;
+        return ! $allowed instanceof Field || $this->validateValue($allowed, $value);
     }
 
     protected function createArrayAdapter(): ArrayAdapter
@@ -529,6 +606,58 @@ class SearchParser implements JsonSerializable
         return $value;
     }
 
+    /**
+     * @param list<Field> $terms
+     */
+    private function compileNode(
+        NodeInterface $node,
+        ClauseCompiler $compiler,
+        array $terms,
+    ): Clause|ClauseGroup {
+        if ($node instanceof BinaryOperatorNode) {
+            return new ClauseGroup(
+                $node->getOperator() === 'AND',
+                array_map(
+                    fn (NodeInterface $child): Clause|ClauseGroup
+                        => $this->compileNode($child, $compiler, $terms),
+                    $this->flatten($node, $node->getOperator()),
+                ),
+            );
+        }
+
+        $negated = $node instanceof UnaryOperatorNode;
+        $node = $negated ? $node->getOperand() : $node;
+
+        if (
+            $node instanceof TermNode
+            || ($node instanceof WildcardNode && $node->getField() === null)
+        ) {
+            $clauses = [];
+
+            foreach ($terms as $field) {
+                $clause = $compiler->term($field, $node, $negated);
+
+                if ($clause instanceof Clause) {
+                    $clauses[] = $clause;
+                }
+            }
+
+            return count($clauses) === 1 ? $clauses[0] : new ClauseGroup($negated, $clauses);
+        }
+
+        /**
+         * @var ComparisonNode|ExistsNode|InNode|RangeNode|WildcardNode $node
+         * @var string $name
+         */
+        $name = $node->getField();
+        $field = $this->getAllowedField($name) ?? new Field($name);
+        $clauses = $compiler->compile($field, $node, $negated);
+
+        return count($clauses) === 1
+            ? $clauses[0]
+            : new ClauseGroup($negated, $clauses, $name);
+    }
+
     private function createAdapter(string $adapter): QueryAdapterInterface
     {
         if (isset($this->customCreators[$adapter])) {
@@ -542,6 +671,43 @@ class SearchParser implements JsonSerializable
         }
 
         throw new InvalidArgumentException(sprintf("Adapter '%s' not supported.", $adapter));
+    }
+
+    /**
+     * @return list<NodeInterface>
+     */
+    private function flatten(NodeInterface $node, string $operator): array
+    {
+        if ($node instanceof BinaryOperatorNode && $node->getOperator() === $operator) {
+            return [
+                ...$this->flatten($node->getLeft(), $operator),
+                ...$this->flatten($node->getRight(), $operator),
+            ];
+        }
+
+        return [$node];
+    }
+
+    private function getConfiguredField(string $field): null|Field
+    {
+        if (isset($this->allowedFields[$field])) {
+            return $this->allowedFields[$field];
+        }
+
+        foreach ($this->patternFields as $pattern) {
+            // Names with the prefix resolve to the pattern even with an empty key, so the
+            // pattern's key rule rejects them instead of allowAnyField() accepting them.
+            if (str_starts_with($field, mb_substr($pattern->getName(), 0, -1))) {
+                return $pattern;
+            }
+        }
+
+        return null;
+    }
+
+    private function isAuthorized(Field $field): bool
+    {
+        return $this->authorization[$field->getName()] ??= $field->isAuthorized();
     }
 
     private function resolveSort(string $value, bool $default, null|int $position = null): Sort
@@ -584,5 +750,16 @@ class SearchParser implements JsonSerializable
         $value = ucwords(str_replace(['-', '_'], ' ', $value));
 
         return str_replace(' ', '', $value);
+    }
+
+    private function validateValue(Field $field, mixed $value): bool
+    {
+        if ($field->expectsArray()) {
+            return $field->validate(is_array($value) ? $value : [$value]);
+        }
+
+        return is_array($value)
+            ? array_all($value, $field->validate(...))
+            : $field->validate($value);
     }
 }

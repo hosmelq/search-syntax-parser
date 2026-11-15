@@ -148,9 +148,9 @@ Treat inequality as a set complement. For a multi-valued target, `status:!=sold,
 records matching either member; it is not an OR of separate inequalities. Complements include
 missing stored values when the field is `nullable()`.
 
-Update custom adapters to preserve this behavior. `NegationNormalFormTransformer` and
-`Query\ClauseCompiler` can prepare positive leaves and their complements without replacing a
-negated comparison with a plain database predicate that drops null values.
+Update backend adapters to consume `SearchParser::compile()`. Its `ClauseGroup` tree resolves
+terms and negation; translate its clauses without replacing a set complement with a plain
+database predicate that drops null values. AST output adapters can still use `parse()`.
 
 ### Query limits
 
@@ -175,6 +175,12 @@ source location. Offsets and lengths use Unicode characters in the original, unt
 Array output adds `default` to comparison, existence, membership, and unary nodes, `quoted` to
 terms, comparisons, and membership items, and `match` to comparisons and membership items. Update
 strict array schemas and preserve quote flags when rebuilding nodes.
+
+### Query input
+
+`SearchParser::query()` and the constructor now accept raw input. Strings and `Stringable` values
+are parsed; null is an empty query. Other types raise `ParseException` with `query.invalid_type`
+and no position when parsed, rather than a PHP argument `TypeError`.
 
 ### Query exceptions
 

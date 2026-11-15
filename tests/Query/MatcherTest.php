@@ -33,23 +33,11 @@ it('rejects custom date formats even when the query does not use them', function
     ],
 ]);
 
-it('rejects term names without an eligible exact field definition', function (
-    array $fields,
-    string $term,
-): void {
-    new Matcher(SearchParser::query('')->allowedFields($fields)->allowAnyField(), terms: [$term]);
-})->throws(InvalidArgumentException::class, 'must be an exact configured field')->with([
-    'unconfigured' => [[], 'value'],
-    'different case' => [[Field::string('value')], 'VALUE'],
-    'pattern definition' => [[Field::string('meta.*')->keys('/^[a-z]+$/')], 'meta.*'],
-    'pattern key' => [[Field::string('meta.*')->keys('/^[a-z]+$/')], 'meta.color'],
-    'directive' => [[Field::string('value')->directive()], 'value'],
-    'date' => [[Field::date('value')], 'value'],
-    'date items' => [
-        [Field::array('value')->each(fn (FieldItemRules $rules): FieldItemRules => $rules->date())],
-        'value',
-    ],
-]);
+it('rejects denied custom date formats before matching', function (): void {
+    new Matcher(SearchParser::query('')->allowedFields([
+        Field::date('created', 'd/m/Y')->authorize(static fn (): bool => false),
+    ]));
+})->throws(InvalidArgumentException::class, 'custom date formats');
 
 it('reports positioned value errors when the supplied clock or zone exceeds supported years', function (
     string $query,
@@ -112,22 +100,27 @@ it('applies term storage conversions and whole-word matching', function (): void
     $fields = [Field::decimal('price', 2)->scale(100), Field::string('title')->words()];
 
     expect(
-        new Matcher(SearchParser::query('1.25')->allowedFields($fields), ['price'])->matches([
-            'price' => 125,
-        ]),
+        new Matcher(SearchParser::query('1.25')->allowedFields($fields)->terms(['price']))->matches(
+            [
+                'price' => 125,
+            ],
+        ),
     )->toBeTrue()
         ->and(
             new Matcher(
-                SearchParser::query('"fresh coffee"')->allowedFields($fields),
-                ['title'],
+                SearchParser::query('"fresh coffee"')->allowedFields($fields)->terms(['title']),
             )->matches(
                 ['title' => 'fresh ground coffee'],
             ),
         )->toBeFalse()
         ->and(
-            new Matcher(SearchParser::query('coff*')->allowedFields($fields), ['title'])->matches([
-                'title' => 'fresh coffee',
-            ]),
+            new Matcher(
+                SearchParser::query('coff*')->allowedFields($fields)->terms(['title']),
+            )->matches(
+                [
+                    'title' => 'fresh coffee',
+                ],
+            ),
         )->toBeTrue();
 });
 
@@ -193,8 +186,7 @@ it('combines terms across eligible fields with boolean groups', function (
         [],
     ];
     $matcher = new Matcher(
-        SearchParser::query($query)->allowedFields($fields),
-        ['title', 'sku', 'quantity'],
+        SearchParser::query($query)->allowedFields($fields)->terms(['title', 'sku', 'quantity']),
     );
 
     expect(array_keys(array_filter($records, $matcher->matches(...))))->toBe($expected);
@@ -501,8 +493,8 @@ it('does not match bare terms without an eligible field', function (
         ->allowLeadingWildcards();
     $record = ['value' => 'coffee'];
 
-    expect(new Matcher($parser, $terms)->matches($record))->toBeFalse()
-        ->and(new Matcher($negative, $terms)->matches($record))->toBeTrue();
+    expect(new Matcher($parser->terms($terms))->matches($record))->toBeFalse()
+        ->and(new Matcher($negative->terms($terms))->matches($record))->toBeTrue();
 })->with([
     [[], 'coffee'],
     [[], 'coff*'],
@@ -628,6 +620,19 @@ it('matches long wildcard patterns without exhausting backtracking', function ()
             ),
         )
         ->toBeFalse();
+});
+
+it('matches only authorized term targets and defaults', function (): void {
+    $fields = [
+        Field::string('secret')->default('hidden')->authorize(static fn (): bool => false),
+        Field::string('title'),
+    ];
+    $matcher = new Matcher(
+        SearchParser::query('coffee')->allowedFields($fields)->terms(['secret', 'title']),
+    );
+
+    expect($matcher->matches(['title' => 'coffee']))->toBeTrue()
+        ->and($matcher->matches(['secret' => 'coffee']))->toBeFalse();
 });
 
 it('matches shared item types and storage conversions', function (

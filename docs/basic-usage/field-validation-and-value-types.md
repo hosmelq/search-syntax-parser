@@ -19,6 +19,29 @@ $filters = SearchParser::query('age:25 status:ACTIVE')->allowedFields([
 
 The age becomes the integer `25`, and the status becomes the canonical string `active`. Call `allowAnyField()` to accept arbitrary names. You can combine it with field definitions: configured fields keep their rules, and other fields use value inference.
 
+## Authorize fields
+
+Pass a zero-argument closure returning a boolean to `Field::authorize()`:
+
+```php
+use HosmelQ\SearchSyntaxParser\SearchParser;
+use HosmelQ\SearchSyntaxParser\Validation\Field;
+
+$canSearchCost = false;
+$parser = SearchParser::query('')->allowedFields([
+    Field::string('title'),
+    Field::integer('cost')->authorize(fn (): bool => $canSearchCost),
+]);
+
+$names = $parser->getAllowedFieldNames();
+```
+
+`$names` contains only `title`. Denied names fail with `field.not_allowed`, including directives and dynamic patterns. A denied exact name or more specific pattern still reserves its names; broader patterns and `allowAnyField()` cannot reopen them.
+
+The parser omits denied fields from `getAllowedFields()`, `getAllowedField()`, `getAllowedFieldNames()`, term targets, defaults, and JSON descriptions. `isFieldAllowed()` returns false for denied names. Configuration checks still cover denied fields, including invalid defaults, term targets, and the reserved sort name. Sorts remain an independent explicit allowlist.
+
+Each parser evaluates authorization at most once per configured field; `allowedFields()` resets the decisions. The field itself caches nothing: `isAuthorized()` calls its callback each time, or returns true without one. Create a new parser for each user when reusing field definitions in a long-running process. Field permissions do not replace record-level access constraints.
+
 ## Value inference
 
 A string entry in `allowedFields()`, `new Field(...)`, or a callback field uses ordinary value inference:
@@ -415,7 +438,7 @@ $json = json_encode($parser, JSON_THROW_ON_ERROR);
 $description = $parser->getAllowedFields()['status']->jsonSerialize();
 ```
 
-`$description['values']` is `['open', 'closed']`, `$description['operators']` is `['=', '!=']`, and `$description['clauses']` is `['exists', 'lists']`. `$json` lists the descriptions under `fields` in configuration order, next to the parser's [sorts](directives-and-sorting#describe-available-settings). `getAllowedFields()` returns definitions keyed by public name, including string declarations normalized to `Field` objects. Each description has these keys in alphabetical order:
+`$description['values']` is `['open', 'closed']`, `$description['operators']` is `['=', '!=']`, and `$description['clauses']` is `['exists', 'lists']`. `$json` lists the descriptions under `fields` in configuration order, next to the parser's [sorts](directives-and-sorting#describe-available-settings). `getAllowedFields()` returns authorized definitions keyed by public name, including string declarations normalized to `Field` objects. Each description has these keys in alphabetical order:
 
 | Key | Value |
 | --- | --- |
@@ -432,7 +455,7 @@ $description = $parser->getAllowedFields()['status']->jsonSerialize();
 | `type` | `array`, `boolean`, `date`, `decimal`, `in`, `integer`, `numeric`, `string`, `ulid`, or `uuid`; null for untyped or callback fields. Enums use `in`. |
 | `values` | Configured `in()` values or enum backing values; null otherwise. Array member values belong to `items.values`. |
 
-Directives report no clause forms. Their `operators` is `["="]`, or empty when `operators()` excludes `=`. `map()` and `scale()` remove `wildcards` from the advertised forms. Descriptions do not include internal names, storage conversions, key rules, validators, size limits, defaults, ignored values, or positional `at()` rules. Alias closures are not called.
+Directives report no clause forms. Their `operators` is `["="]`, or empty when `operators()` excludes `=`. `map()` and `scale()` remove `wildcards` from the advertised forms. Descriptions do not include internal names, storage conversions, key rules, validators, size limits, defaults, ignored values, or positional `at()` rules. Alias closures are not called. Parser exports evaluate field authorization and omit denied fields; field descriptions never expose authorization callbacks.
 
 ## Extend field definitions
 
