@@ -6,6 +6,9 @@ namespace HosmelQ\SearchSyntaxParser\Exception;
 
 enum ErrorReason: string
 {
+    case DirectiveInvalidClause = 'directive_invalid_clause';
+    case DirectiveNotTopLevel = 'directive_not_top_level';
+    case DuplicateDirective = 'duplicate_directive';
     case ExpectedToken = 'expected_token';
     case ExpectedValue = 'expected_value';
     case FieldNotAllowed = 'field_not_allowed';

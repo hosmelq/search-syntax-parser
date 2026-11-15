@@ -46,6 +46,8 @@ class Parser
      */
     private bool $hasDotRanges = false;
 
+    private readonly bool $hasSorts;
+
     /**
      * Whether the query contains `*` at all, so clauses can skip pattern checks.
      */
@@ -69,6 +71,15 @@ class Parser
      */
     private null|array $segments = null;
 
+    /**
+     * Raw settings are resolved only after placement has been checked across every ancestor.
+     *
+     * @var array<int|string, array{value: string, quoted: bool, start: int, valueIndex: int, allowed: null|AllowedField}>
+     */
+    private array $settings = [];
+
+    private bool $settingsAllowed = true;
+
     private Tokens $tokens;
 
     public function __construct(
@@ -76,6 +87,7 @@ class Parser
         private readonly int $maxDepth,
         private readonly int $maxClauses,
     ) {
+        $this->hasSorts = $searchParser->getAllowedSorts() !== [];
         $this->anyField = $searchParser->allowsAnyField();
         $this->leadingWildcards = $searchParser->allowsLeadingWildcards();
     }
@@ -91,6 +103,24 @@ class Parser
     }
 
     /**
+     * @return null|array{string, int}
+     */
+    public function getSortInput(): null|array
+    {
+        // Without configured sorts, a setting named sort is an ordinary directive.
+        $setting = $this->hasSorts ? ($this->settings['sort'] ?? null) : null;
+
+        return $setting === null
+            ? null
+            : [$setting['value'], $this->position($setting['valueIndex'])];
+    }
+
+    public function hasSettings(): bool
+    {
+        return $this->settings !== [];
+    }
+
+    /**
      * Parse input into an AST, bounding recursion and tree size.
      *
      * @throws ParseException
@@ -102,6 +132,8 @@ class Parser
         $this->hasDotRanges = str_contains($input, '..');
         $this->index = 0;
         $this->clauses = 0;
+        $this->settings = [];
+        $this->settingsAllowed = true;
         $this->referencedFields = $hasDefaults ? [] : null;
 
         if ($this->tokens->types === []) {
@@ -116,6 +148,34 @@ class Parser
         }
 
         return $ast;
+    }
+
+    /**
+     * @return array<int|string, bool|float|int|string>
+     */
+    public function resolveDirectives(): array
+    {
+        $directives = [];
+
+        foreach ($this->settings as $name => $setting) {
+            $allowed = $setting['allowed'];
+
+            if (! $allowed instanceof AllowedField) {
+                continue;
+            }
+
+            $value = $allowed->cast($setting['value'], $setting['quoted']);
+
+            if ($allowed->isIgnored($value)) {
+                continue;
+            }
+
+            $this->validateValue((string) $name, $value, $setting['valueIndex']);
+
+            $directives[$name] = $value;
+        }
+
+        return $directives;
     }
 
     /**
@@ -219,14 +279,27 @@ class Parser
      */
     private function parseExpression(int $depth): null|NodeInterface
     {
+        $settingsStart = count($this->settings);
         $left = $this->parseTerm($depth);
         $leftStart = $this->extentStart;
         $leftEnd = $this->extentEnd;
 
         while (($this->tokens->types[$this->index] ?? null) === TokenType::Or) {
+            if (count($this->settings) > $settingsStart) {
+                $name = array_keys($this->settings)[$settingsStart];
+
+                throw InvalidFieldOperatorException::directiveNotTopLevel(
+                    (string) $name,
+                    $this->position($this->settings[$name]['start']),
+                );
+            }
+
             $this->index++;
 
+            $previous = $this->settingsAllowed;
+            $this->settingsAllowed = false;
             $right = $this->parseTerm($depth);
+            $this->settingsAllowed = $previous;
             $left = $this->combine(
                 'OR',
                 $left,
@@ -267,7 +340,10 @@ class Parser
             $this->index++;
 
             if ($type !== TokenType::OpenParenthesis) {
+                $previous = $this->settingsAllowed;
+                $this->settingsAllowed = false;
                 $operand = $this->parseFactor($depth + 1);
+                $this->settingsAllowed = $previous;
 
                 return $operand instanceof NodeInterface
                     ? new UnaryOperatorNode('NOT', $operand, $this->span($start))
@@ -329,6 +405,10 @@ class Parser
      */
     private function parseFieldQuery(string $field, int $start): null|NodeInterface
     {
+        if ($this->hasSorts && mb_strtolower($field) === 'sort') {
+            return $this->parseSetting('sort', $start, null);
+        }
+
         $allowed = $this->searchParser->getAllowedField($field);
 
         if (! ($allowed?->accepts($field) ?? $this->anyField)) {
@@ -341,6 +421,12 @@ class Parser
 
         if ($this->referencedFields !== null) {
             $this->referencedFields[$field] = true;
+        }
+
+        $rules = $allowed instanceof AllowedField && $allowed->hasUsageRules() ? $allowed : null;
+
+        if ($rules?->isDirective() === true) {
+            return $this->parseSetting($field, $start, $allowed);
         }
 
         $hasColon = ($this->tokens->types[$this->index] ?? null) === TokenType::Colon;
@@ -380,7 +466,6 @@ class Parser
         // Inspect the whole clause before any alias, cast, or value validator runs. Usage
         // rules apply to fields that declare them; pattern shapes apply to every field, and
         // without usage rules only a pattern or a list can break them.
-        $rules = $allowed instanceof AllowedField && $allowed->hasUsageRules() ? $allowed : null;
         $scan = $this->index;
         $valueAt = ($this->tokens->types[$scan] ?? null) === TokenType::Minus ? $scan + 1 : $scan;
 
@@ -691,6 +776,82 @@ class Parser
         }
 
         return $value;
+    }
+
+    /**
+     * Read a single equality setting without running aliases or casts before placement is known.
+     *
+     * @phpstan-impure
+     */
+    private function parseSetting(string $field, int $start, null|AllowedField $allowed): null
+    {
+        if (! $this->settingsAllowed) {
+            throw InvalidFieldOperatorException::directiveNotTopLevel(
+                $field,
+                $this->position($start),
+            );
+        }
+
+        if (isset($this->settings[$field])) {
+            throw InvalidFieldOperatorException::duplicateDirective(
+                $field,
+                $this->position($start),
+            );
+        }
+
+        if (($this->tokens->types[$this->index] ?? null) === TokenType::Colon) {
+            $this->index++;
+        } else {
+            throw InvalidFieldOperatorException::directiveInvalidClause($field, $this->position());
+        }
+
+        $valueIndex = $this->index;
+        $type = $this->tokens->types[$valueIndex] ?? null;
+        $wordIndex = $type === TokenType::Minus ? $valueIndex + 1 : $valueIndex;
+        $wordType = $this->tokens->types[$wordIndex] ?? null;
+
+        if (
+            $type === TokenType::OpenBracket
+            || in_array(
+                $type,
+                [
+                    TokenType::NotEqual,
+                    TokenType::Greater,
+                    TokenType::GreaterEqual,
+                    TokenType::Less,
+                    TokenType::LessEqual,
+                ],
+                true,
+            )
+            || $wordType === TokenType::Wildcard
+            || (
+                $wordType === TokenType::Word
+                && str_contains($this->tokens->values[$wordIndex], '*')
+            )
+            || ($this->hasDotRanges && $this->hasDots() && $this->rangeBounds() !== null)
+            || ($this->tokens->types[$wordIndex + 1] ?? null) === TokenType::Comma
+        ) {
+            throw InvalidFieldOperatorException::directiveInvalidClause(
+                $field,
+                $this->position($valueIndex),
+            );
+        }
+
+        $allowed?->assertOperatorAllowed('=', $this->position($valueIndex), $field);
+
+        // Reuse value syntax checks, retaining the raw spelling for the field's later cast.
+        $this->parseValue($field, null, rangeChecked: true);
+
+        $value = ($type === TokenType::Minus ? '-' : '').$this->tokens->values[$wordIndex];
+        $this->settings[$field] = [
+            'value' => $value,
+            'quoted' => $type === TokenType::String,
+            'start' => $start,
+            'valueIndex' => $valueIndex,
+            'allowed' => $allowed,
+        ];
+
+        return null;
     }
 
     /**

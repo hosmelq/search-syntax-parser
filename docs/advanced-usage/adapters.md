@@ -4,7 +4,7 @@ description: "Build structured arrays from every AST node and map external field
 weight: 1
 ---
 
-`build()` uses the built-in array adapter. `build('array')` selects it explicitly, while `parse()` returns a `NodeInterface` tree or `null` when there are no constraints and no default applies. `build()` still resolves the adapter, so an unknown name fails, but returns `null` without calling it in that case. Pass a non-null tree to an adapter directly.
+`build()` uses the built-in array adapter. `build('array')` selects it explicitly, while `parse()` returns a filter-only `NodeInterface` tree or `null` when no filters or filter defaults remain. [Directives and sorting](../basic-usage/directives-and-sorting) are separate results in `getDirectives()`, `getTypedDirectives()`, and `getSort()`. `build()` still resolves the adapter, so an unknown name fails, but returns `null` without calling it in that case. Pass a non-null tree to an adapter directly, except that `StringAdapter::build()` also accepts null and can serialize explicit settings. `SearchParser::build('string')` calls that adapter for a null tree when typed directives or a typed sort remain. Array output always contains only filters.
 
 ```php
 use HosmelQ\SearchSyntaxParser\Adapter\ArrayAdapter;
@@ -59,7 +59,7 @@ Literal lists stay one node. Lists containing any pattern expand into binary tre
 
 Comparison and list output always includes `match` and `quoted`, with all keys in alphabetical order. A comparison's `match` is `exact`, `prefix`, `contains`, or `words`; a list's `match` is a list of those strings aligned with `values`. Quoted values use `exact`, and list quote flags are also aligned with the surviving values after ignored items are removed. Unconfigured fields use `exact`, including direct `new ArrayAdapter()` builds without a parser. These modes describe matching; the array adapter does not execute a search.
 
-Pass the parser to `new ArrayAdapter($parser)` when building a tree directly with field mappings, match modes, or storage conversions. This is how `SearchParser::build()` creates its array adapter. It applies `AllowedField::toStorage()` to comparison values, list items, and non-null range bounds. The AST remains unchanged. Custom adapters must honor [case-insensitive text comparison semantics](../basic-usage/query-syntax#value-comparison-semantics), effective match modes, and storage conversions themselves.
+Pass the parser to `new ArrayAdapter($parser)` when building a tree directly with field mappings, match modes, or storage conversions. This is how `SearchParser::build()` creates its array adapter. It applies `AllowedField::toStorage()` to comparison values, list items, and non-null range bounds. The AST remains unchanged. Applications and custom adapters can read directives and sorting from the parser after parsing. A null filter tree does not prevent applications from applying these settings, but `SearchParser::build()` does not invoke an array or custom adapter for that tree. The core package does not execute settings or backend ordering. Custom adapters must honor [case-insensitive text comparison semantics](../basic-usage/query-syntax#value-comparison-semantics), effective match modes, and storage conversions themselves.
 
 ## Dynamic keys and LIKE patterns
 

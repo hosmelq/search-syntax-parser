@@ -55,7 +55,7 @@ assert(SearchParser::query('coffee status:ALL')->allowedFields([
 ])->build('string') === 'coffee');
 ```
 
-Empty and whitespace-only queries return just the defaults when any exist. Without applicable defaults, an empty query or a query whose clauses are all ignored has no constraints. Both `parse()` and `build()` return `null`, and `build()` does not call the adapter. When defaults alone remain, `parse()` returns their tree and `build('string')` returns `''`.
+Empty and whitespace-only queries return just the filter defaults when any exist. Without applicable defaults, an empty query or a query whose clauses are all ignored has no constraints. Both `parse()` and array/custom `build()` calls return `null`, without calling the adapter. The string adapter can still render explicit directives or sorting when the filter tree is null. When defaults alone remain, `parse()` returns their tree and `build('string')` returns `''`.
 
 When applying a default, `parse()` validates it like the equivalent query clause. A failing default throws `InvalidArgumentException` naming the field because it is a configuration error. On scalar fields, every item of a list default must be valid, as in `field:a,b`. On `array()` fields, a list default is validated as a whole collection, including collection size, shared item rules, and positional rules, and a scalar default as a one-item collection. Null defaults skip value rules, like the `NOT field:*` clause they produce.
 
@@ -80,3 +80,9 @@ assert($node->getLeft()->getSpan()->length === 6);
 assert($node->getRight()->getSpan() === null);
 assert($node->getRight()->isDefault());
 ```
+
+## Directive and sort defaults
+
+A [directive](directives-and-sorting) default is a resolved scalar setting in `getDirectives()`, never a filter node. `getTypedDirectives()` excludes it. Directive defaults are validated and cast like scalar field defaults and bypass ignored values and usage restrictions; typed ignored directives suppress their defaults. Null and list directive defaults throw `InvalidArgumentException` in either configuration order.
+
+`defaultSort('created-desc')` applies an allowed sort when no `sort:` clause was supplied. `getSort()->isDefault()` identifies its origin. Default directives and the default sort are omitted by the string adapter. If only these settings remain and no filter tree exists, both `parse()` and `build('string')` return null, and the settings remain available through their accessors.

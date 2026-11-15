@@ -39,6 +39,36 @@ class InvalidFieldOperatorException extends SearchSyntaxException
         );
     }
 
+    public static function directiveInvalidClause(string $field, int $position): self
+    {
+        return new self(
+            sprintf("Directive '%s' requires a single '=' comparison.", $field),
+            $field,
+            ErrorReason::DirectiveInvalidClause,
+            position: $position,
+        );
+    }
+
+    public static function directiveNotTopLevel(string $field, int $position): self
+    {
+        return new self(
+            sprintf("Directive '%s' must be a top-level conjunct.", $field),
+            $field,
+            ErrorReason::DirectiveNotTopLevel,
+            position: $position,
+        );
+    }
+
+    public static function duplicateDirective(string $field, int $position): self
+    {
+        return new self(
+            sprintf("Directive '%s' may appear only once.", $field),
+            $field,
+            ErrorReason::DuplicateDirective,
+            position: $position,
+        );
+    }
+
     public static function leadingWildcardNotAllowed(string $field, int $position): self
     {
         return new self(

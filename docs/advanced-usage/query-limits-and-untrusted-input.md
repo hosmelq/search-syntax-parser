@@ -23,7 +23,7 @@ assert($result['operator'] === 'NOT');
 
 ## What each limit counts
 
-Length counts the raw string, including leading and trailing whitespace, and is checked before tokenizing. Depth counts parenthesized groups and `NOT`/`-` operators along a nested path. Leaf clauses include comparisons, literal lists, ranges, existence checks, terms, and wildcard nodes.
+Length counts the raw string, including leading and trailing whitespace, and is checked before tokenizing. Depth counts parenthesized groups and `NOT`/`-` operators along a nested path. Leaf clauses include comparisons, literal lists, ranges, existence checks, terms, and wildcard nodes, as well as directive and `sort:` clauses.
 
 A list without patterns counts once. When a list contains a wildcard, every expanded item counts separately, including items removed by `ignore()`. Ignored clauses still count toward input limits. Defaults bypass the clause and depth limits; the original input still obeys the length limit.
 

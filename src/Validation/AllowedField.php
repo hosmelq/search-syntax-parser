@@ -69,6 +69,11 @@ class AllowedField
     private bool $allowsLeadingWildcards = false;
 
     /**
+     * Whether clauses of this field are top-level settings instead of filters.
+     */
+    private bool $directive = false;
+
+    /**
      * @var array<string, true>
      */
     private array $disabledClauses = [];
@@ -488,6 +493,10 @@ class AllowedField
             throw new InvalidArgumentException('Pattern fields cannot have defaults.');
         }
 
+        if ($this->isDirective() && ! is_scalar($value)) {
+            throw new InvalidArgumentException('A directive default must be a scalar.');
+        }
+
         $message = 'A default must be null, a scalar, or a non-empty list of scalars.';
 
         if ($value === null || is_scalar($value)) {
@@ -507,6 +516,24 @@ class AllowedField
         if (is_null($value)) {
             $this->nullable();
         }
+
+        return $this;
+    }
+
+    /**
+     * Treat this exact scalar field as a top-level query setting instead of a filter.
+     */
+    public function directive(): static
+    {
+        if ($this->isPattern() || $this->expectsArray) {
+            throw new InvalidArgumentException('Directives require an exact scalar field.');
+        }
+
+        if ($this->hasDefault && ! is_scalar($this->default)) {
+            throw new InvalidArgumentException('A directive default must be a scalar.');
+        }
+
+        $this->directive = true;
 
         return $this;
     }
@@ -617,7 +644,7 @@ class AllowedField
      */
     public function hasUsageRules(): bool
     {
-        return $this->operators !== null || $this->disabledClauses !== [];
+        return $this->directive || $this->operators !== null || $this->disabledClauses !== [];
     }
 
     /**
@@ -628,6 +655,11 @@ class AllowedField
         $this->ignored = array_merge($this->ignored, $values);
 
         return $this;
+    }
+
+    public function isDirective(): bool
+    {
+        return $this->directive;
     }
 
     /**

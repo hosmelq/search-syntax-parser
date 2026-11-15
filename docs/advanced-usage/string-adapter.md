@@ -4,7 +4,7 @@ description: "Serialize syntax trees into normalized query text with explicit op
 weight: 2
 ---
 
-Call `build('string')` to serialize the AST into normalized query text. An AST containing only defaults serializes to `''`; a query with no AST returns `null` from `build('string')`. The string adapter omits default-origin clauses and keeps external field names and user-facing cast values, even when the array adapter maps names or converts values for storage. It never calls `toStorage()`.
+Call `build('string')` to serialize the AST into normalized query text. An AST containing only defaults serializes to `''`; a query with no AST returns `null` from `build('string')` unless explicit directives or a typed sort remain. The string adapter omits default-origin clauses and keeps external field names and user-facing cast values, even when the array adapter maps names or converts values for storage. It never calls `toStorage()`.
 
 ```php
 use HosmelQ\SearchSyntaxParser\SearchParser;
@@ -65,3 +65,11 @@ For direct serialization of configured fields, construct `new StringAdapter($par
 Default-origin clauses and removed clauses are absent from serialized text, including mentions that suppressed defaults. Reapplying defaults when reparsing that text can therefore restore filters that the original query opted out of.
 
 Serialization preserves the remaining tree rather than its original validation context. Reparsing an expanded wildcard list validates separate field clauses, so collection size constraints may reject that text. Collapsing wildcard runs can also change size checks on the original pattern text.
+
+## Directives and sorting
+
+After `parse()` or `build()`, the string adapter reads the parser's resolved [directives and sort](../basic-usage/directives-and-sorting) without parsing again. It appends explicitly supplied directives in configuration order, then `sort:key-direction`, using top-level AND joins. An OR filter root is parenthesized before appending settings. Directive values retain their cast scalar types and public names, and sort output uses the configured public name with a lowercase explicit direction. Reapply the same field and sort declarations when reparsing.
+
+`StringAdapter::build()` accepts `null|NodeInterface`; `new StringAdapter($parser)->build(null)` serializes the parser's explicit settings. `SearchParser::build('string')` invokes it with a null tree only when explicit, non-ignored directives or a typed sort exist. Array and custom adapters keep their non-null AST contract and are not invoked for null trees. Default directives and default sorts are omitted. Without explicit settings or a tree, `SearchParser::build('string')` returns null; with a tree consisting only of default filters, it returns an empty string.
+
+Ignored directive mentions are also omitted. Reparsing with the same defaults can therefore restore a directive default that the ignored input suppressed, just as it can for ignored filters.

@@ -9,6 +9,7 @@ use HosmelQ\SearchSyntaxParser\AST\Node\TermNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\UnaryOperatorNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\WildcardNode;
 use HosmelQ\SearchSyntaxParser\SearchParser;
+use HosmelQ\SearchSyntaxParser\Sorting\AllowedSort;
 use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
 use HosmelQ\SearchSyntaxParser\Validation\AllowedFieldItemRules;
 
@@ -268,5 +269,96 @@ it('keeps a minus before dots bare when the parser reads it as literal text', fu
         )
         ->and(SearchParser::query('p:"-5..1"')->allowedFields($fields())->build('string'))->toBe(
             'p:"-5..1"',
+        );
+});
+
+it('round trips filters, scalar directives, and sorting in stable declaration order', function (
+    string $query,
+): void {
+    $configure = static fn (string $input): SearchParser
+        => SearchParser::query($input)->allowedFields([
+            AllowedField::string('mode')->directive()->alias('mine', 'only')->default('without'),
+            AllowedField::integer('limit')->directive()->default(20),
+            AllowedField::boolean('archived')->directive()->default(false),
+            new AllowedField('value')->directive(),
+            AllowedField::string('status')->default('open'),
+        ])->allowedSorts([
+            AllowedSort::field('created-at', 'created_at'),
+            AllowedSort::field('updated-at', 'updated_at'),
+        ])->defaultSort('updated-at');
+    $original = $configure($query);
+    $text = $original->build('string');
+    $reparsed = $configure($text);
+
+    expect($reparsed->build())->toBe($original->build())
+        ->and($reparsed->getDirectives())->toBe($original->getDirectives())
+        ->and($reparsed->getTypedDirectives())->toBe($original->getTypedDirectives())
+        ->and($reparsed->getSort())->toEqual($original->getSort())
+        ->and($reparsed->build('string'))->toBe($text);
+})->with([
+    'sort:CREATED-AT-DESC mode:mine limit:25 (coffee OR tea)',
+    '(coffee OR tea) AND (mode:"only" AND archived:TRUE)',
+    'value:"123" mode:"a*,b..c"',
+    'value:1.5 limit:-1',
+    'value:false',
+    'value:""',
+    'mode:"mine"',
+    'sort:updated-at-asc mode:only',
+    'coffee',
+]);
+
+it('appends directives before the typed sort and groups an OR filter root', function (): void {
+    $parser = SearchParser::query('sort:created-desc limit:25 mode:only (coffee OR tea)')
+        ->allowedFields([
+            AllowedField::string('mode')->directive(),
+            AllowedField::integer('limit')->directive(),
+        ])
+        ->allowedSorts(['created']);
+
+    expect($parser->build('string'))->toBe(
+        '(coffee OR tea) AND mode:only AND limit:25 AND sort:created-desc',
+    );
+});
+
+it('renders typed settings without any filter tree and omits defaults', function (): void {
+    $parser = SearchParser::query('sort:created mode:only')->allowedFields([
+        AllowedField::string('mode')->directive(),
+        AllowedField::boolean('archived')->directive()->default(false),
+    ])->allowedSorts(['created']);
+
+    expect($parser->build('string'))->toBe('mode:only AND sort:created-asc')
+        ->and($parser->parse())->toBeNull()
+        ->and($parser->build())->toBeNull()
+        ->and(new StringAdapter($parser)->build(null))->toBe('mode:only AND sort:created-asc');
+});
+
+it('round trips resolved directive values that also name aliases without resolving them again', function (): void {
+    $calls = 0;
+    $field = AllowedField::integer('limit')->directive()->alias('25', 50)->alias(
+        'mine',
+        function () use (&$calls): int {
+            $calls++;
+
+            return 25;
+        },
+    );
+    $parser = SearchParser::query('limit:mine')->allowedFields([$field]);
+    $text = $parser->build('string');
+
+    expect($text)->toBe('limit:"25"')->and($calls)->toBe(1);
+
+    $reparsed = SearchParser::query($text)->allowedFields([$field]);
+
+    expect($reparsed->parse())->toBeNull()->and($reparsed->getDirectives())->toBe(['limit' => 25]);
+});
+
+it('quotes comparison values that equal an alias token so they stay literal', function (): void {
+    $fields = static fn (): array => [AllowedField::integer('level')->alias('7', 9)];
+    $parser = SearchParser::query('level:"7"')->allowedFields($fields());
+
+    expect($parser->parse()->getValue())->toBe(7)
+        ->and($parser->build('string'))->toBe('level:"7"')
+        ->and(SearchParser::query('level:"7"')->allowedFields($fields())->build())->toBe(
+            $parser->build(),
         );
 });

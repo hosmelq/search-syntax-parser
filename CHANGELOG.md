@@ -7,10 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
-This release includes breaking changes to field permissions, ignored values, operators, wildcard AST nodes, exception inheritance, value typing, validation, default origin and serialization, nullable AST results, case-insensitive values, quoted field metadata, text match modes, storage conversions, query limits, leading wildcard permissions, dynamic field patterns, compact ranges, and the lexer and parser APIs.
+This release includes breaking changes to field permissions, ignored values, operators, wildcard AST nodes, exception inheritance, value typing, validation, default origin and serialization, nullable AST results, case-insensitive values, quoted field metadata, text match modes, storage conversions, query limits, leading wildcard permissions, dynamic field patterns, compact ranges, directives, query sorting, and the lexer and parser APIs.
 
 ### Added
 
+- Add `AllowedField::directive()` for unique top-level scalar equality settings, resolved through aliases, casting, validation, and ignored values, with scalar defaults and separate `getDirectives()` and `getTypedDirectives()` results.
+- Add framework-independent `Sorting\AllowedSort` and `Sorting\Sort`, `allowedSorts()`, `defaultSort()`, and `getSort()` for case-insensitive query sort keys, internal mappings, explicit directions, and default origin.
+- Add positioned `DirectiveNotTopLevel`, `DuplicateDirective`, and `DirectiveInvalidClause` error reasons through `InvalidFieldOperatorException`; reserve `sort` when sorts are configured and report invalid sort values through `InvalidFieldValueException`.
 - Add `AllowedField::allowLeadingWildcards()` and `minWildcardLength()` plus `SearchParser::allowLeadingWildcards()` for free text and unconfigured fields, checked before casting with positioned `LeadingWildcardNotAllowed` and `WildcardTooShort` error reasons.
 - Add the framework-independent `Support\LikePattern` helper for escaping SQL LIKE literals, wildcard segments, and exact, prefix, or contains text modes with an explicit escape character.
 - Add dynamic `.*` fields with mandatory regex or closure `keys()` rules, exact-name and longest-pattern precedence, full typed AST names, and suffix-preserving internal mappings; reject pattern defaults and invalid configuration.
@@ -37,6 +40,7 @@ This release includes breaking changes to field permissions, ignored values, ope
 
 ### Changed
 
+- Keep directives and sorting out of filter ASTs and array output. Append explicit directives in configuration order and then the typed sort to string output, omitting defaults and supporting a null filter tree only for the string adapter when explicit settings remain.
 - Reject leading wildcards by default, including list items and free-text terms; field violations use `InvalidFieldOperatorException` with the complete external name.
 - Accept hour-precision ISO datetimes such as `2024-03-15T10` on format-less date fields.
 - Require brick/math 0.14.4 or newer, up to 1.x.

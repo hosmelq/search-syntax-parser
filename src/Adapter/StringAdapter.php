@@ -17,6 +17,7 @@ use HosmelQ\SearchSyntaxParser\Exception\ParseException;
 use HosmelQ\SearchSyntaxParser\Lexer\SearchLexer;
 use HosmelQ\SearchSyntaxParser\Lexer\TokenType;
 use HosmelQ\SearchSyntaxParser\Parser\DotRange;
+use HosmelQ\SearchSyntaxParser\Sorting\Sort;
 use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
 use HosmelQ\SearchSyntaxParser\Validation\AllowedFieldItemRules;
 use LogicException;
@@ -25,10 +26,37 @@ use Override;
 final readonly class StringAdapter extends AbstractAdapter
 {
     #[Override]
-    public function build(NodeInterface $ast): string
+    public function build(null|NodeInterface $ast): string
     {
-        /** @var string */
-        return $ast->accept($this);
+        [$text, $operator] = $ast instanceof NodeInterface ? $this->render($ast) : ['', null];
+
+        $settings = [];
+
+        foreach ($this->searchParser?->getTypedDirectives() ?? [] as $name => $value) {
+            $settings[] = $this->comparison(
+                (string) $name,
+                '=',
+                $this->value($value, field: $this->searchParser?->getAllowedField((string) $name)),
+            );
+        }
+
+        $sort = $this->searchParser?->getSort();
+
+        if ($sort instanceof Sort && ! $sort->isDefault()) {
+            $settings[] = $this->fieldPrefix('sort').$this->value(
+                $sort->getName().'-'.$sort->getDirection(),
+            );
+        }
+
+        if ($settings === []) {
+            return $text;
+        }
+
+        if ($text !== '') {
+            array_unshift($settings, $operator === 'OR' ? '('.$text.')' : $text);
+        }
+
+        return implode(' AND ', $settings);
     }
 
     #[Override]
@@ -275,11 +303,13 @@ final readonly class StringAdapter extends AbstractAdapter
         if (is_bool($value)) {
             $text = $value ? 'true' : 'false';
 
-            return $quoted ? $this->quote($text) : $text;
+            return $quoted || $field?->hasAlias($text) === true ? $this->quote($text) : $text;
         }
 
         if (is_int($value)) {
-            return $quoted ? $this->quote((string) $value) : (string) $value;
+            $text = (string) $value;
+
+            return $quoted || $field?->hasAlias($text) === true ? $this->quote($text) : $text;
         }
 
         if (is_float($value)) {
@@ -315,7 +345,7 @@ final readonly class StringAdapter extends AbstractAdapter
 
             $text = str_contains($text, '.') ? $text : $text.'.0';
 
-            return $quoted ? $this->quote($text) : $text;
+            return $quoted || $field?->hasAlias($text) === true ? $this->quote($text) : $text;
         }
 
         // Unquoted text must read back as the same value: through the field's own casting

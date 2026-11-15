@@ -14,8 +14,11 @@ use HosmelQ\SearchSyntaxParser\AST\Node\ExistsNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\InNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\NodeInterface;
 use HosmelQ\SearchSyntaxParser\AST\Node\UnaryOperatorNode;
+use HosmelQ\SearchSyntaxParser\Exception\InvalidFieldValueException;
 use HosmelQ\SearchSyntaxParser\Exception\ParseException;
 use HosmelQ\SearchSyntaxParser\Parser\Parser;
+use HosmelQ\SearchSyntaxParser\Sorting\AllowedSort;
+use HosmelQ\SearchSyntaxParser\Sorting\Sort;
 use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
 use InvalidArgumentException;
 
@@ -31,6 +34,11 @@ class SearchParser
      */
     private array $allowedFields = [];
 
+    /**
+     * @var array<string, AllowedSort>
+     */
+    private array $allowedSorts = [];
+
     private bool $allowsAnyField = false;
 
     private bool $allowsLeadingWildcards = false;
@@ -42,6 +50,8 @@ class SearchParser
      */
     private array $customCreators = [];
 
+    private null|string $defaultSort = null;
+
     private int $depthLimit = 32;
 
     private int $lengthLimit = 10_000;
@@ -50,6 +60,15 @@ class SearchParser
      * @var list<AllowedField>
      */
     private array $patternFields = [];
+
+    /**
+     * @var null|array{
+     *     directives: array<int|string, bool|float|int|string>,
+     *     typed: array<int|string, bool|float|int|string>,
+     *     sort: null|Sort,
+     * }
+     */
+    private null|array $settings = null;
 
     /**
      * Create a new SearchParser instance.
@@ -91,6 +110,10 @@ class SearchParser
      */
     public function allowedFields(array $fields): self
     {
+        if ($this->allowedSorts !== []) {
+            $this->assertSortNotReserved($fields);
+        }
+
         $this->allowedFields = [];
         $this->patternFields = [];
 
@@ -113,6 +136,53 @@ class SearchParser
             usort($this->patternFields, static fn (AllowedField $left, AllowedField $right): int
                 => mb_strlen($right->getName()) <=> mb_strlen($left->getName()));
         }
+
+        return $this;
+    }
+
+    /**
+     * Configure public sort keys and their internal field mappings.
+     *
+     * @param list<AllowedSort|string> $sorts
+     */
+    public function allowedSorts(array $sorts): self
+    {
+        if ($sorts !== []) {
+            $this->assertSortNotReserved(array_values($this->allowedFields));
+        }
+
+        $allowed = [];
+
+        foreach ($sorts as $sort) {
+            $sort = is_string($sort) ? AllowedSort::field($sort) : $sort;
+            $key = mb_strtolower($sort->getName());
+
+            if (isset($allowed[$key])) {
+                throw new InvalidArgumentException('Sort names must be unique ignoring case.');
+            }
+
+            $allowed[$key] = $sort;
+        }
+
+        // `sort:created-desc` always means `created` descending, so a sort named like that
+        // could never be reached with its own default direction.
+        foreach (array_keys($allowed) as $key) {
+            $separator = mb_strrpos($key, '-');
+
+            if (
+                $separator !== false
+                && in_array(mb_substr($key, $separator + 1), ['asc', 'desc'], true)
+                && isset($allowed[mb_substr($key, 0, $separator)])
+            ) {
+                throw new InvalidArgumentException(sprintf(
+                    "Sort '%s' is ambiguous with sort '%s' and a direction.",
+                    $allowed[$key]->getName(),
+                    $allowed[mb_substr($key, 0, $separator)]->getName(),
+                ));
+            }
+        }
+
+        $this->allowedSorts = $allowed;
 
         return $this;
     }
@@ -142,7 +212,8 @@ class SearchParser
 
     /**
      * Parse and build a query using the specified or default adapter.
-     * Return null without calling the adapter when no constraints remain.
+     * Return null without calling the adapter when no filters remain, except that the
+     * string adapter also renders explicit directives and sorting with a null filter tree.
      *
      * @throws InvalidArgumentException When a configured default is invalid or the adapter is unknown.
      * @throws ParseException
@@ -152,7 +223,25 @@ class SearchParser
         $ast = $this->parse();
         $builder = $this->adapter($adapter);
 
-        return $ast instanceof NodeInterface ? $builder->build($ast) : null;
+        if ($ast instanceof NodeInterface) {
+            return $builder->build($ast);
+        }
+
+        return $builder instanceof StringAdapter
+            && $this->settings !== null
+            && ($this->settings['typed'] !== [] || $this->settings['sort']?->isDefault() === false)
+                ? $builder->build(null)
+                : null;
+    }
+
+    /**
+     * Set a fallback sort key, optionally suffixed with -asc or -desc.
+     */
+    public function defaultSort(string $sort): self
+    {
+        $this->defaultSort = $sort;
+
+        return $this;
     }
 
     /**
@@ -198,11 +287,44 @@ class SearchParser
     }
 
     /**
+     * @return array<string, AllowedSort>
+     */
+    public function getAllowedSorts(): array
+    {
+        return $this->allowedSorts;
+    }
+
+    /**
      * Get the default adapter name.
      */
     public function getDefaultAdapter(): string
     {
         return 'array';
+    }
+
+    /**
+     * Get resolved directive values from the latest parse or build.
+     *
+     * @return array<int|string, bool|float|int|string>
+     */
+    public function getDirectives(): array
+    {
+        return $this->settings['directives'] ?? [];
+    }
+
+    public function getSort(): null|Sort
+    {
+        return $this->settings['sort'] ?? null;
+    }
+
+    /**
+     * Get only directives explicitly supplied by the query, in configuration order.
+     *
+     * @return array<int|string, bool|float|int|string>
+     */
+    public function getTypedDirectives(): array
+    {
+        return $this->settings['typed'] ?? [];
     }
 
     /**
@@ -256,13 +378,15 @@ class SearchParser
     }
 
     /**
-     * Parse the query string into an AST, or null when no constraints or defaults remain.
+     * Parse filters into an AST or null, storing directives and sorting separately.
      *
      * @throws InvalidArgumentException When a configured default is invalid for its field.
      * @throws ParseException
      */
     public function parse(): null|NodeInterface
     {
+        $this->settings = null;
+
         if (mb_strlen($this->query) > $this->lengthLimit) {
             throw ParseException::maximumLength($this->lengthLimit);
         }
@@ -277,6 +401,17 @@ class SearchParser
 
         $parser = new Parser($this, $this->depthLimit, $this->clauseLimit);
         $ast = $parser->parse($this->query, $defaults !== []);
+
+        if ($defaults === [] && ! $parser->hasSettings() && $this->defaultSort === null) {
+            return $ast;
+        }
+
+        $typedDirectives = $parser->resolveDirectives();
+        $directives = [];
+        $sortInput = $parser->getSortInput();
+        $sort = $sortInput !== null
+            ? $this->resolveSort($sortInput[0], false, $sortInput[1])
+            : ($this->defaultSort === null ? null : $this->resolveSort($this->defaultSort, true));
 
         if ($defaults !== []) {
             $referenced = $parser->getReferencedFields();
@@ -309,6 +444,16 @@ class SearchParser
                     }
                 }
 
+                if ($field->isDirective()) {
+                    if (! is_scalar($value)) {
+                        throw new InvalidArgumentException('A directive default must be a scalar.');
+                    }
+
+                    $directives[$name] = $value;
+
+                    continue;
+                }
+
                 $node = match (true) {
                     $value === null => new UnaryOperatorNode(
                         'NOT',
@@ -323,6 +468,26 @@ class SearchParser
                     : $node;
             }
         }
+
+        // The public order is declaration order, independent of how settings were written.
+        $resolvedDirectives = $directives + $typedDirectives;
+        $directives = [];
+
+        if ($resolvedDirectives !== []) {
+            foreach ($this->allowedFields as $field) {
+                $name = $field->getName();
+
+                if (array_key_exists($name, $resolvedDirectives)) {
+                    $directives[$name] = $resolvedDirectives[$name];
+                }
+            }
+        }
+
+        $this->settings = [
+            'directives' => $directives,
+            'typed' => array_intersect_key($directives, $typedDirectives),
+            'sort' => $sort,
+        ];
 
         return $ast;
     }
@@ -363,6 +528,19 @@ class SearchParser
     }
 
     /**
+     * @param list<AllowedField|string> $fields
+     */
+    private function assertSortNotReserved(array $fields): void
+    {
+        if (array_any($fields, static fn (AllowedField|string $field): bool
+            => mb_strtolower(is_string($field) ? $field : $field->getName()) === 'sort')) {
+            throw new InvalidArgumentException(
+                "Field 'sort' is reserved when sorts are configured.",
+            );
+        }
+    }
+
+    /**
      * Read a string default like typed query text; other scalars must already have the cast type.
      */
     private function castDefault(
@@ -399,6 +577,42 @@ class SearchParser
         }
 
         throw new InvalidArgumentException(sprintf("Adapter '%s' not supported.", $adapter));
+    }
+
+    private function resolveSort(string $value, bool $default, null|int $position = null): Sort
+    {
+        $key = mb_strtolower($value);
+        $direction = null;
+        $allowed = $this->allowedSorts[$key] ?? null;
+        $separator = mb_strrpos($key, '-');
+
+        // An explicit final direction wins when its preceding key is configured.
+        if ($separator !== false) {
+            $suffix = mb_substr($key, $separator + 1);
+            $base = $this->allowedSorts[mb_substr($key, 0, $separator)] ?? null;
+
+            if ($base instanceof AllowedSort && in_array($suffix, ['asc', 'desc'], true)) {
+                $allowed = $base;
+                $direction = $suffix;
+            }
+        }
+
+        if (! $allowed instanceof AllowedSort) {
+            if ($default) {
+                throw new InvalidArgumentException(
+                    'The default sort must name an allowed sort and direction.',
+                );
+            }
+
+            throw InvalidFieldValueException::invalidValue('sort', $position);
+        }
+
+        return new Sort(
+            $allowed->getName(),
+            $allowed->getInternalName(),
+            $direction ?? $allowed->getDefaultDirection(),
+            $default,
+        );
     }
 
     /**

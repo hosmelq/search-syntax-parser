@@ -1,7 +1,7 @@
 ---
 title: "Error handling"
 description: "Catch parser and field errors through one exception base and locate failures with Unicode character offsets in the original query."
-weight: 5
+weight: 6
 ---
 
 Catch `SearchSyntaxException` to handle all query errors. It extends `RuntimeException` and exposes `getPosition()`, `getReason()`, and `getParameters()`. `ParseException`, `InvalidFieldException`, `InvalidFieldValueException`, and `InvalidFieldOperatorException` extend this common base; the field exceptions also expose `getField()` using the external query name.
@@ -35,6 +35,8 @@ Positions are zero-based Unicode code point offsets in the exact original string
 | Too many clauses | First token of the clause that exceeds the limit; an expanded list uses the item's token. |
 | Field not allowed | Field token. |
 | Disallowed operator or clause | Explicit comparison operator token, or the value start when no explicit operator exists. |
+| Invalid directive placement or duplicate directive, including `sort` | Field token. |
+| Invalid directive clause | Comparison operator token or value start. |
 | Invalid field value | First value token; the first list item for lists, or `[` for bracket ranges and the first bound for compact ranges. |
 | Invalid UTF-8 or a PCRE failure | Null because no position applies. |
 
@@ -64,6 +66,9 @@ Dynamic keys that fail their configured rule use `field_not_allowed`, with the f
 | `maximum_length`, `maximum_depth`, `maximum_clauses` | `limit` |
 | `field_not_allowed` | `field`, `allowed` field-name list |
 | `invalid_field_value` | `field` |
+| `directive_not_top_level` (`DirectiveNotTopLevel`) | `field` |
+| `duplicate_directive` (`DuplicateDirective`) | `field` |
+| `directive_invalid_clause` (`DirectiveInvalidClause`) | `field` |
 | `operator_not_allowed` | `field` and either `operator` or `clause` |
 | `unsupported` | Defined by a third-party adapter |
 
@@ -99,6 +104,8 @@ try {
 }
 ```
 
+Directive placement, duplicates, and invalid clause shapes use `InvalidFieldOperatorException`, including `sort:`. Unknown sort keys or directions use `InvalidFieldValueException` with field `sort` and the value token's position. Directive placement is checked even when an operand is ignored. See [directives and sorting](directives-and-sorting) for the allowed forms.
+
 ## Programmer errors
 
 Unknown adapters, non-positive limits, defaults that have an invalid shape or fail the field's rules when applied, unknown configured operators, nonscalar alias closure results, and non-backed enum rules throw `InvalidArgumentException`. So do `in()` strings, enum values or case names, and `map()` keys that collide ignoring case; a second storage conversion; an invalid `scale()` factor or a non-numeric scaled field; and a text match mode on a field whose values are not text. They indicate invalid application configuration rather than a user's query error. A string adapter asked to serialize an unrepresentable wildcard throws `LogicException`.
@@ -106,3 +113,5 @@ Unknown adapters, non-positive limits, defaults that have an invalid shape or fa
 Pattern fields without a `keys()` rule throw `InvalidArgumentException` when configured through `allowedFields()`. A pattern's internal name must end in `.*`, and pattern defaults, invalid key regexes, and key rules on exact fields also throw `InvalidArgumentException`. Negative `minWildcardLength()` values, invalid LIKE escape characters, and `LikePattern::forMatch()` with `TextMatch::Words` are configuration errors too. They carry no query position or `ErrorReason`.
 
 Read [query limits and untrusted input](../advanced-usage/query-limits-and-untrusted-input) for limits that bound parser work.
+
+Directive declarations require exact scalar fields and scalar defaults. Array or pattern directives, null or list directive defaults, conflicting `sort` field declarations when sorts are configured, empty or duplicate sort names ignoring case, and invalid configured sort directions throw `InvalidArgumentException`. A default sort with an unknown key or direction throws the same exception when applied, rather than reporting a user's query error.
