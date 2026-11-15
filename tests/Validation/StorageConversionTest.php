@@ -144,8 +144,8 @@ it('rejects scaling non-numeric field types and invalid factors when configured'
 it('matches storage map keys ignoring case for strings', function (): void {
     $field = AllowedField::string('priority')->map(['High' => 3, 1 => 'one']);
 
-    expect($field->toStorage('HIGH'))->toBe(3)
-        ->and($field->toStorage('high'))->toBe(3)
+    expect($field->toStorage('HIGH'))->toBe('3')
+        ->and($field->toStorage('high'))->toBe('3')
         ->and($field->toStorage(1))->toBe('one')
         ->and($field->toStorage('low'))->toBe('low');
 });
@@ -181,7 +181,35 @@ it('matches fractional map keys from the exact float value', function (): void {
 
     expect($field->toStorage(1.5))->toBe('half')
         ->and($field->toStorage(1.0))->toBe('one')
-        ->and($field->toStorage(1.000_000_000_000_000_2))->toBe(1.000_000_000_000_000_2);
+        ->and($field->toStorage(1.000_000_000_000_000_2))->toBe('1.0000000000000002');
+});
+
+it('stores every value as exact text when the map stores a string', function (): void {
+    $level = AllowedField::numeric('level')->map([7 => 'seven']);
+    $tier = AllowedField::integer('tier')->map([1 => 'pending', 2 => 20]);
+    $flag = AllowedField::boolean('flag')->map([1 => 'on']);
+
+    expect($level->storesText())->toBeTrue()
+        ->and($level->toStorage(7))->toBe('seven')
+        ->and($level->toStorage(2))->toBe('2')
+        ->and($level->toStorage(1.234_567_890_123_45))->toBe('1.23456789012345')
+        ->and($level->toStorage(1.0e20))->toBe('100000000000000000000')
+        ->and($tier->toStorage(2))->toBe('20')
+        ->and($tier->toStorage(0))->toBe('0')
+        ->and($flag->toStorage(true))->toBe('on')
+        ->and($flag->toStorage(false))->toBe('0')
+        ->and(SearchParser::query('tier:0,1')->allowedFields([$tier])->build()['values'])
+        ->toBe(['0', 'pending']);
+});
+
+it('keeps number storage for maps without strings and other conversions', function (): void {
+    $quantity = AllowedField::integer('quantity')->map([99 => 10]);
+
+    expect($quantity->storesText())->toBeFalse()
+        ->and($quantity->toStorage(99))->toBe(10)
+        ->and($quantity->toStorage(5))->toBe(5)
+        ->and(AllowedField::numeric('amount')->scale(100)->storesText())->toBeFalse()
+        ->and(AllowedField::string('name')->storesText())->toBeFalse();
 });
 
 it('rejects a second storage conversion', function (): void {

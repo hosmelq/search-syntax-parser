@@ -98,6 +98,8 @@ class AllowedField
      */
     private null|Closure $storageConversion = null;
 
+    private bool $storesText = false;
+
     private TextMatch $textMatch = TextMatch::Exact;
 
     private int $wildcardMinimumLength = 0;
@@ -742,8 +744,10 @@ class AllowedField
             $lookup[$key] = $stored;
         }
 
+        $text = array_filter($lookup, is_string(...)) !== [];
         $this->storageConversion = static function (bool|float|int|string $value) use (
             $lookup,
+            $text,
         ): bool|float|int|string {
             $key = match (true) {
                 is_bool($value) => (int) $value,
@@ -751,9 +755,17 @@ class AllowedField
                 is_float($value) => (string) self::toDecimal($value)->strippedOfTrailingZeros(),
                 default => $value,
             };
+            $stored = array_key_exists($key, $lookup) ? $lookup[$key] : $value;
 
-            return array_key_exists($key, $lookup) ? $lookup[$key] : $value;
+            // A map that stores text stores every value as text, so numbers and booleans become exact text.
+            return match (true) {
+                ! $text, is_string($stored) => $stored,
+                is_bool($stored) => $stored ? '1' : '0',
+                is_float($stored) => (string) self::toDecimal($stored)->strippedOfTrailingZeros(),
+                default => (string) $stored,
+            };
         };
+        $this->storesText = $text;
 
         return $this->withoutWildcards();
     }
@@ -885,6 +897,14 @@ class AllowedField
         $this->rules->size($value);
 
         return $this;
+    }
+
+    /**
+     * Check whether every storage value is text, which holds when map() stores a string.
+     */
+    public function storesText(): bool
+    {
+        return $this->storesText;
     }
 
     /**
