@@ -195,3 +195,120 @@ it('validates relative values only when they resolve within the supported years'
         ->and($field->validate('today+999999y'))->toBeFalse()
         ->and($field->validate('-999999w'))->toBeFalse();
 });
+
+it('accepts only calendar dates and day anchors without time', function (
+    string $value,
+    bool $valid,
+): void {
+    $field = AllowedField::date('due')->withoutTime();
+    $partial = AllowedField::date('due')->allowPartialDates()->withoutTime();
+
+    expect($field->validate($value))->toBe($valid)
+        ->and($partial->validate($value))->toBe($valid)
+        ->and(AllowedField::date('due')->validate($value))->toBeTrue();
+})->with([
+    ['2024-03-15', true],
+    ['today', true],
+    ['YESTERDAY', true],
+    ['tomorrow+1w', true],
+    ['today-7d', true],
+    ['today+1M', true],
+    ['2024-03-15T10', false],
+    ['2024-03-15T10:30Z', false],
+    ['2024-03-15T00:00:00+02:00', false],
+    ['now', false],
+    ['NOW-1d', false],
+    ['-7d', false],
+    ['+3d', false],
+]);
+
+it('combines dates without time with partial dates in either order', function (): void {
+    foreach ([
+        AllowedField::date('due')->withoutTime()->allowPartialDates(),
+        AllowedField::date('due')->allowPartialDates()->withoutTime(),
+    ] as $field) {
+        expect($field->validate('2024'))->toBeTrue()
+            ->and($field->validate('2024-03'))->toBeTrue()
+            ->and($field->validate('now'))->toBeFalse();
+    }
+
+    expect(AllowedField::date('due')->withoutTime()->validate('2024'))->toBeFalse();
+});
+
+it('reports times on fields without time at the value in comparisons, lists and ranges', function (
+    string $query,
+    int $position,
+): void {
+    try {
+        SearchParser::query($query)->allowedFields([
+            AllowedField::date('due')->withoutTime(),
+        ])->parse();
+
+        test()->fail('Expected an invalid date value.');
+    } catch (InvalidFieldValueException $invalidFieldValueException) {
+        expect($invalidFieldValueException->getField())->toBe('due')
+            ->and($invalidFieldValueException->getPosition())->toBe($position);
+    }
+})->with([
+    ['due:<now', 5],
+    ['due:today,2024-03-15T10:00', 4],
+    ['due:[today TO -7d]', 4],
+    ['due:today..now', 4],
+]);
+
+it('rejects time defaults on fields without time regardless of configuration order', function (
+    Closure $field,
+): void {
+    SearchParser::query('')->allowedFields([$field()])->parse();
+})->throws(InvalidArgumentException::class)->with([
+    fn (): AllowedField => AllowedField::date('due')->withoutTime()->default('now'),
+    fn (): AllowedField => AllowedField::date('due')->default('now')->withoutTime(),
+]);
+
+it('keeps day-anchor defaults on fields without time as text', function (): void {
+    expect(SearchParser::query('')->allowedFields([
+        AllowedField::date('due')->withoutTime()->default('today'),
+    ])->parse()->getValue())->toBe('today');
+});
+
+it('supports dates without time on shared and positional array item rules', function (): void {
+    $shared = AllowedField::array('dates')->each(
+        fn (AllowedFieldItemRules $rules): AllowedFieldItemRules => $rules->date()->withoutTime(),
+    );
+    $tuple = AllowedField::array('dates')
+        ->at(
+            0,
+            fn (AllowedFieldItemRules $rules): AllowedFieldItemRules
+                => $rules->date()->withoutTime(),
+        )
+        ->at(1, fn (AllowedFieldItemRules $rules): AllowedFieldItemRules => $rules->date());
+
+    expect(
+        SearchParser::query('dates:today,2024-03-15')
+            ->allowedFields([$shared])
+            ->parse()
+            ->getValues(),
+    )
+        ->toBe(['today', '2024-03-15'])
+        ->and(SearchParser::query('dates:today,now')->allowedFields([$tuple])->parse()->getValues())
+        ->toBe(['today', 'now'])
+        ->and(fn (): null|NodeInterface => SearchParser::query('dates:now,today')
+            ->allowedFields([$tuple])
+            ->parse())
+        ->toThrow(InvalidFieldValueException::class);
+});
+
+it('rejects dates without time on other types, custom formats and array fields', function (
+    Closure $configure,
+): void {
+    $configure();
+})->throws(InvalidArgumentException::class)->with([
+    fn (): AllowedField => AllowedField::string('value')->withoutTime(),
+    fn (): AllowedField => AllowedField::array('value')->withoutTime(),
+    fn (): AllowedField => AllowedField::date('value', 'Y-m-d')->withoutTime(),
+    fn (): AllowedFieldItemRules => new AllowedFieldItemRules()->withoutTime(),
+    fn (): AllowedFieldItemRules => new AllowedFieldItemRules()->date('Y-m-d')->withoutTime(),
+    fn (): AllowedFieldItemRules => new AllowedFieldItemRules()->date()->withoutTime()->string(),
+    fn (): AllowedFieldItemRules
+        => new AllowedFieldItemRules()->date()->withoutTime()->date('Y-m-d'),
+]);

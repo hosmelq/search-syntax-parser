@@ -18,7 +18,19 @@ final readonly class DateValidator implements ValidatorInterface
     public function __construct(
         private null|string $format = null,
         private bool $allowPartialDates = false,
+        private bool $withoutTime = false,
     ) {}
+
+    public function withoutTime(): self
+    {
+        if ($this->format !== null) {
+            throw new InvalidArgumentException(
+                'Dates without time require a date rule without a format.',
+            );
+        }
+
+        return new self(allowPartialDates: $this->allowPartialDates, withoutTime: true);
+    }
 
     public function withPartialDates(): self
     {
@@ -28,7 +40,7 @@ final readonly class DateValidator implements ValidatorInterface
             );
         }
 
-        return new self(allowPartialDates: true);
+        return new self(allowPartialDates: true, withoutTime: $this->withoutTime);
     }
 
     #[Override]
@@ -52,10 +64,17 @@ final readonly class DateValidator implements ValidatorInterface
         $parts = DateExpression::absolute($value);
 
         if ($parts !== null) {
+            if ($this->withoutTime && isset($parts['hour'])) {
+                return false;
+            }
+
             return $this->allowPartialDates || isset($parts['day']);
         }
 
-        if (DateExpression::relative($value) === null) {
+        $relative = DateExpression::relative($value);
+
+        // Without time, only day anchors resolve to whole days; now and bare offsets are instants.
+        if ($relative === null || ($this->withoutTime && $relative['anchor'] === 'now')) {
             return false;
         }
 

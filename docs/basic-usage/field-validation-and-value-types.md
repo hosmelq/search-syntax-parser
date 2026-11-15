@@ -185,6 +185,21 @@ assert($range->getTo() === '2024-06');
 assert(SearchParser::query('created:2024')->allowedFields($fields)->parse()->getValue() === '2024');
 ```
 
+### Dates without time
+
+Call `AllowedField::date('due')->withoutTime()` when a field stores calendar dates. It accepts full dates, partial dates when `allowPartialDates()` is also called, and the day anchors `today`, `yesterday`, and `tomorrow` with their offsets. Times, `now`, and bare offsets such as `-7d` fail validation; write `today-7d` instead. The same method is available after `date()` in `each()` and `at()` item rules. Configuring it on another type or a date with a custom format throws `InvalidArgumentException`.
+
+```php
+use HosmelQ\SearchSyntaxParser\SearchParser;
+use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
+
+$fields = [AllowedField::date('due')->withoutTime()];
+
+assert(SearchParser::query('due:<today+1w')->allowedFields($fields)->parse()->getValue() === 'today+1w');
+assert(!AllowedField::date('due')->withoutTime()->validate('2024-03-15T10:30'));
+assert(!AllowedField::date('due')->withoutTime()->validate('now'));
+```
+
 ### Relative dates
 
 Every format-less date field accepts these expressions without an additional opt-in:

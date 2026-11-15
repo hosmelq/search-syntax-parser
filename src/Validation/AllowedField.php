@@ -976,6 +976,22 @@ class AllowedField
     }
 
     /**
+     * Accept only calendar dates on a date field without a format, rejecting times and instants.
+     */
+    public function withoutTime(): static
+    {
+        if ($this->expectsArray) {
+            throw new InvalidArgumentException(
+                'On array fields, reject times on the each() or at() date rules.',
+            );
+        }
+
+        $this->rules->withoutTime();
+
+        return $this;
+    }
+
+    /**
      * Reject wildcard patterns such as field:abc* for this field.
      */
     public function withoutWildcards(): static

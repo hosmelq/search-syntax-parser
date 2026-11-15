@@ -52,6 +52,8 @@ final class AllowedFieldItemRules
      */
     private array $values = [];
 
+    private bool $withoutTime = false;
+
     /**
      * Infer untyped values without losing identifiers or quoted text.
      */
@@ -180,7 +182,15 @@ final class AllowedFieldItemRules
 
         $this->setType('date');
 
-        $this->validators[] = $this->partialDates ? $validator->withPartialDates() : $validator;
+        if ($this->partialDates) {
+            $validator = $validator->withPartialDates();
+        }
+
+        if ($this->withoutTime) {
+            $validator = $validator->withoutTime();
+        }
+
+        $this->validators[] = $validator;
 
         return $this;
     }
@@ -402,6 +412,28 @@ final class AllowedFieldItemRules
     }
 
     /**
+     * Accept only calendar dates with a date rule without a format, rejecting times and instants.
+     */
+    public function withoutTime(): self
+    {
+        if ($this->type !== 'date') {
+            throw new InvalidArgumentException(
+                'Dates without time require a date rule without a format.',
+            );
+        }
+
+        foreach ($this->validators as $index => $validator) {
+            if ($validator instanceof DateValidator) {
+                $this->validators[$index] = $validator->withoutTime();
+            }
+        }
+
+        $this->withoutTime = true;
+
+        return $this;
+    }
+
+    /**
      * Match boolean allowed values like boolean(), and other scalars by text or inferred number.
      */
     private function castMember(string $value, bool $quoted): bool|float|int|string
@@ -436,6 +468,12 @@ final class AllowedFieldItemRules
         if ($this->partialDates && $type !== 'date') {
             throw new InvalidArgumentException(
                 'Partial dates require a date rule without a format.',
+            );
+        }
+
+        if ($this->withoutTime && $type !== 'date') {
+            throw new InvalidArgumentException(
+                'Dates without time require a date rule without a format.',
             );
         }
 

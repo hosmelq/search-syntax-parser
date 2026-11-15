@@ -19,6 +19,7 @@ This release includes breaking changes to field permissions, ignored values, ope
 - Add dynamic `.*` fields with mandatory regex or closure `keys()` rules, exact-name and longest-pattern precedence, full typed AST names, and suffix-preserving internal mappings; reject pattern defaults and invalid configuration.
 - Accept inclusive `field:a..b` ranges with open `*` ends, numeric and date bounds, existing field rules, and bracket-form string output.
 - Add opt-in `allowPartialDates()` for format-less date fields and array items, preserving whole-year and whole-month text.
+- Add `withoutTime()` for format-less date fields and array items that store calendar dates, rejecting times, `now`, and bare relative offsets.
 - Accept relative date anchors and single calendar or time offsets on every format-less date field, including comparisons, lists, ranges, and text defaults.
 - Add framework-independent `DateValue`, `DatePrecision`, and `DateBounds` for precision intervals, request-time relative resolution, explicit offsets, DST-aware calendar boundaries, and half-open adapter bounds.
 - Add `AllowedField::prefix()`, `contains()`, and `words()` with `TextMatch` metadata and per-value quoted overrides to exact matching.
