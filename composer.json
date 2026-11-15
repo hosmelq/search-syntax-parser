@@ -26,6 +26,7 @@
     },
     "require": {
         "php": "^8.4",
+        "ext-mbstring": "*",
         "brick/math": "^0.14.4 || ^0.15 || ^0.16 || ^0.17 || ^0.18 || ^0.19 || ^0.20 || ^1.0"
     },
     "require-dev": {
@@ -57,20 +58,18 @@
         "sort-packages": true
     },
     "scripts": {
-        "ecs": "ecs check --fix=true",
-        "ecs:check": "ecs check",
-        "phpstan": "phpstan analyse --configuration=phpstan.neon.dist --memory-limit=4G",
+        "ecs": "ecs check --fix",
+        "phpstan": "phpstan analyse --memory-limit=4G",
         "rector": "rector",
         "test": "pest",
         "test-coverage": "pest --coverage"
     },
     "scripts-descriptions": {
-        "ecs": "Format PHP code using the shared ECS set.",
-        "ecs:check": "Check PHP formatting using the shared ECS set.",
-        "phpstan": "Run PHPStan static analysis.",
-        "rector": "Run Rector automated refactoring.",
-        "test": "Run the test suite using Pest.",
-        "test-coverage": "Run the test suite with code coverage using Pest."
+        "ecs": "Runs ECS.",
+        "phpstan": "Runs PHPStan analyse.",
+        "rector": "Runs Rector.",
+        "test": "Runs the Pest test suite.",
+        "test-coverage": "Runs the Pest test suite with code coverage."
     },
     "$schema": "https://getcomposer.org/schema.json"
 }

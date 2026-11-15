@@ -9,13 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 This release includes breaking changes to field permissions, ignored values, operators, wildcard AST nodes, exception inheritance, value typing, validation, default origin and serialization, nullable AST results, case-insensitive values, quoted field metadata, text match modes, storage conversions, query limits, leading wildcard permissions, dynamic field patterns, compact ranges, directives, query sorting, and the lexer and parser APIs.
 
+- Declare the required `mbstring` extension in Composer.
 - Add `Query\ClauseCompiler`, `Query\Clause`, `Query\Bounds`, `Query\Operator`, and `Support\FullText` for backend-independent leaf compilation, operator complements, storage values, text patterns, word and phrase matches, and eligible free-text fields.
 - Add `AllowedField::isText()` and `comparesText()` for scalar text matching metadata.
 - **Breaking:** group `ErrorReason` values under `directive.*`, `field.*`, `query.*`, `syntax.*`, and `wildcard.*`; update error-code consumers and translation keys.
 - **Breaking:** remove the unused `ErrorReason::Unsupported` case and `AllowedFieldItemRules::getValidators()`. Adapters rejecting a clause can use `OperatorNotAllowed` with a `clause` parameter.
 - **Breaking:** remove unused validation-trait helpers `requireParameterCount()` and `trim()`, remove the unused attribute arguments from its protected validation methods, and require the numeric parameter shapes already supplied by validator constructors.
 - Organize tests by their source classes, move fixtures under `tests/Fixtures`, and remove redundant accessor and validation-helper tests.
-- Rewrite documentation for the v3 release and align the README, configuration, and project links with the package conventions.
+- Rewrite the documentation for v3 and reduce the README to installation and documentation links.
 - Add `AllowedField::directive()` for unique top-level scalar equality settings, resolved through aliases, casting, validation, and ignored values, with scalar defaults and separate `getDirectives()` and `getTypedDirectives()` results.
 - Add framework-independent `Sorting\AllowedSort` and `Sorting\Sort`, `allowedSorts()`, `defaultSort()`, and `getSort()` for case-insensitive query sort keys, internal mappings, explicit directions, and default origin.
 - Add positioned `DirectiveNotTopLevel`, `DuplicateDirective`, and `DirectiveInvalidClause` error reasons through `InvalidFieldOperatorException`; reserve `sort` when sorts are configured and report invalid sort values through `InvalidFieldValueException`.
@@ -67,7 +68,6 @@ This release includes breaking changes to field permissions, ignored values, ope
 - Make `ParseException`, `InvalidFieldException`, and `InvalidFieldValueException` extend `SearchSyntaxException`; field exceptions no longer extend `InvalidArgumentException`.
 - Preserve the raw query in `query()` and count its whitespace toward `maxLength()`, so error positions refer to the caller's exact input.
 - Validate `default()` arguments immediately and reject anything other than null, a scalar, or a non-empty scalar list.
-- Reduce the README to installation and project links, and exclude `docs/` from distribution archives.
 - Replace the lexer with a single-pass tokenizer. `SearchLexer`, `Tokens`, `TokenType` and `Parser` are now internal, and `Parser::__construct()` takes the depth and clause limits.
 - Preserve standalone term text and infer field values without converting leading-zero identifiers, overflowing integers, exponent notation, or wildcard text to numbers.
 - Cast typed fields and array items from raw text, regardless of quotes. Decimal fields now output strings with their decimal places preserved, and `in()` fields return the matching allowed value.
@@ -96,8 +96,6 @@ This release includes breaking changes to field permissions, ignored values, ope
 - Require brick/math 0.14.2 or newer, up to 1.x.
 - Cast floating-point validation inputs to string for brick/math 0.14.
 - Reject unsupported membership values instead of raising casting errors.
-- Update the Pint, Rector, PHPStan, and Pest configuration.
-- Rework the GitHub Actions workflows and add GitHub Actions security analysis.
 
 ## v1.0.0 - 2025-09-11
 
