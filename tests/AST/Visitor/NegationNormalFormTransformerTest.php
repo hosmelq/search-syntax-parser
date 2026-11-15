@@ -9,6 +9,31 @@ use HosmelQ\SearchSyntaxParser\AST\Visitor\NegationNormalFormTransformer;
 use HosmelQ\SearchSyntaxParser\SearchParser;
 use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
 
+it('does not change parser output until explicitly applied and preserves source metadata', function (): void {
+    $original = SearchParser::query('  NOT price:>10 OR status:!=open')->allowAnyField()->parse();
+    $node = new NegationNormalFormTransformer()->transform($original);
+
+    expect($original->getRight()->getOperator())->toBe('!=')
+        ->and($node->getSpan())->toBe($original->getSpan())
+        ->and($node->getLeft()->getSpan())->toBe($original->getLeft()->getSpan())
+        ->and($node->getLeft()->getOperand()->getSpan())->toBe(
+            $original->getLeft()->getOperand()->getSpan(),
+        )
+        ->and($node->getRight()->getSpan())->toBe($original->getRight()->getSpan())
+        ->and($node->getRight()->getOperand()->getSpan())->toBe($original->getRight()->getSpan());
+});
+
+it('keeps defaults recognisable when a hand-built negation contains them', function (): void {
+    $ast = SearchParser::query('a:1')->allowedFields([
+        AllowedField::integer('a'),
+        AllowedField::string('st')->default(null),
+        AllowedField::string('k')->default('x'),
+    ])->parse();
+    $node = new NegationNormalFormTransformer()->transform(new UnaryOperatorNode('NOT', $ast));
+
+    expect(new StringAdapter()->build($node))->toBe('NOT a:1');
+});
+
 it('normalizes negation into complements of positive leaves', function (
     string $query,
     string $expected,
@@ -43,19 +68,18 @@ it('normalizes negation into complements of positive leaves', function (
     ['NOT "cold brew"', 'NOT "cold brew"'],
 ]);
 
-it('does not change parser output until explicitly applied and preserves source metadata', function (): void {
-    $original = SearchParser::query('  NOT price:>10 OR status:!=open')->allowAnyField()->parse();
-    $node = new NegationNormalFormTransformer()->transform($original);
+it('preserves comparison and per-item quoted flags through negation normalization', function (
+    string $query,
+    string $expected,
+): void {
+    $node = SearchParser::query($query)->allowAnyField()->parse();
+    $normalized = new NegationNormalFormTransformer()->transform($node);
 
-    expect($original->getRight()->getOperator())->toBe('!=')
-        ->and($node->getSpan())->toBe($original->getSpan())
-        ->and($node->getLeft()->getSpan())->toBe($original->getLeft()->getSpan())
-        ->and($node->getLeft()->getOperand()->getSpan())->toBe(
-            $original->getLeft()->getOperand()->getSpan(),
-        )
-        ->and($node->getRight()->getSpan())->toBe($original->getRight()->getSpan())
-        ->and($node->getRight()->getOperand()->getSpan())->toBe($original->getRight()->getSpan());
-});
+    expect(new StringAdapter()->build($normalized))->toBe($expected);
+})->with([
+    ['title:!="mug"', 'NOT title:"mug"'],
+    ['title:!=mug,"cup"', 'NOT title:mug,"cup"'],
+]);
 
 it('preserves default origin and omission during normalization', function (): void {
     $original = SearchParser::query('NOT (price:>10 OR status:!=open)')
@@ -127,14 +151,3 @@ it('retains set complement semantics for missing and multi-valued fields', funct
     ['tag:a,b', [3, 4, 5]],
     ['tag:a tag:b', [5]],
 ]);
-
-it('keeps defaults recognisable when a hand-built negation contains them', function (): void {
-    $ast = SearchParser::query('a:1')->allowedFields([
-        AllowedField::integer('a'),
-        AllowedField::string('st')->default(null),
-        AllowedField::string('k')->default('x'),
-    ])->parse();
-    $node = new NegationNormalFormTransformer()->transform(new UnaryOperatorNode('NOT', $ast));
-
-    expect(new StringAdapter()->build($node))->toBe('NOT a:1');
-});

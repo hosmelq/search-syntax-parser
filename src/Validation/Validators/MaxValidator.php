@@ -12,17 +12,11 @@ class MaxValidator implements ValidatorInterface
 {
     use ValidatesAttributes;
 
-    /**
-     * Create a maximum value validator.
-     */
     public function __construct(private readonly float|int $max) {}
 
-    /**
-     * Validate that the value is at most the maximum.
-     */
     #[Override]
     public function __invoke(mixed $value, string $attribute, bool $length = false): bool
     {
-        return $this->validateMax($attribute, $value, [$this->max], $length);
+        return $this->validateMax($value, [$this->max], $length);
     }
 }

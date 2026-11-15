@@ -12,17 +12,11 @@ readonly class BetweenValidator implements ValidatorInterface
 {
     use ValidatesAttributes;
 
-    /**
-     * Create a between validator with min and max constraints.
-     */
     public function __construct(private float|int $min, private float|int $max) {}
 
-    /**
-     * Validate that the value is between min and max (inclusive).
-     */
     #[Override]
     public function __invoke(mixed $value, string $attribute, bool $length = false): bool
     {
-        return $this->validateBetween($attribute, $value, [$this->min, $this->max], $length);
+        return $this->validateBetween($value, [$this->min, $this->max], $length);
     }
 }

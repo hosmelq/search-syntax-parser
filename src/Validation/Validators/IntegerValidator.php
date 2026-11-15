@@ -12,12 +12,9 @@ class IntegerValidator implements ValidatorInterface
 {
     use ValidatesAttributes;
 
-    /**
-     * Validate that the value is an integer.
-     */
     #[Override]
     public function __invoke(mixed $value, string $attribute): bool
     {
-        return $this->validateInteger($attribute, $value);
+        return $this->validateInteger($value);
     }
 }

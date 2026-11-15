@@ -10,9 +10,6 @@ use Override;
 
 readonly class ComparisonNode implements NodeInterface
 {
-    /**
-     * Create a new comparison node.
-     */
     public function __construct(
         private string $field,
         private string $operator,
@@ -22,34 +19,22 @@ readonly class ComparisonNode implements NodeInterface
         private bool $quoted = false,
     ) {}
 
-    /**
-     * {@inheritDoc}
-     */
     #[Override]
     public function accept(VisitorInterface $visitor): mixed
     {
         return $visitor->visitComparison($this);
     }
 
-    /**
-     * Get the field name being compared.
-     */
     public function getField(): string
     {
         return $this->field;
     }
 
-    /**
-     * Get the comparison operator (e.g., =, !=, >, >=, <, <=).
-     */
     public function getOperator(): string
     {
         return $this->operator;
     }
 
-    /**
-     * {@inheritDoc}
-     */
     #[Override]
     public function getSpan(): null|Span
     {
@@ -62,17 +47,11 @@ readonly class ComparisonNode implements NodeInterface
         return 'Comparison';
     }
 
-    /**
-     * Get the comparison value.
-     */
     public function getValue(): bool|float|int|string
     {
         return $this->value;
     }
 
-    /**
-     * Whether this clause was created from a configured field default.
-     */
     public function isDefault(): bool
     {
         return $this->default;

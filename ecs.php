@@ -7,6 +7,9 @@ use Symplify\EasyCodingStandard\Config\ECSConfig;
 
 return ECSConfig::configure()
     ->withCache(__DIR__.'/.cache/ecs')
-    ->withPaths([__DIR__.'/src', __DIR__.'/tests'])
+    ->withPaths([
+        __DIR__.'/src',
+        __DIR__.'/tests',
+    ])
     ->withRootFiles()
     ->withSets([CodingStandard::ECS_PHP]);

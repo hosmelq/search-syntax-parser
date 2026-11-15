@@ -20,20 +20,18 @@ use Override;
 readonly class ArrayAdapter extends AbstractAdapter
 {
     /**
-     * Build an array representation from the AST.
-     *
      * @return array<string, mixed>
      */
     #[Override]
     public function build(NodeInterface $ast): array
     {
-        /** @var array<string, mixed> */
+        /**
+         * @var array<string, mixed>
+         */
         return $ast->accept($this);
     }
 
     /**
-     * Visit a binary operator node (title:Coffee AND price:>10).
-     *
      * @return array<string, mixed>
      */
     #[Override]
@@ -48,8 +46,6 @@ readonly class ArrayAdapter extends AbstractAdapter
     }
 
     /**
-     * Visit a comparison node (price:>=5, status:!=sold, title:Coffee).
-     *
      * @return array<string, mixed>
      */
     #[Override]
@@ -69,8 +65,6 @@ readonly class ArrayAdapter extends AbstractAdapter
     }
 
     /**
-     * Visit an exists node (category:*, title:*).
-     *
      * @return array<string, mixed>
      */
     #[Override]
@@ -84,8 +78,6 @@ readonly class ArrayAdapter extends AbstractAdapter
     }
 
     /**
-     * Visit an in node (status:ACTIVE,DRAFT).
-     *
      * @return array<string, mixed>
      */
     #[Override]
@@ -112,8 +104,6 @@ readonly class ArrayAdapter extends AbstractAdapter
     }
 
     /**
-     * Visit a range node (date:[2025-01-01 TO 2025-12-31], price:[10 TO 50]).
-     *
      * @return array<string, mixed>
      */
     #[Override]
@@ -125,15 +115,13 @@ readonly class ArrayAdapter extends AbstractAdapter
 
         return [
             'field' => $this->getInternalFieldName($node->getField()),
-            'from' => $from === null ? null : ($field?->toStorage($from) ?? $from),
-            'to' => $to === null ? null : ($field?->toStorage($to) ?? $to),
+            'from' => $from === null ? null : $field?->toStorage($from) ?? $from,
+            'to' => $to === null ? null : $field?->toStorage($to) ?? $to,
             'type' => 'range',
         ];
     }
 
     /**
-     * Visit a term node (2025, Coffee, Electronics).
-     *
      * @return array<string, mixed>
      */
     #[Override]
@@ -147,8 +135,6 @@ readonly class ArrayAdapter extends AbstractAdapter
     }
 
     /**
-     * Visit a unary operator node (NOT test, -title:Coffee).
-     *
      * @return array<string, mixed>
      */
     #[Override]

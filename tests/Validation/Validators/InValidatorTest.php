@@ -2,45 +2,63 @@
 
 declare(strict_types=1);
 
+use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
+use HosmelQ\SearchSyntaxParser\Validation\AllowedFieldItemRules;
 use HosmelQ\SearchSyntaxParser\Validation\Validators\InValidator;
 
-it('validates scalar values against allowed list', function (
-    array $allowed,
-    mixed $value,
-    bool $expected,
-): void {
-    $validator = new InValidator($allowed);
+it('rejects ambiguous allowed string values when configured', function (array $values): void {
+    expect(fn (): AllowedField => AllowedField::in('status', $values))
+        ->toThrow(InvalidArgumentException::class)
+        ->and(fn (): AllowedFieldItemRules => new AllowedFieldItemRules()->in($values))
+        ->toThrow(InvalidArgumentException::class);
+})->with([[['open', 'OPEN']], [['Été', 'été']], [['same', 'same']], [['', '']]]);
 
-    expect($validator($value, 'status'))->toBe($expected);
-})->with([
-    'not in list' => [['A', 'B', '1'], 'C', false],
-    'not in list numeric string' => [[1, 2, 3], '4', false],
-    'in list string' => [['A', 'B', '1'], 'A', true],
-    'in list numeric string' => [[1, 2, 3], '1', true],
-    'in list integer' => [['1', '2', '3'], 1, true],
-    'in list float' => [['1.5'], 1.5, true],
-    'in list boolean' => [['1'], true, true],
-    'in list null' => [[''], null, true],
-    'unsupported object' => [['A'], new stdClass(), false],
-    'unsupported allowed object' => [[new stdClass()], 'A', false],
-    'unsupported allowed array' => [[['A']], 'A', false],
-]);
-
-it('validates arrays against allowed list', function (
+it('rejects arrays with values outside the allowed list', function (
     array $allowed,
     array $value,
-    bool $expected,
 ): void {
     $validator = new InValidator($allowed);
 
-    expect($validator($value, 'tags'))->toBe($expected);
+    expect($validator($value, 'tags'))->toBeFalse();
 })->with([
-    'contains nested array' => [['A', 'B'], ['A', ['B']], false],
-    'contains unsupported object' => [['A'], [new stdClass()], false],
-    'mixed scalar values' => [['1', '1.5', ''], [true, 1.5, null], true],
-    'contains disallowed' => [['A', 'B'], ['A', 'C'], false],
-    'all allowed' => [['A', 'B'], ['A', 'B'], true],
-    'empty array' => [['A', 'B'], [], true],
+    'contains nested array' => [['A', 'B'], ['A', ['B']]],
+    'contains unsupported object' => [['A'], [new stdClass()]],
+    'contains disallowed' => [['A', 'B'], ['A', 'C']],
+]);
+
+it('rejects scalar values outside the allowed list', function (array $allowed, mixed $value): void {
+    $validator = new InValidator($allowed);
+
+    expect($validator($value, 'status'))->toBeFalse();
+})->with([
+    'not in list' => [['A', 'B', '1'], 'C'],
+    'not in list numeric string' => [[1, 2, 3], '4'],
+    'unsupported object' => [['A'], new stdClass()],
+    'unsupported allowed object' => [[new stdClass()], 'A'],
+    'unsupported allowed array' => [[['A']], 'A'],
+]);
+
+it('accepts arrays of allowed values', function (array $allowed, array $value): void {
+    $validator = new InValidator($allowed);
+
+    expect($validator($value, 'tags'))->toBeTrue();
+})->with([
+    'mixed scalar values' => [['1', '1.5', ''], [true, 1.5, null]],
+    'all allowed' => [['A', 'B'], ['A', 'B']],
+    'empty array' => [['A', 'B'], []],
+]);
+
+it('accepts scalar values in the allowed list', function (array $allowed, mixed $value): void {
+    $validator = new InValidator($allowed);
+
+    expect($validator($value, 'status'))->toBeTrue();
+})->with([
+    'in list string' => [['A', 'B', '1'], 'A'],
+    'in list numeric string' => [[1, 2, 3], '1'],
+    'in list integer' => [['1', '2', '3'], 1],
+    'in list float' => [['1.5'], 1.5],
+    'in list boolean' => [['1'], true],
+    'in list null' => [[''], null],
 ]);
 
 it('compares stringable values in both inputs and allowed lists', function (): void {
@@ -51,7 +69,10 @@ it('compares stringable values in both inputs and allowed lists', function (): v
         }
     };
 
-    expect((new InValidator(['A']))($value, 'status'))->toBeTrue()
-        ->and((new InValidator(['A']))([$value], 'status'))->toBeTrue()
-        ->and((new InValidator([$value]))('A', 'status'))->toBeTrue();
+    expect((new InValidator(['A']))($value, 'status'))
+        ->toBeTrue()
+        ->and((new InValidator(['A']))([$value], 'status'))
+        ->toBeTrue()
+        ->and((new InValidator([$value]))('A', 'status'))
+        ->toBeTrue();
 });

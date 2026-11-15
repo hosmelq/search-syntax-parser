@@ -70,22 +70,13 @@ class SearchParser
      */
     private null|array $settings = null;
 
-    /**
-     * Create a new SearchParser instance.
-     */
     public function __construct(private readonly string $query = '') {}
 
-    /**
-     * Create a new SearchParser instance for the given query.
-     */
     public static function query(string $query): self
     {
         return new self($query);
     }
 
-    /**
-     * Get an adapter instance.
-     */
     public function adapter(null|string $adapter = null): QueryAdapterInterface
     {
         $adapter ??= $this->getDefaultAdapter();
@@ -93,9 +84,6 @@ class SearchParser
         return $this->adapters[$adapter] ??= $this->createAdapter($adapter);
     }
 
-    /**
-     * Accept unconfigured fields in addition to any configured field rules.
-     */
     public function allowAnyField(): self
     {
         $this->allowsAnyField = true;
@@ -104,8 +92,6 @@ class SearchParser
     }
 
     /**
-     * Set allowed fields with optional validation.
-     *
      * @param list<AllowedField|string> $fields
      */
     public function allowedFields(array $fields): self
@@ -131,18 +117,13 @@ class SearchParser
             }
         }
 
-        // The longest pattern wins when several match the same field name.
-        if (count($this->patternFields) > 1) {
-            usort($this->patternFields, static fn (AllowedField $left, AllowedField $right): int
-                => mb_strlen($right->getName()) <=> mb_strlen($left->getName()));
-        }
+        usort($this->patternFields, static fn (AllowedField $left, AllowedField $right): int
+            => mb_strlen($right->getName()) <=> mb_strlen($left->getName()));
 
         return $this;
     }
 
     /**
-     * Configure public sort keys and their internal field mappings.
-     *
      * @param list<AllowedSort|string> $sorts
      */
     public function allowedSorts(array $sorts): self
@@ -187,9 +168,6 @@ class SearchParser
         return $this;
     }
 
-    /**
-     * Accept leading wildcards in free text and fields accepted only through allowAnyField().
-     */
     public function allowLeadingWildcards(): self
     {
         $this->allowsLeadingWildcards = true;
@@ -197,9 +175,6 @@ class SearchParser
         return $this;
     }
 
-    /**
-     * Check whether fields without configuration are accepted.
-     */
     public function allowsAnyField(): bool
     {
         return $this->allowsAnyField;
@@ -211,12 +186,7 @@ class SearchParser
     }
 
     /**
-     * Parse and build a query using the specified or default adapter.
-     * Return null without calling the adapter when no filters remain, except that the
-     * string adapter also renders explicit directives and sorting with a null filter tree.
-     *
-     * @throws InvalidArgumentException When a configured default is invalid or the adapter is unknown.
-     * @throws ParseException
+     * A null filter tree skips adapters except string output with explicit directives or sorting.
      */
     public function build(null|string $adapter = null): mixed
     {
@@ -234,9 +204,6 @@ class SearchParser
                 : null;
     }
 
-    /**
-     * Set a fallback sort key, optionally suffixed with -asc or -desc.
-     */
     public function defaultSort(string $sort): self
     {
         $this->defaultSort = $sort;
@@ -245,8 +212,6 @@ class SearchParser
     }
 
     /**
-     * Register a custom adapter creator.
-     *
      * @param callable(): QueryAdapterInterface $callback
      */
     public function extend(string $adapter, callable $callback): static
@@ -256,9 +221,6 @@ class SearchParser
         return $this;
     }
 
-    /**
-     * Get AllowedField object for a specific field.
-     */
     public function getAllowedField(string $field): null|AllowedField
     {
         if (isset($this->allowedFields[$field])) {
@@ -277,8 +239,6 @@ class SearchParser
     }
 
     /**
-     * Get all allowed field names.
-     *
      * @return list<string>
      */
     public function getAllowedFieldNames(): array
@@ -294,17 +254,12 @@ class SearchParser
         return $this->allowedSorts;
     }
 
-    /**
-     * Get the default adapter name.
-     */
     public function getDefaultAdapter(): string
     {
         return 'array';
     }
 
     /**
-     * Get resolved directive values from the latest parse or build.
-     *
      * @return array<int|string, bool|float|int|string>
      */
     public function getDirectives(): array
@@ -327,17 +282,11 @@ class SearchParser
         return $this->settings['typed'] ?? [];
     }
 
-    /**
-     * Check if a field is allowed for searching.
-     */
     public function isFieldAllowed(string $field): bool
     {
         return $this->getAllowedField($field)?->accepts($field) ?? $this->allowsAnyField;
     }
 
-    /**
-     * Limit the number of leaf clauses in a query.
-     */
     public function maxClauses(int $clauses): self
     {
         if ($clauses <= 0) {
@@ -349,9 +298,6 @@ class SearchParser
         return $this;
     }
 
-    /**
-     * Limit nesting of groups and negation operators.
-     */
     public function maxDepth(int $depth): self
     {
         if ($depth <= 0) {
@@ -363,9 +309,6 @@ class SearchParser
         return $this;
     }
 
-    /**
-     * Limit the query length in characters, checked before tokenizing.
-     */
     public function maxLength(int $characters): self
     {
         if ($characters <= 0) {
@@ -377,12 +320,6 @@ class SearchParser
         return $this;
     }
 
-    /**
-     * Parse filters into an AST or null, storing directives and sorting separately.
-     *
-     * @throws InvalidArgumentException When a configured default is invalid for its field.
-     * @throws ParseException
-     */
     public function parse(): null|NodeInterface
     {
         $this->settings = null;
@@ -425,8 +362,6 @@ class SearchParser
 
                 $value = $field->getDefault();
 
-                // Validate like the equivalent query clause: list items one by one on scalar
-                // fields, a scalar as a one-item collection on array fields.
                 if ($value !== null) {
                     $value = is_array($value)
                         ? array_map(
@@ -469,7 +404,6 @@ class SearchParser
             }
         }
 
-        // The public order is declaration order, independent of how settings were written.
         $resolvedDirectives = $directives + $typedDirectives;
         $directives = [];
 
@@ -492,9 +426,6 @@ class SearchParser
         return $ast;
     }
 
-    /**
-     * Validate a field value.
-     */
     public function validateField(string $field, mixed $value): bool
     {
         $allowed = $this->getAllowedField($field);
@@ -514,9 +445,6 @@ class SearchParser
         return true;
     }
 
-    /**
-     * Create the Array adapter.
-     */
     protected function createArrayAdapter(): ArrayAdapter
     {
         return new ArrayAdapter($this);
@@ -540,9 +468,6 @@ class SearchParser
         }
     }
 
-    /**
-     * Read a string default like typed query text; other scalars must already have the cast type.
-     */
     private function castDefault(
         AllowedField $field,
         bool|float|int|string $value,
@@ -561,9 +486,6 @@ class SearchParser
         return $value;
     }
 
-    /**
-     * Create an adapter instance.
-     */
     private function createAdapter(string $adapter): QueryAdapterInterface
     {
         if (isset($this->customCreators[$adapter])) {
@@ -586,7 +508,6 @@ class SearchParser
         $allowed = $this->allowedSorts[$key] ?? null;
         $separator = mb_strrpos($key, '-');
 
-        // An explicit final direction wins when its preceding key is configured.
         if ($separator !== false) {
             $suffix = mb_substr($key, $separator + 1);
             $base = $this->allowedSorts[mb_substr($key, 0, $separator)] ?? null;
@@ -615,9 +536,6 @@ class SearchParser
         );
     }
 
-    /**
-     * Convert a string to a studly caps case.
-     */
     private function studly(string $value): string
     {
         $value = ucwords(str_replace(['-', '_'], ' ', $value));

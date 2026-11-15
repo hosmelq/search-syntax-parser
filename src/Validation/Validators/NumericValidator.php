@@ -12,12 +12,9 @@ class NumericValidator implements ValidatorInterface
 {
     use ValidatesAttributes;
 
-    /**
-     * Validate that the value is numeric.
-     */
     #[Override]
     public function __invoke(mixed $value, string $attribute): bool
     {
-        return $this->validateNumeric($attribute, $value);
+        return $this->validateNumeric($value);
     }
 }

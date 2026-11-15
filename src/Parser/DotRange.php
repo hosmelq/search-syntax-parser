@@ -5,17 +5,12 @@ declare(strict_types=1);
 namespace HosmelQ\SearchSyntaxParser\Parser;
 
 /**
- * Recognizes unquoted `a..b` range text, shared by the parser and the string adapter.
- *
  * @internal
  */
 final class DotRange
 {
     /**
-     * Split `a..b` into its bounds, or return null when the text is not a range.
-     *
-     * A range has exactly one `..` touching no other dot, non-empty sides, and no `/`,
-     * so ellipses (`wait...`) and paths (`src/../lib`) stay literal text.
+     * Ellipses and paths remain literal text instead of compact ranges.
      *
      * @return null|array{string, string}
      */

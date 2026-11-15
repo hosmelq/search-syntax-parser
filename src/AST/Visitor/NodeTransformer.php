@@ -15,14 +15,13 @@ use HosmelQ\SearchSyntaxParser\AST\Node\UnaryOperatorNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\WildcardNode;
 use Override;
 
-/**
- * Rewrite a tree by overriding individual visits, preserving untouched leaves and metadata.
- */
 class NodeTransformer implements VisitorInterface
 {
     public function transform(NodeInterface $node): NodeInterface
     {
-        /** @var NodeInterface */
+        /**
+         * @var NodeInterface
+         */
         return $node->accept($this);
     }
 

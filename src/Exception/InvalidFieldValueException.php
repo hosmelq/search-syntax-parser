@@ -19,9 +19,6 @@ class InvalidFieldValueException extends SearchSyntaxException
         );
     }
 
-    /**
-     * Field value failed validation.
-     */
     public static function invalidValue(string $field, null|int $position = null): self
     {
         return new self(sprintf("Invalid value for field '%s'.", $field), $field, $position);

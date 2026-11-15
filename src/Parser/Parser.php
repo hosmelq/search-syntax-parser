@@ -41,16 +41,10 @@ class Parser
 
     private int $extentStart = 0;
 
-    /**
-     * Whether the query contains `..` at all, so clauses can skip compact range checks.
-     */
     private bool $hasDotRanges = false;
 
     private readonly bool $hasSorts;
 
-    /**
-     * Whether the query contains `*` at all, so clauses can skip pattern checks.
-     */
     private bool $hasStars = false;
 
     private int $index = 0;
@@ -93,8 +87,6 @@ class Parser
     }
 
     /**
-     * Return field mentions, including clauses removed by ignored values.
-     *
      * @return array<string, true>
      */
     public function getReferencedFields(): array
@@ -107,7 +99,6 @@ class Parser
      */
     public function getSortInput(): null|array
     {
-        // Without configured sorts, a setting named sort is an ordinary directive.
         $setting = $this->hasSorts ? ($this->settings['sort'] ?? null) : null;
 
         return $setting === null
@@ -120,11 +111,6 @@ class Parser
         return $this->settings !== [];
     }
 
-    /**
-     * Parse input into an AST, bounding recursion and tree size.
-     *
-     * @throws ParseException
-     */
     public function parse(string $input, bool $hasDefaults = false): null|NodeInterface
     {
         $this->tokens = new SearchLexer()->tokenize($input);
@@ -178,9 +164,6 @@ class Parser
         return $directives;
     }
 
-    /**
-     * Check a field pattern's shape: leading wildcards and the minimum literal length.
-     */
     private function assertPattern(
         string $field,
         null|AllowedField $allowed,
@@ -191,7 +174,6 @@ class Parser
         // A quoted pattern is its literal text plus a trailing `*`; an unquoted one may hold
         // several `*`. Counting characters avoids splitting the pattern into segments.
         $leading = $quoted ? mb_strlen($pattern) === 1 : str_starts_with($pattern, '*');
-        // A word prefix has literal text and wildcards only at its end.
         $prefix = ! $leading && ($quoted || ! str_contains(mb_rtrim($pattern, '*'), '*'));
 
         if ($allowed instanceof AllowedField) {
@@ -211,8 +193,7 @@ class Parser
     }
 
     /**
-     * Join operands, skipping removed ones. Extents are token indexes of the surviving operands,
-     * so a binary node's span never covers removed clauses at its edges.
+     * Extents track surviving operands so spans exclude removed clauses at their edges.
      */
     private function combine(
         string $operator,
@@ -246,7 +227,6 @@ class Parser
     }
 
     /**
-     * Tell cheaply whether the current value token, after a leading minus, contains `..`.
      * Whether the minus is adjacent is checked by rangeBounds().
      */
     private function hasDots(): bool
@@ -360,7 +340,7 @@ class Parser
             return $expression;
         }
 
-        $value = $this->tokens->values[$this->index] ?? '';
+        $value = $this->tokens->values[$this->index];
 
         if (
             ! match ($type) {
@@ -588,15 +568,14 @@ class Parser
                 $hasPattern = $hasPattern || $this->segments !== null;
             } while (($this->tokens->types[$this->index] ?? null) === TokenType::Comma);
 
-            if ($hasPattern && $operator !== '=' && $operator !== '!=') {
-                $patternIndex = array_find_key(
-                    $patterns,
-                    static fn (null|array $pattern): bool => $pattern !== null,
-                );
-
-                throw ParseException::invalidWildcardPattern(
-                    $this->position($starts[$patternIndex ?? 0]),
-                );
+            if ($operator !== '=' && $operator !== '!=') {
+                foreach ($patterns as $index => $pattern) {
+                    if ($pattern !== null) {
+                        throw ParseException::invalidWildcardPattern(
+                            $this->position($starts[$index]),
+                        );
+                    }
+                }
             }
 
             if ($allowed instanceof AllowedField) {
@@ -741,8 +720,6 @@ class Parser
     }
 
     /**
-     * Parse a range bound, returning null for an open `*` bound, which is neither cast nor validated.
-     *
      * @phpstan-impure
      */
     private function parseRangeBound(
@@ -783,8 +760,6 @@ class Parser
     }
 
     /**
-     * Read a single equality setting without running aliases or casts before placement is known.
-     *
      * @phpstan-impure
      */
     private function parseSetting(string $field, int $start, null|AllowedField $allowed): null
@@ -843,7 +818,6 @@ class Parser
 
         $allowed?->assertOperatorAllowed('=', $this->position($valueIndex), $field);
 
-        // Reuse value syntax checks, retaining the raw spelling for the field's later cast.
         $this->parseValue($field, null, rangeChecked: true);
 
         $value = ($type === TokenType::Minus ? '-' : '').$this->tokens->values[$wordIndex];
@@ -863,7 +837,6 @@ class Parser
      */
     private function parseTerm(int $depth): null|NodeInterface
     {
-        // A factor is contiguous: a clause, a NOT over a factor, or a group including its parentheses.
         $leftStart = $this->index;
         $left = $this->parseFactor($depth);
         $leftEnd = $this->index - 1;
@@ -965,8 +938,6 @@ class Parser
     }
 
     /**
-     * Read an unquoted a..b candidate without consuming it; a leading minus must be adjacent.
-     *
      * @return null|array{string, string}
      */
     private function rangeBounds(null|int $index = null): null|array

@@ -33,9 +33,6 @@ final class SearchLexer
     private const string WORD_TAIL = '[^\s():,<>\[\]!.]*+(?:(?:!(?!=)|\.\.'
         .self::DATETIME.'|\.++)[^\s():,<>\[\]!.]*+)*+';
 
-    /**
-     * @throws ParseException
-     */
     public function tokenize(string $input): Tokens
     {
         if (preg_match_all(self::PATTERN, $input, $matches, PREG_PATTERN_ORDER) === false) {
@@ -61,7 +58,7 @@ final class SearchLexer
 
             $start = $offset;
             $offset += isset($value[1]) ? mb_strlen($value, $encoding) : 1;
-            $kind = $matches['MARK'][$index] ?? '';
+            $kind = $matches['MARK'][$index];
 
             if ($kind === 'e') {
                 throw ParseException::unterminatedQuote($start);
@@ -76,7 +73,7 @@ final class SearchLexer
                     'NOT' => TokenType::Not,
                     default => TokenType::Word,
                 },
-                default => match ($value) {
+                default => [
                     ':' => TokenType::Colon,
                     ',' => TokenType::Comma,
                     '-' => TokenType::Minus,
@@ -89,8 +86,7 @@ final class SearchLexer
                     '<' => TokenType::Less,
                     '<=' => TokenType::LessEqual,
                     '!=' => TokenType::NotEqual,
-                    default => TokenType::Word,
-                },
+                ][$value],
             };
 
             if ($type === TokenType::String || $type === TokenType::Wildcard) {

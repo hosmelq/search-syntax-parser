@@ -11,8 +11,6 @@ use Override;
 readonly class InNode implements NodeInterface
 {
     /**
-     * Create a new in node.
-     *
      * @param list<bool|float|int|string> $values
      * @param list<bool> $quoted
      * @param list<int> $positions written positions of the values; empty means their list order
@@ -27,34 +25,23 @@ readonly class InNode implements NodeInterface
         private array $positions = [],
     ) {}
 
-    /**
-     * {@inheritDoc}
-     */
     #[Override]
     public function accept(VisitorInterface $visitor): mixed
     {
         return $visitor->visitIn($this);
     }
 
-    /**
-     * Get the field name for this comparison.
-     */
     public function getField(): string
     {
         return $this->field;
     }
 
-    /**
-     * Get the comparison operator (e.g., =, !=).
-     */
     public function getOperator(): string
     {
         return $this->operator;
     }
 
     /**
-     * Get the position each value had in the query, before ignored items were removed.
-     *
      * @return list<int>
      */
     public function getPositions(): array
@@ -62,9 +49,6 @@ readonly class InNode implements NodeInterface
         return $this->positions === [] ? array_keys($this->values) : $this->positions;
     }
 
-    /**
-     * {@inheritDoc}
-     */
     #[Override]
     public function getSpan(): null|Span
     {
@@ -78,8 +62,6 @@ readonly class InNode implements NodeInterface
     }
 
     /**
-     * Get the array of values for this comparison.
-     *
      * @return list<bool|float|int|string>
      */
     public function getValues(): array
@@ -87,9 +69,6 @@ readonly class InNode implements NodeInterface
         return $this->values;
     }
 
-    /**
-     * Whether this clause was created from a configured field default.
-     */
     public function isDefault(): bool
     {
         return $this->default;

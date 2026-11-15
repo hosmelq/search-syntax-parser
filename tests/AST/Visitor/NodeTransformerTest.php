@@ -10,25 +10,6 @@ use HosmelQ\SearchSyntaxParser\AST\Visitor\NodeTransformer;
 use HosmelQ\SearchSyntaxParser\SearchParser;
 use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
 
-it('preserves the complete tree including spans quoted terms and default origins', function (): void {
-    $node = SearchParser::query(
-        'NOT (price:>10 OR status:open,closed) title:[a TO z] tag:* title:mu* "coffee"',
-    )
-        ->allowAnyField()->allowedFields([
-            AllowedField::string('region')->default('north'),
-            AllowedField::array('labels')->default(['one', 'two']),
-            AllowedField::string('deleted')->default(null),
-        ])->parse();
-    $transformed = new NodeTransformer()->transform($node);
-
-    expect($transformed)->toEqual($node)
-        ->and(new ArrayAdapter()->build($transformed))->toBe(new ArrayAdapter()->build($node))
-        ->and(new StringAdapter()->build($transformed))->toBe(new StringAdapter()->build($node))
-        ->and($transformed->getRight()->isDefault())->toBeTrue()
-        ->and($transformed->getLeft()->getRight()->isDefault())->toBeTrue()
-        ->and($transformed->getLeft()->getLeft()->getRight()->isDefault())->toBeTrue();
-});
-
 it('allows one visit override to rewrite leaves anywhere in a tree', function (): void {
     $transformer = new class () extends NodeTransformer {
         #[Override]
@@ -48,4 +29,23 @@ it('allows one visit override to rewrite leaves anywhere in a tree', function ()
         ->and($transformed->getSpan())->toBe($node->getSpan())
         ->and($transformed->getRight()->getOperand()->getLeft()->getSpan())
         ->toBe($node->getRight()->getOperand()->getLeft()->getSpan());
+});
+
+it('preserves the complete tree including spans quoted terms and default origins', function (): void {
+    $node = SearchParser::query(
+        'NOT (price:>10 OR status:open,closed) title:[a TO z] tag:* title:mu* "coffee"',
+    )
+        ->allowAnyField()->allowedFields([
+            AllowedField::string('region')->default('north'),
+            AllowedField::array('labels')->default(['one', 'two']),
+            AllowedField::string('deleted')->default(null),
+        ])->parse();
+    $transformed = new NodeTransformer()->transform($node);
+
+    expect($transformed)->toEqual($node)
+        ->and(new ArrayAdapter()->build($transformed))->toBe(new ArrayAdapter()->build($node))
+        ->and(new StringAdapter()->build($transformed))->toBe(new StringAdapter()->build($node))
+        ->and($transformed->getRight()->isDefault())->toBeTrue()
+        ->and($transformed->getLeft()->getRight()->isDefault())->toBeTrue()
+        ->and($transformed->getLeft()->getLeft()->getRight()->isDefault())->toBeTrue();
 });

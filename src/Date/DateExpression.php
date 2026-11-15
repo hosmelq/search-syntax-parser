@@ -5,8 +5,6 @@ declare(strict_types=1);
 namespace HosmelQ\SearchSyntaxParser\Date;
 
 /**
- * Shared syntax checks without resolving relative values or choosing a time zone.
- *
  * @internal
  */
 final class DateExpression

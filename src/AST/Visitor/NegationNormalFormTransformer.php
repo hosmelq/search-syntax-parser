@@ -73,9 +73,6 @@ final class NegationNormalFormTransformer extends NodeTransformer
             : $node;
     }
 
-    /**
-     * Keep a negated default leaf recognisable as a default.
-     */
     private function isDefault(NodeInterface $node): bool
     {
         return ($node instanceof ComparisonNode

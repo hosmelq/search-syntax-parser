@@ -5,10 +5,411 @@ declare(strict_types=1);
 use HosmelQ\SearchSyntaxParser\Adapter\ArrayAdapter;
 use HosmelQ\SearchSyntaxParser\Adapter\QueryAdapterInterface;
 use HosmelQ\SearchSyntaxParser\AST\Node\ComparisonNode;
+use HosmelQ\SearchSyntaxParser\AST\Node\ExistsNode;
+use HosmelQ\SearchSyntaxParser\AST\Node\InNode;
 use HosmelQ\SearchSyntaxParser\AST\Node\NodeInterface;
+use HosmelQ\SearchSyntaxParser\AST\Node\UnaryOperatorNode;
+use HosmelQ\SearchSyntaxParser\AST\Span;
+use HosmelQ\SearchSyntaxParser\Exception\ErrorReason;
+use HosmelQ\SearchSyntaxParser\Exception\InvalidFieldException;
+use HosmelQ\SearchSyntaxParser\Exception\InvalidFieldOperatorException;
+use HosmelQ\SearchSyntaxParser\Exception\InvalidFieldValueException;
+use HosmelQ\SearchSyntaxParser\Exception\ParseException;
 use HosmelQ\SearchSyntaxParser\SearchParser;
+use HosmelQ\SearchSyntaxParser\Sorting\AllowedSort;
 use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
 use HosmelQ\SearchSyntaxParser\Validation\AllowedFieldItemRules;
+
+it('keeps a sort directive name free when no sorts are configured', function (): void {
+    $parser = SearchParser::query('sort:newest')->allowedFields([
+        AllowedField::string('sort')->directive(),
+    ]);
+
+    expect($parser->parse())->toBeNull()
+        ->and($parser->getDirectives())->toBe(['sort' => 'newest'])
+        ->and($parser->getSort())->toBeNull()
+        ->and($parser->isFieldAllowed('sort'))->toBeTrue()
+        ->and(
+            SearchParser::query('')->allowedSorts(['created'])->isFieldAllowed('sort'),
+        )->toBeFalse();
+});
+
+it('preserves the rejection message when allowed fields are configured', function (): void {
+    SearchParser::query('title:x')->allowedFields(['age', 'status'])->parse();
+})->throws(
+    InvalidFieldException::class,
+    "Field 'title' is not allowed. Allowed fields are: age, status.",
+);
+
+it('rejects a sort whose name is another sort plus a direction', function (string $name): void {
+    expect(fn (): SearchParser => SearchParser::query('')->allowedSorts([
+        AllowedSort::field('created'),
+        AllowedSort::field($name),
+    ]))->toThrow(InvalidArgumentException::class, 'is ambiguous with sort');
+})->with(['created-desc', 'CREATED-ASC']);
+
+it('rejects an unknown adapter even when no constraints remain', function (): void {
+    $parser = SearchParser::query('')->allowedFields([AllowedField::string('status')]);
+
+    expect(fn (): mixed => $parser->build('unknown'))
+        ->toThrow(InvalidArgumentException::class, "Adapter 'unknown' not supported.");
+});
+
+it('rejects defaults that fail field validation when they apply', function (
+    AllowedField $field,
+): void {
+    expect(fn (): null|NodeInterface => SearchParser::query('')->allowedFields([$field])->parse())
+        ->toThrow(InvalidArgumentException::class, "Invalid default for field 'status'.");
+})->with([
+    'membership' => [AllowedField::in('status', ['open', 'closed'])->default('ACTVE')],
+    'type' => [AllowedField::integer('status')->default('abc')],
+    'size' => [AllowedField::string('status')->min(3)->default('ab')],
+    'collection size' => [AllowedField::array('status')->size(2)->default(['open'])],
+    'item type' => [
+        AllowedField::array('status')->each(fn ($rules) => $rules->integer())->default(['abc']),
+    ],
+    'item position' => [
+        AllowedField::array('status')->at(1, fn ($rules) => $rules->min(5))->default([1, 2]),
+    ],
+    'scalar on sized array' => [AllowedField::array('status')->size(2)->default('open')],
+    'list item on scalar field' => [
+        AllowedField::string('status')->min(3)->default(['open', 'ab']),
+    ],
+]);
+
+it('rejects duplicate sort names ignoring case', function (): void {
+    SearchParser::query('')->allowedSorts(['created', 'CREATED']);
+})->throws(InvalidArgumentException::class);
+
+it('rejects field queries by default with an empty allowlist and a character position', function (
+    bool $configureEmptyList,
+): void {
+    $parser = SearchParser::query('  é title:x');
+
+    if ($configureEmptyList) {
+        $parser->allowedFields([]);
+    }
+
+    expect($parser->isFieldAllowed('title'))->toBeFalse();
+
+    try {
+        $parser->parse();
+
+        test()->fail('Expected a field error.');
+    } catch (InvalidFieldException $invalidFieldException) {
+        expect($invalidFieldException)->getMessage()->toBe(
+            "Field 'title' is not allowed. No fields are allowed.",
+        )
+            ->and($invalidFieldException->getField())->toBe('title')
+            ->and($invalidFieldException->getReason())->toBe(ErrorReason::FieldNotAllowed)
+            ->and($invalidFieldException->getParameters())->toBe([
+                'field' => 'title',
+                'allowed' => [],
+            ])
+            ->and($invalidFieldException->getPosition())->toBe(4);
+    }
+})->with([false, true]);
+
+it('rejects invalid default sort configuration', function (string $default): void {
+    SearchParser::query('')->allowedSorts(['created'])->defaultSort($default)->parse();
+})->throws(InvalidArgumentException::class, 'default sort')->with(['unknown', 'created-up']);
+
+it('rejects invalid directive defaults as configuration errors', function (): void {
+    SearchParser::query('')->allowedFields([
+        AllowedField::integer('limit')->directive()->min(1)->default('bad'),
+    ])->parse();
+})->throws(InvalidArgumentException::class, "Invalid default for field 'limit'.");
+
+it('rejects invalid keys without falling through to a broader pattern or allowAnyField', function (
+    bool $allowAny,
+): void {
+    $parser = SearchParser::query('é meta.stats.private:12')->allowedFields([
+        AllowedField::string('meta.*')->keys('/^.+$/D'),
+        AllowedField::integer('meta.stats.*')->keys(fn (string $key): bool => $key === 'views'),
+    ]);
+
+    if ($allowAny) {
+        $parser->allowAnyField();
+    }
+
+    try {
+        $parser->parse();
+
+        test()->fail('Expected an invalid key error.');
+    } catch (InvalidFieldException $invalidFieldException) {
+        expect($invalidFieldException->getField())->toBe('meta.stats.private')
+            ->and($invalidFieldException->getPosition())->toBe(2)
+            ->and($invalidFieldException->getReason())->toBe(ErrorReason::FieldNotAllowed)
+            ->and($invalidFieldException->getParameters())->toBe([
+                'field' => 'meta.stats.private',
+                'allowed' => ['meta.*', 'meta.stats.*'],
+            ])
+            ->and($invalidFieldException->getMessage())->toContain('meta.*, meta.stats.*');
+    }
+})->with([false, true]);
+
+it('rejects non-string defaults whose type the field never produces from text', function (
+    AllowedField $field,
+): void {
+    expect(fn (): null|NodeInterface => SearchParser::query('')->allowedFields([$field])->parse())
+        ->toThrow(InvalidArgumentException::class, "Invalid default for field 'value'.");
+})->with([
+    'bool on integer' => [AllowedField::integer('value')->default(true)],
+    'float on integer' => [AllowedField::integer('value')->default(18.0)],
+    'int on boolean' => [AllowedField::boolean('value')->default(1)],
+    'loose member' => [AllowedField::in('value', ['1', '2'])->default(1)],
+    'list item' => [
+        AllowedField::array('value')
+            ->each(fn ($rules) => $rules->integer())
+            ->default([1, '2', true]),
+    ],
+]);
+
+it('rejects non-string identifier defaults as configuration errors', function (string $type): void {
+    SearchParser::query('')->allowedFields([AllowedField::$type('id')->default(1)])->parse();
+})->throws(InvalidArgumentException::class)->with(['uuid', 'ulid']);
+
+it('rejects nonpositive limits', function (int $limit): void {
+    expect(fn (): SearchParser => SearchParser::query('a')->maxDepth($limit))->toThrow(
+        InvalidArgumentException::class,
+    )
+        ->and(fn (): SearchParser => SearchParser::query('a')->maxClauses($limit))->toThrow(
+            InvalidArgumentException::class,
+        )
+        ->and(fn (): SearchParser => SearchParser::query('a')->maxLength($limit))->toThrow(
+            InvalidArgumentException::class,
+        );
+})->with([0, -1]);
+
+it('rejects queries longer than the default length before tokenizing', function (): void {
+    expect(SearchParser::query(str_repeat('é', 10_000))->parse()->getValue())->toHaveLength(10_000)
+        ->and(fn (): mixed => SearchParser::query(str_repeat('(', 10_001))->parse())
+        ->toThrow(
+            ParseException::class,
+            'Search query exceeds the maximum length of 10000 characters.',
+        );
+});
+
+it('rejects time defaults on fields without time regardless of configuration order', function (
+    Closure $field,
+): void {
+    SearchParser::query('')->allowedFields([$field()])->parse();
+})->throws(InvalidArgumentException::class)->with([
+    fn (): AllowedField => AllowedField::date('due')->withoutTime()->default('now'),
+    fn (): AllowedField => AllowedField::date('due')->default('now')->withoutTime(),
+]);
+
+it('reports allowed fields and validation helpers', function (): void {
+    $parser = SearchParser::query('age:10')->allowedFields([
+        AllowedField::integer('age', 'user_age'),
+    ]);
+
+    expect($parser->isFieldAllowed('age'))->toBeTrue()
+        ->and($parser->isFieldAllowed('name'))->toBeFalse()
+        ->and($parser->getAllowedField('age'))->not->toBeNull()
+        ->and($parser->getAllowedFieldNames())->toBe(['age'])
+        ->and($parser->validateField('age', 10))->toBeTrue()
+        ->and($parser->validateField('age', 'ten'))->toBeFalse()
+        ->and($parser->validateField('other', 'any'))->toBeTrue();
+});
+
+it('reports the token that exceeds query limits', function (
+    string $query,
+    string $limit,
+    int $position,
+): void {
+    $parser = SearchParser::query($query)->allowAnyField();
+
+    match ($limit) {
+        'length' => $parser->maxLength(3),
+        'depth' => $parser->maxDepth(1),
+        'clauses' => $parser->maxClauses(2),
+    };
+
+    try {
+        $parser->build();
+
+        test()->fail('Expected a query limit error.');
+    } catch (ParseException $parseException) {
+        expect($parseException->getPosition())->toBe($position);
+    }
+})->with([
+    ['  éé', 'length', 3],
+    ['é (NOT a)', 'depth', 3],
+    ['é (-a)', 'depth', 3],
+    ['é ((a))', 'depth', 3],
+    ['é a name:b', 'clauses', 4],
+    ['name:a,b*,c', 'clauses', 10],
+    ['é name:a,b*', 'clauses', 9],
+]);
+
+it('reports unknown sort keys or directions at the value token', function (string $value): void {
+    try {
+        SearchParser::query('é sort:'.$value)
+            ->allowedSorts(['created-at'])
+            ->defaultSort('created-at')
+            ->parse();
+
+        test()->fail('Expected an invalid sort value.');
+    } catch (InvalidFieldValueException $invalidFieldValueException) {
+        expect($invalidFieldValueException->getField())->toBe('sort')
+            ->and($invalidFieldValueException->getPosition())->toBe(7)
+            ->and($invalidFieldValueException->getReason())->toBe(ErrorReason::InvalidFieldValue);
+    }
+})->with(['unknown', 'unknown-desc', 'created-at-up', 'created-at-descending', '""']);
+
+it('requires a nonempty key and a matching prefix', function (string $name): void {
+    SearchParser::query($name.':red')->allowedFields([
+        AllowedField::string('meta.*')->keys('/^[a-z]+$/D'),
+    ])->parse();
+})->throws(InvalidFieldException::class)->with([
+    'meta.', 'meta', 'metadata.color', 'other.color', 'meta.123', 'meta.Color',
+]);
+
+it('requires key rules when configuring a pattern into a parser', function (bool $shorthand): void {
+    SearchParser::query('')->allowedFields([
+        $shorthand ? 'meta.*' : AllowedField::string('meta.*'),
+    ]);
+})->throws(InvalidArgumentException::class, 'requires a keys() rule')->with([false, true]);
+
+it('requires non-string defaults to already have the field type', function (): void {
+    expect(fn (): null|NodeInterface => SearchParser::query('')->allowedFields([
+        AllowedField::string('code')->default(1),
+    ])->parse())->toThrow(InvalidArgumentException::class, "Invalid default for field 'code'.");
+});
+
+it('reserves sort only when configured regardless of configuration order or allowAnyField', function (
+    bool $sortsFirst,
+): void {
+    $parser = SearchParser::query('sort:created')->allowAnyField();
+
+    if ($sortsFirst) {
+        $parser->allowedSorts(['created'])->allowedFields([AllowedField::string('sort')]);
+    } else {
+        $parser->allowedFields(['sort'])->allowedSorts(['created']);
+    }
+})->throws(InvalidArgumentException::class, 'reserved')->with([true, false]);
+
+it('still checks the raw query length when defaults exist', function (): void {
+    SearchParser::query('    ')
+        ->maxLength(3)
+        ->allowedFields([AllowedField::string('status')->default('active')])
+        ->parse();
+})->throws(ParseException::class, 'maximum length');
+
+it('still enforces configured operator rules when any field is allowed', function (): void {
+    SearchParser::query('age:>10')->allowAnyField()->allowedFields([
+        AllowedField::integer('age')->operators('='),
+    ])->parse();
+})->throws(InvalidFieldOperatorException::class);
+
+it('still enforces configured value validation when any field is allowed', function (): void {
+    SearchParser::query('age:old')->allowAnyField()->allowedFields([
+        AllowedField::integer('age'),
+    ])->parse();
+})->throws(InvalidFieldValueException::class);
+
+it('supports configurable limits', function (): void {
+    $parser = SearchParser::query('NOT (a b)')->maxDepth(2)->maxClauses(2)->maxLength(9);
+
+    expect($parser->parse()->getOperator())->toBe('NOT')
+        ->and(fn (): mixed => $parser->maxDepth(1)->build())->toThrow(
+            ParseException::class,
+            'maximum depth of 1',
+        )
+        ->and(fn (): mixed => $parser->maxLength(8)->build())->toThrow(
+            ParseException::class,
+            'maximum length of 8 characters',
+        );
+});
+
+it('throws on unknown adapter', function (): void {
+    $parser = SearchParser::query('title:Coffee')->allowAnyField();
+
+    $parser->adapter('unknown');
+})->throws(InvalidArgumentException::class, "Adapter 'unknown' not supported.");
+
+it('validates array values via validateField', function (): void {
+    $parser = new SearchParser()->allowedFields([
+        AllowedField::integer('age'),
+    ]);
+
+    expect($parser->validateField('age', [1, 2, 3]))->toBeTrue()
+        ->and($parser->validateField('age', [1, 'x']))->toBeFalse();
+});
+
+it('validates defaults only when applied and observes rules added after configuration', function (): void {
+    $field = AllowedField::string('status')->default('open');
+    $parser = SearchParser::query('')->allowedFields([$field]);
+
+    $field->min(5);
+
+    expect(fn (): null|NodeInterface => $parser->parse())->toThrow(
+        InvalidArgumentException::class,
+        'status',
+    )
+        ->and(
+            SearchParser::query('status:closed')->allowedFields([$field])->parse()->getValue(),
+        )->toBe(
+            'closed',
+        );
+});
+
+it('accepts bare terms without enabling fields', function (string $query, string $expected): void {
+    expect(SearchParser::query($query)->build('string'))->toBe($expected);
+})->with([
+    ['coffee', 'coffee'],
+    ['title', 'title'],
+    ['NOT (coffee OR tea)', 'NOT (coffee OR tea)'],
+    ['co*fee', 'co*fee'],
+]);
+
+it('accepts non-string defaults that already have the cast type', function (
+    AllowedField $field,
+    mixed $expected,
+): void {
+    $node = SearchParser::query('')->allowedFields([$field])->parse();
+
+    expect($node instanceof InNode ? $node->getValues() : $node->getValue())->toBe($expected);
+})->with([
+    'int on numeric' => [AllowedField::numeric('value')->default(3), 3],
+    'float on numeric' => [AllowedField::numeric('value')->default(2.5), 2.5],
+    'bool on boolean' => [AllowedField::boolean('value')->default(false), false],
+    'strict member' => [AllowedField::in('value', [1, 2])->default(2), 2],
+    'positional list' => [
+        AllowedField::array('value')
+            ->at(0, fn ($rules) => $rules->integer())
+            ->at(1, fn ($rules) => $rules->string())
+            ->default([1, 'b']),
+        [1, 'b'],
+    ],
+    'untyped' => [new AllowedField('value')->default(true), true],
+]);
+
+it('accepts null defaults for typed and array fields without running their value rules', function (
+    AllowedField $field,
+): void {
+    $node = SearchParser::query('')->allowedFields([$field->default(null)])->parse();
+
+    expect($field->isNullable())->toBeTrue()
+        ->and($field->validate(null))->toBeTrue()
+        ->and($node->isDefault())->toBeTrue()
+        ->and($node->getOperand()->getField())->toBe('status');
+})->with([AllowedField::integer('status')->min(1), AllowedField::array('status')->size(2)]);
+
+it('accepts single value for array field', function (): void {
+    $parser = SearchParser::query('labels:abc')->allowedFields([
+        AllowedField::array('labels')
+            ->max(20)
+            ->each(fn ($keyword): AllowedFieldItemRules => $keyword->string()->min(1)),
+    ]);
+    $ast = $parser->parse();
+
+    expect($ast)->toBeInstanceOf(ComparisonNode::class)
+        ->getField()->toBe('labels')
+        ->getOperator()->toBe('=')
+        ->getValue()->toBe('abc');
+});
 
 it('accepts whitespace surrounding the query', function (): void {
     $result = SearchParser::query('  title:Coffee  ')->allowAnyField()->build();
@@ -24,12 +425,382 @@ it('accepts whitespace surrounding the query', function (): void {
     ]);
 });
 
-it('returns default adapter and memoizes instance', function (): void {
-    $parser = SearchParser::query('title:Coffee')->allowAnyField();
-    $adapterA = $parser->adapter();
-    $adapterB = $parser->adapter();
+it('applies default sorts only when no sort was typed and omits them from strings', function (): void {
+    $parser = SearchParser::query('coffee')->allowedSorts(['created'])->defaultSort('CREATED-desc');
 
-    expect($adapterA)->toBeInstanceOf(ArrayAdapter::class)->and($adapterA)->toBe($adapterB);
+    expect($parser->build('string'))->toBe('coffee')
+        ->and($parser->getSort()->getName())->toBe('created')
+        ->and($parser->getSort()->getDirection())->toBe('desc')
+        ->and($parser->getSort()->isDefault())->toBeTrue();
+
+    $typed = SearchParser::query('sort:created')
+        ->allowedSorts(['created'])
+        ->defaultSort('created-desc');
+
+    $typed->parse();
+
+    expect($typed->getSort()->getDirection())
+        ->toBe('asc')
+        ->and($typed->getSort()->isDefault())
+        ->toBeFalse();
+
+    $empty = SearchParser::query('')
+        ->allowedSorts([AllowedSort::field('created')->defaultDirection('desc')])
+        ->defaultSort('created');
+
+    expect($empty->build('string'))
+        ->toBeNull()
+        ->and($empty->getSort()->getDirection())
+        ->toBe('desc');
+});
+
+it('applies defaults at the AST level in configured order', function (): void {
+    $parser = SearchParser::query('coffee')->allowedFields([
+        AllowedField::integer('age', 'user_age')->default(18),
+        AllowedField::array('status')->default(['active', 'draft']),
+        AllowedField::string('deleted')->default(null),
+    ]);
+
+    expect($parser->build('string'))->toBe(
+        'coffee',
+    )
+        ->and($parser->build())->toBe(new ArrayAdapter($parser)->build($parser->parse()))
+        ->and($parser->build()['left']['left']['right']['field'])->toBe('user_age')
+        ->and($parser->build()['left']['left']['right']['default'])->toBeTrue();
+});
+
+it('applies directive defaults without adding filter nodes', function (): void {
+    $parser = SearchParser::query('')->allowedFields([
+        AllowedField::in('mode', ['only', 'without'])
+            ->directive()
+            ->alias('normal', 'without')
+            ->default('normal'),
+    ]);
+
+    expect($parser->parse())->toBeNull()
+        ->and($parser->getDirectives())->toBe(['mode' => 'without'])
+        ->and($parser->getTypedDirectives())->toBeEmpty()
+        ->and($parser->build('string'))->toBeNull();
+});
+
+it('applies valid defaults without clause and depth limits', function (): void {
+    $parser = SearchParser::query('coffee')->maxDepth(1)->maxClauses(1)->allowedFields([
+        AllowedField::integer('age')->min(99)->default(100),
+        AllowedField::array('tags')->size(2)->default(['a', 'b']),
+        AllowedField::string('missing')->default(null),
+    ]);
+
+    expect($parser->parse()->getRight()->getOperand()->getField())->toBe('missing')
+        ->and($parser->build()['left']['left']['right']['value'])->toBe(100)
+        ->and($parser->build('string'))->toBe('coffee');
+});
+
+it('casts directives, resolves aliases once, and exposes defaults separately', function (): void {
+    $calls = 0;
+    $parser = SearchParser::query('limit:@me mode:ONLY')->allowedFields([
+        AllowedField::in('mode', ['only', 'without'])->directive(),
+        AllowedField::integer('limit')->directive()->min(1)->alias(
+            '@me',
+            function () use (&$calls): int {
+                $calls++;
+
+                return 25;
+            },
+        ),
+        AllowedField::boolean('archived')->directive()->default('false'),
+    ]);
+
+    expect($parser->build())->toBeNull()
+        ->and($parser->getDirectives())->toBe([
+            'mode' => 'only',
+            'limit' => 25,
+            'archived' => false,
+        ])
+        ->and($parser->getTypedDirectives())->toBe(['mode' => 'only', 'limit' => 25])
+        ->and($calls)->toBe(1);
+});
+
+it('casts list default items by position on array fields', function (): void {
+    $field = AllowedField::array('point')
+        ->at(0, fn ($rules) => $rules->numeric())
+        ->at(1, fn ($rules) => $rules->integer())
+        ->default(['1.5', '2']);
+
+    expect(SearchParser::query('')->allowedFields([$field])->parse()->getValues())->toBe([1.5, 2]);
+});
+
+it('distinguishes default clauses from parsed and spanless programmatic clauses', function (): void {
+    foreach ([
+        [42, 'status:42', new ComparisonNode('status', '=', 42)],
+        [[1, 2], 'status:1,2', new InNode('status', '=', [1, 2])],
+        [null, 'NOT status:*', new UnaryOperatorNode('NOT', new ExistsNode('status'))],
+    ] as [$value, $query, $manual]) {
+        $default = SearchParser::query('')
+            ->allowedFields([new AllowedField('status')->default($value)])
+            ->parse();
+        $parsed = SearchParser::query($query)->allowAnyField()->parse();
+
+        expect($default->isDefault())->toBeTrue()
+            ->and($parsed->isDefault())->toBeFalse()
+            ->and($manual->isDefault())->toBeFalse()
+            ->and($manual->getSpan())->toBeNull()
+            ->and(new ArrayAdapter()->build($default)['default'])->toBeTrue()
+            ->and(new ArrayAdapter()->build($parsed)['default'])->toBeFalse();
+    }
+});
+
+it('does not ignore trusted defaults or treat bare terms as field mentions', function (): void {
+    $field = AllowedField::string('status')->ignore('ALL')->default('ALL');
+
+    expect(SearchParser::query('')->allowedFields([$field])->build()['value'])->toBe('ALL')
+        ->and(SearchParser::query('status')->allowedFields([$field])->build('string'))->toBe(
+            'status',
+        );
+});
+
+it('does not invoke custom adapters for a directive-only query', function (): void {
+    $parser = SearchParser::query('mode:only')->allowedFields([
+        AllowedField::string('mode')->directive(),
+    ]);
+
+    $parser->extend(
+        'unused',
+        static fn (): QueryAdapterInterface => new class () implements QueryAdapterInterface {
+            #[Override]
+            public function build(NodeInterface $ast): never
+            {
+                throw new LogicException('A null filter tree must not call custom adapters.');
+            }
+        },
+    );
+
+    expect($parser->build('unused'))->toBeNull()
+        ->and($parser->getDirectives())->toBe(['mode' => 'only'])
+        ->and($parser->build('string'))->toBe('mode:only');
+});
+
+it('explicitly accepts any field using normal value inference', function (): void {
+    $parser = SearchParser::query('age:25 enabled:true')->allowAnyField();
+
+    expect($parser->isFieldAllowed('anything'))->toBeTrue()
+        ->and($parser->getAllowedFieldNames())->toBeEmpty()
+        ->and($parser->getAllowedField('anything'))->toBeNull()
+        ->and($parser->build()['left']['value'])->toBe(25)
+        ->and($parser->build()['right']['value'])->toBeTrue();
+});
+
+it('flags both nodes of a null default', function (): void {
+    $node = SearchParser::query('')
+        ->allowedFields([AllowedField::string('deleted')->default(null)])
+        ->parse();
+
+    expect($node)->toBeInstanceOf(UnaryOperatorNode::class)
+        ->and($node->isDefault())->toBeTrue()
+        ->and($node->getOperand()->isDefault())->toBeTrue();
+});
+
+it('keeps configured casting aliases mappings and defaults while allowing other fields', function (
+    bool $enableFirst,
+): void {
+    $parser = SearchParser::query('age:@me rating:4.5');
+
+    if ($enableFirst) {
+        $parser->allowAnyField();
+    }
+
+    $parser->allowedFields([
+        AllowedField::integer('age', 'stored_age')->alias('@me', 25)->min(18),
+        AllowedField::string('status')->default('active'),
+    ]);
+
+    if (! $enableFirst) {
+        $parser->allowAnyField();
+    }
+
+    $result = $parser->build();
+
+    expect($parser->isFieldAllowed('age'))->toBeTrue()
+        ->and($parser->isFieldAllowed('rating'))->toBeTrue()
+        ->and($parser->getAllowedFieldNames())->toBe(['age', 'status'])
+        ->and($result['left']['left']['field'])->toBe('stored_age')
+        ->and($result['left']['left']['value'])->toBe(25)
+        ->and($result['left']['right']['value'])->toBe(4.5)
+        ->and($result['right']['value'])->toBe('active');
+})->with([false, true]);
+
+it('keeps day-anchor defaults on fields without time as text', function (): void {
+    expect(SearchParser::query('')->allowedFields([
+        AllowedField::date('due')->withoutTime()->default('today'),
+    ])->parse()->getValue())->toBe('today');
+});
+
+it('keeps defaults unquoted even when their text requires quotes in query syntax', function (): void {
+    $scalar = SearchParser::query('')->allowedFields([
+        AllowedField::string('title')->default('a mug'),
+    ])->parse();
+    $list = SearchParser::query('')->allowedFields([
+        AllowedField::string('title')->default(['a mug', 'cup']),
+    ])->parse();
+
+    expect($scalar->isQuoted())->toBeFalse()
+        ->and($list->isQuoted(0))->toBeFalse()->and($list->isQuoted(1))->toBeFalse();
+});
+
+it('keeps relative defaults and date array items as text', function (): void {
+    $default = SearchParser::query('')
+        ->allowedFields([AllowedField::date('due')->default('today')])
+        ->parse();
+    $items = AllowedField::array('dates')->each(
+        fn (AllowedFieldItemRules $rules): AllowedFieldItemRules => $rules->date(),
+    );
+
+    expect($default->getValue())->toBe('today')->and($default->isDefault())->toBeTrue()
+        ->and(
+            SearchParser::query('dates:-7d,tomorrow+1w')
+                ->allowedFields([$items])
+                ->parse()
+                ->getValues(),
+        )
+        ->toBe(['-7d', 'tomorrow+1w']);
+});
+
+it('leaves unconfigured sort fields under ordinary field permissions', function (): void {
+    $parser = SearchParser::query('sort:created')->allowedFields(['sort'])->allowedSorts([]);
+
+    expect($parser->build()['field'])->toBe('sort')->and($parser->getSort())->toBeNull();
+});
+
+it('marks all default-generated nodes and joins with null spans', function (): void {
+    $node = SearchParser::query('coffee')->allowedFields([
+        AllowedField::string('status')->default('active'),
+        AllowedField::array('tag')->default(['one', 'two']),
+        AllowedField::string('deleted')->default(null),
+    ])->parse();
+
+    expect($node->getSpan())->toBeNull()
+        ->and($node->getRight()->getSpan())->toBeNull()
+        ->and($node->getRight()->getOperand()->getSpan())->toBeNull()
+        ->and($node->getLeft()->getSpan())->toBeNull()
+        ->and($node->getLeft()->getRight()->getSpan())->toBeNull()
+        ->and($node->getLeft()->getLeft()->getSpan())->toBeNull()
+        ->and($node->getLeft()->getLeft()->getRight()->getSpan())->toBeNull()
+        ->and($node->getLeft()->getLeft()->getLeft()->getSpan())->toEqual(new Span(0, 6));
+});
+
+it('observes defaults configured after allowedFields', function (): void {
+    $field = AllowedField::string('status');
+    $parser = SearchParser::query('')->allowedFields([$field]);
+
+    $field->default('active');
+
+    expect($parser->parse()->getValue())->toBe('active')->and($parser->build('string'))->toBe('');
+});
+
+it('omits defaults for fields referenced anywhere in the AST', function (string $query): void {
+    $parser = SearchParser::query($query)->allowedFields([
+        new AllowedField('status')->default('fallback'),
+    ]);
+
+    expect($parser->build())->toBe(SearchParser::query($query)->allowAnyField()->build());
+})->with([
+    'status:active', 'NOT status:active', 'status:active,draft', 'status:[a TO z]',
+    'status:*', 'NOT status:*', 'status:act*', 'status:act*,draft',
+    'coffee OR (tea AND NOT status:active)',
+]);
+
+it('prefers exact fields then the longest prefix regardless of configuration order', function (
+    bool $reverse,
+): void {
+    $fields = [
+        AllowedField::string('meta.*', 'attributes.*')->keys('/^.+$/D'),
+        AllowedField::integer('meta.stats.*', 'statistics.*')->keys('/^[a-z]+$/D'),
+        AllowedField::boolean('meta.stats.active', 'enabled'),
+    ];
+    $parser = SearchParser::query('meta.stats.active:true meta.stats.count:12 meta.color:123')
+        ->allowedFields($reverse ? array_reverse($fields) : $fields);
+    $result = $parser->build();
+
+    expect($result['left']['left']['field'])->toBe('enabled')
+        ->and($result['left']['left']['value'])->toBeTrue()
+        ->and($result['left']['right']['field'])->toBe('statistics.count')
+        ->and($result['left']['right']['value'])->toBe(12)
+        ->and($result['right']['field'])->toBe('attributes.color')
+        ->and($result['right']['value'])->toBe('123');
+})->with([false, true]);
+
+it('reads only the final hyphen as a direction on a hyphenated key', function (): void {
+    $parser = SearchParser::query('sort:created-at-desc')->allowedSorts([
+        AllowedSort::field('created-at'),
+    ]);
+
+    $parser->parse();
+
+    expect($parser->getSort()->getName())->toBe('created-at')
+        ->and($parser->getSort()->getDirection())->toBe('desc')
+        ->and($parser->getSort()->getInternalName())->toBe('created-at');
+});
+
+it('reads string defaults like typed query text', function (
+    AllowedField $field,
+    bool|float|int|string $expected,
+): void {
+    expect(SearchParser::query('')->allowedFields([$field])->parse()->getValue())->toBe($expected);
+})->with([
+    'integer' => [AllowedField::integer('age')->default('18'), 18],
+    'boolean' => [AllowedField::boolean('active')->default('true'), true],
+    'membership' => [AllowedField::in('level', [1, 2])->default('1'), 1],
+    'alias' => [
+        AllowedField::integer('assignee')->alias('@me', static fn (): int => 7)->default('@me'),
+        7,
+    ],
+    'typed scalar' => [AllowedField::integer('age')->default(21), 21],
+]);
+
+it('reports no constraints exactly like an empty query when everything is ignored', function (
+    string $query,
+    string $operation,
+    bool $withDefault,
+): void {
+    $field = AllowedField::string('status')->ignore('ALL');
+
+    if ($withDefault) {
+        $field->default('active');
+    }
+
+    $parser = SearchParser::query($query)->allowedFields([$field]);
+
+    expect($operation === 'parse' ? $parser->parse() : $parser->build())->toBeNull();
+})->with([
+    'status:ALL',
+    'status:ALL,ALL',
+    'status:[ALL TO ALL]',
+    'NOT status:ALL',
+    '(status:ALL)',
+    'status:ALL AND status:ALL',
+    'status:ALL OR NOT (status:ALL)',
+])->with(['parse', 'build'])->with([false, true]);
+
+it('resolves a repeated pattern name to the last configured field', function (): void {
+    $parser = SearchParser::query('meta.b:x')->allowedFields([
+        AllowedField::string('meta.*')->keys('/^a$/'),
+        AllowedField::string('meta.*')->keys('/^b$/'),
+    ]);
+
+    expect($parser->build()['field'])->toBe('meta.b');
+});
+
+it('resolves aliases for string defaults but not for quoted range bounds', function (): void {
+    $field = AllowedField::string('x')->alias('token', 'resolved')->default('token');
+
+    expect(SearchParser::query('')->allowedFields([$field])->parse()->getValue())->toBe('resolved')
+        ->and(
+            SearchParser::query('x:["token" TO token]')
+                ->allowedFields([$field])
+                ->parse()
+                ->getFrom(),
+        )->toBe(
+            'token',
+        );
 });
 
 it('resolves custom adapter via extend', function (): void {
@@ -49,47 +820,33 @@ it('resolves custom adapter via extend', function (): void {
     expect($adapter->build($parser->parse()))->toEqual(['ok' => true]);
 });
 
-it('throws on unknown adapter', function (): void {
+it('resolves sort keys and directions ignoring case with hyphenated keys', function (
+    string $query,
+    string $direction,
+): void {
+    $parser = SearchParser::query($query)->allowedSorts([
+        AllowedSort::field('created-at', 'created_at')->defaultDirection('DESC'),
+    ]);
+
+    expect($parser->build())->toBeNull()
+        ->and($parser->getSort()->getName())->toBe('created-at')
+        ->and($parser->getSort()->getInternalName())->toBe('created_at')
+        ->and($parser->getSort()->getDirection())->toBe($direction)
+        ->and($parser->getSort()->isDefault())->toBeFalse()
+        ->and($parser->build('string'))->toBe('sort:created-at-'.$direction);
+})->with([
+    ['sort:created-at', 'desc'],
+    ['sort:CREATED-AT-aSc', 'asc'],
+    ['SORT:Created-At-DeSc', 'desc'],
+    ['sort:"created-at-asc"', 'asc'],
+]);
+
+it('returns default adapter and memoizes instance', function (): void {
     $parser = SearchParser::query('title:Coffee')->allowAnyField();
+    $adapterA = $parser->adapter();
+    $adapterB = $parser->adapter();
 
-    $parser->adapter('unknown');
-})->throws(InvalidArgumentException::class, "Adapter 'unknown' not supported.");
-
-it('reports allowed fields and validation helpers', function (): void {
-    $parser = SearchParser::query('age:10')->allowedFields([
-        AllowedField::integer('age', 'user_age'),
-    ]);
-
-    expect($parser->isFieldAllowed('age'))->toBeTrue()
-        ->and($parser->isFieldAllowed('name'))->toBeFalse()
-        ->and($parser->getAllowedField('age'))->not->toBeNull()
-        ->and($parser->getAllowedFieldNames())->toBe(['age'])
-        ->and($parser->validateField('age', 10))->toBeTrue()
-        ->and($parser->validateField('age', 'ten'))->toBeFalse()
-        ->and($parser->validateField('other', 'any'))->toBeTrue();
-});
-
-it('validates array values via validateField', function (): void {
-    $parser = new SearchParser()->allowedFields([
-        AllowedField::integer('age'),
-    ]);
-
-    expect($parser->validateField('age', [1, 2, 3]))->toBeTrue()
-        ->and($parser->validateField('age', [1, 'x']))->toBeFalse();
-});
-
-it('accepts single value for array field', function (): void {
-    $parser = SearchParser::query('labels:abc')->allowedFields([
-        AllowedField::array('labels')
-            ->max(20)
-            ->each(fn ($keyword): AllowedFieldItemRules => $keyword->string()->min(1)),
-    ]);
-    $ast = $parser->parse();
-
-    expect($ast)->toBeInstanceOf(ComparisonNode::class)
-        ->getField()->toBe('labels')
-        ->getOperator()->toBe('=')
-        ->getValue()->toBe('abc');
+    expect($adapterA)->toBeInstanceOf(ArrayAdapter::class)->and($adapterA)->toBe($adapterB);
 });
 
 it('returns null without calling the adapter when no constraints remain', function (
@@ -116,9 +873,224 @@ it('returns null without calling the adapter when no constraints remain', functi
         ->and($parser->build('unused'))->toBeNull();
 })->with(['', '   ', "\n\t", "\u{00A0}", 'status:any']);
 
-it('rejects an unknown adapter even when no constraints remain', function (): void {
-    $parser = SearchParser::query('')->allowedFields([AllowedField::string('status')]);
+it('supports defaults on numeric external field names', function (): void {
+    $parser = SearchParser::query('')->allowedFields([AllowedField::integer('123')->default(7)]);
 
-    expect(fn (): mixed => $parser->build('unknown'))
-        ->toThrow(InvalidArgumentException::class, "Adapter 'unknown' not supported.");
+    expect($parser->parse()->getField())->toBe('123')
+        ->and($parser->parse()->getValue())->toBe(7)
+        ->and($parser->build()['field'])->toBe('123');
+});
+
+it('supports every scalar default and singleton lists', function (
+    mixed $default,
+    array $expected,
+): void {
+    expect(
+        SearchParser::query('')
+            ->allowedFields([new AllowedField('value')->default($default)])
+            ->build(),
+    )->toBe(
+        $expected,
+    );
+})->with([
+    [
+        null,
+        [
+            'default' => true,
+            'operand' => ['default' => true, 'field' => 'value', 'type' => 'exists'],
+            'operator' => 'NOT',
+            'type' => 'unary',
+        ],
+    ],
+    [
+        true,
+        [
+            'default' => true,
+            'field' => 'value',
+            'match' => 'exact',
+            'operator' => '=',
+            'quoted' => false,
+            'type' => 'comparison',
+            'value' => true,
+        ],
+    ],
+    [
+        false,
+        [
+            'default' => true,
+            'field' => 'value',
+            'match' => 'exact',
+            'operator' => '=',
+            'quoted' => false,
+            'type' => 'comparison',
+            'value' => false,
+        ],
+    ],
+    [
+        0,
+        [
+            'default' => true,
+            'field' => 'value',
+            'match' => 'exact',
+            'operator' => '=',
+            'quoted' => false,
+            'type' => 'comparison',
+            'value' => 0,
+        ],
+    ],
+    [
+        1.5,
+        [
+            'default' => true,
+            'field' => 'value',
+            'match' => 'exact',
+            'operator' => '=',
+            'quoted' => false,
+            'type' => 'comparison',
+            'value' => 1.5,
+        ],
+    ],
+    [
+        '',
+        [
+            'default' => true,
+            'field' => 'value',
+            'match' => 'exact',
+            'operator' => '=',
+            'quoted' => false,
+            'type' => 'comparison',
+            'value' => '',
+        ],
+    ],
+    [
+        [true, 2, 3.5, 'four'],
+        [
+            'default' => true,
+            'field' => 'value',
+            'match' => ['exact', 'exact', 'exact', 'exact'],
+            'operator' => '=',
+            'quoted' => [false, false, false, false],
+            'type' => 'in',
+            'values' => [true, 2, 3.5, 'four'],
+        ],
+    ],
+    [
+        ['one'],
+        [
+            'default' => true,
+            'field' => 'value',
+            'match' => ['exact'],
+            'operator' => '=',
+            'quoted' => [false],
+            'type' => 'in',
+            'values' => ['one'],
+        ],
+    ],
+]);
+
+it('suppresses defaults for removed clauses in every expression context', function (
+    string $query,
+): void {
+    $parser = SearchParser::query($query)->allowedFields([
+        AllowedField::string('status', 'stored_status')->ignore('ALL')->default('active'),
+        AllowedField::string('region')->default('north'),
+    ]);
+
+    expect($parser->build()['field'])->toBe('region')
+        ->and($parser->build()['value'])->toBe('north')
+        ->and($parser->build('string'))->toBe('');
+})->with([
+    'status:ALL',
+    'status:ALL,ALL',
+    'status:[ALL TO ALL]',
+    'NOT status:ALL',
+    '(status:ALL OR NOT status:ALL)',
+]);
+
+it('trusts defaults despite every configured usage restriction', function (): void {
+    $fields = [
+        AllowedField::string('scalar')->operators('!=')->default('active'),
+        AllowedField::array('list')->withoutLists()->default(['one', 'two']),
+        AllowedField::string('missing')->withoutExists()->default(null),
+        AllowedField::string('literal')->withoutWildcards()->default('literal*'),
+    ];
+    $result = SearchParser::query('')->allowedFields($fields)->build();
+
+    expect($result['left']['left']['left']['value'])->toBe('active')
+        ->and($result['left']['left']['right']['values'])->toBe(['one', 'two'])
+        ->and($result['left']['right']['operand']['type'])->toBe('exists')
+        ->and($result['right']['value'])->toBe('literal*');
+});
+
+it('trusts directive defaults despite ignored values and usage restrictions', function (): void {
+    $parser = SearchParser::query('')->allowedFields([
+        AllowedField::string('mode')
+            ->directive()
+            ->operators('!=')
+            ->ignore('without')
+            ->default('without'),
+    ]);
+
+    expect($parser->parse())
+        ->toBeNull()
+        ->and($parser->getDirectives())
+        ->toBe(['mode' => 'without']);
+});
+
+it('uses defaults for empty and whitespace-only queries', function (string $query): void {
+    $parser = SearchParser::query($query)
+        ->allowedFields([AllowedField::string('status')->default('active')]);
+
+    expect($parser->parse()->getValue())->toBe('active')
+        ->and($parser->build()['default'])->toBeTrue()
+        ->and($parser->build('string'))->toBe('');
+})->with(['', '   ', "\n\t", "\u{00A0}"]);
+
+it('uses external names when deciding whether a default applies', function (): void {
+    $parser = SearchParser::query('status:active')->allowedFields([
+        AllowedField::string('status', 'stored_status')->default('fallback'),
+        AllowedField::string('stored_status', 'other_status')->default('draft'),
+    ]);
+
+    expect($parser->build()['left']['field'])->toBe('stored_status')
+        ->and($parser->build()['right']['field'])->toBe('other_status')
+        ->and($parser->build()['right']['value'])->toBe('draft')
+        ->and($parser->build('string'))->toBe('status:active');
+});
+
+it('validates defaults like the equivalent query clause', function (
+    AllowedField $field,
+    string $query,
+): void {
+    $default = SearchParser::query('')->allowedFields([$field])->build();
+    $typed = SearchParser::query($query)->allowedFields([$field])->build();
+
+    expect(array_diff_key($default, ['default' => true]))
+        ->toBe(array_diff_key($typed, ['default' => true]));
+})->with([
+    'list on in field' => [
+        AllowedField::in('status', ['open', 'pending', 'closed'])->default(['open', 'pending']),
+        'status:open,pending',
+    ],
+    'list on sized string field' => [
+        AllowedField::string('region')->min(3)->default(['north', 'south']),
+        'region:north,south',
+    ],
+    'scalar on array field' => [AllowedField::array('tags')->default('php'), 'tags:php'],
+]);
+
+it('validates defaults with the complete collection and internal field name', function (): void {
+    $values = ['open', 'closed'];
+    $field = AllowedField::array('status', 'stored_status')
+        ->size(2)
+        ->each(fn ($rules) => $rules->in($values))
+        ->default($values);
+    $callback = AllowedField::callback(
+        'region',
+        fn ($value, $name): bool => $value === 'north' && $name === 'stored_region',
+        'stored_region',
+    )->default('north');
+
+    expect(SearchParser::query('')->allowedFields([$field, $callback])->build()['left']['values'])
+        ->toBe($values);
 });

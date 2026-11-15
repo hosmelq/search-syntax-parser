@@ -1,113 +1,123 @@
 ---
-title: "Query syntax"
-description: "Write terms, comparisons, lists, ranges, existence checks, and wildcard patterns with explicit boolean precedence."
+title: "Query Syntax"
+description: "Write search terms, field comparisons, lists, ranges, and wildcard patterns, and combine them with boolean operators."
 weight: 1
 ---
 
-Create a parser with `SearchParser::query($text)` or `new SearchParser($text)`. Call `parse()` for the AST or `build()` for the default array output. When no constraint remains and no default applies, both return `null`; defaults still apply to empty input.
+Create a parser with `SearchParser::query($text)` or `new SearchParser($text)`. `parse()` returns a syntax tree and `build()` returns an array. Both return null when no filters or defaults remain.
 
-Field queries require `allowedFields()` or an explicit `allowAnyField()`. The examples below use `allowAnyField()` to focus on syntax; use an [allowlist](field-validation-and-value-types) for untrusted input. Bare terms need no configuration.
+Field queries need [allowed fields](field-validation-and-value-types). Call `allowAnyField()` only when the application can handle every field name. Bare words need no configuration.
 
-## Terms and boolean operators
+## Combine search terms
 
-`AND`, `OR`, and `NOT` are operators only in uppercase. Other casing is ordinary text: `rock and roll` contains three terms joined by implicit AND. `NOT` and a leading `-` bind first, then explicit or implicit `AND`, then `OR`. Parentheses change grouping.
-
-```php
-use HosmelQ\SearchSyntaxParser\SearchParser;
-
-assert(SearchParser::query('coffee tea')->build('string') === 'coffee AND tea');
-assert(SearchParser::query('(coffee OR tea) -decaf')->build('string') === '(coffee OR tea) AND NOT decaf');
-assert(SearchParser::query('this is not good')->build('string') === 'this AND is AND not AND good');
-```
-
-Terms preserve their text, including `007`, `12.50`, and `true`. `TermNode::isQuoted()` records whether a term used quotes, and array output includes that boolean as `quoted`. Words support Unicode, hyphens, and punctuation: `José`, `t-shirt`, and `john@example.com` are complete terms. A bare `*` is invalid.
-
-## Field comparisons and lists
-
-Use `field:value`, `field:>value`, `field:>=value`, `field:<value`, `field:<=value`, or `field:!=value`. Comparators also work without a colon, such as `price>10`. Logical keywords are literal text when used as field values, even in uppercase.
-
-Comma-separated values require the colon form. An equal list means OR across its values; a not-equal list means AND across its exclusions. Lists without wildcard patterns remain one `InNode`. On multi-valued fields, `tag:a,b` matches any listed value, while repeating the field (`tag:a tag:b`) requires all values.
+Separate words with spaces to require all of them. Use `OR` for alternatives and `NOT` or a leading `-` to exclude a term:
 
 ```php
 use HosmelQ\SearchSyntaxParser\SearchParser;
 
-assert(SearchParser::query('price:>=10')->allowAnyField()->build()['operator'] === '>=');
-assert(SearchParser::query('status:ACTIVE,DRAFT')->allowAnyField()->build()['values'] === ['ACTIVE', 'DRAFT']);
-assert(SearchParser::query('status:!=SOLD,EXPIRED')->allowAnyField()->build()['operator'] === '!=');
-assert(SearchParser::query('title:AND')->allowAnyField()->build()['value'] === 'AND');
-assert(SearchParser::query('location:37.7749,-122.4194')->allowAnyField()->build()['values'] === [37.7749, -122.4194]);
+$text = SearchParser::query('(coffee OR tea) -decaf')->build('string');
 ```
 
-A leading `-` after a field comparator joins an adjacent word as a negative value. `temp:>-5`, `temp:-5,-1`, and `temp:[-5 TO 5]` are supported; `temp:- 5` is invalid.
+The result is `(coffee OR tea) AND NOT decaf`. Negation binds first, then AND, then OR. Parentheses change that order.
 
-## Ranges and existence
+Only uppercase `AND`, `OR`, and `NOT` are operators. `rock and roll` contains three terms, and serializes as `rock AND and AND roll`. Terms keep their text: `007`, `12.50`, and `true` are strings. Unicode, hyphens, and punctuation are allowed in words, including `José`, `t-shirt`, and `john@example.com`.
 
-Ranges include both endpoints. Write `field:[a TO b]` or the compact `field:a..b` form. In brackets, `TO` must be uppercase and is a separator only inside ranges. An unquoted bound exactly equal to `*` is open and bypasses casting and validation. Open bounds are `null` in the AST and array output. Other bounds use the field rules. Quoted `"*"` is the literal string `*`, and quoted bounds can contain literal asterisks; unquoted wildcard patterns are rejected.
+## Compare field values
 
-Compact ranges require two non-empty bounds, with `*` for an open end: `stars:10..*` and `price:*..20`. Numbers, decimals, negatives, dates, datetimes containing colons, partial dates, and relative dates work as bounds. Field rules still decide which values are valid. A compact range has exactly one `..`, touching no other dot, and no `/`: ellipses such as `title:wait...` or `title:a...b`, repeated separators such as `x:a..b..c`, paths such as `path:src/../lib` or `path:../x`, and quoted `title:"1..2"` remain literal text. As with brackets, a range cannot be a list item or follow a comparison operator: `price:1..5,10` and `price:>1..5` are invalid. The string adapter always writes bracket ranges.
+Write the field name, a colon, and its value. Add a comparison operator after the colon when needed:
 
-`field:*` checks existence. Use `NOT field:*` for missing values; `field:!=*` and `field:>*` are invalid.
+| Query | Meaning |
+| --- | --- |
+| `price:10` | Equal to 10. |
+| `price:!=10` | Not equal to 10. |
+| `price:>10` or `price:>=10` | Greater than 10, or at least 10. |
+| `price:<10` or `price:<=10` | Less than 10, or at most 10. |
+| `title:AND` | The literal value `AND`. |
 
-```php
-use HosmelQ\SearchSyntaxParser\SearchParser;
+Comparators also work without a colon, such as `price>10`. A negative value must touch its minus: `temperature:>-5` is valid and `temperature:>- 5` is not.
 
-assert(SearchParser::query('price:[10 TO 50]')->allowAnyField()->build()['from'] === 10);
-assert(SearchParser::query('price:-5.5..20')->allowAnyField()->build()['from'] === -5.5);
-assert(SearchParser::query('price:*..20')->allowAnyField()->build()['from'] === null);
-assert(SearchParser::query('created:2024-01-01T10:00..2024-01-01T12:00')->allowAnyField()->build()['to'] === '2024-01-01T12:00');
-assert(SearchParser::query('price:10..50')->allowAnyField()->build('string') === 'price:[10 TO 50]');
-assert(SearchParser::query('price:[* TO 50]')->allowAnyField()->build()['from'] === null);
-assert(SearchParser::query('title:["*" TO "z*"]')->allowAnyField()->build()['from'] === '*');
-assert(SearchParser::query('category:*')->allowAnyField()->build()['type'] === 'exists');
-assert(SearchParser::query('NOT discount:*')->allowAnyField()->build()['operator'] === 'NOT');
+Field rules cast values and decide whether they are valid. Without a type, unquoted booleans and ordinary numbers are inferred; quoted values and identifiers such as `007` remain strings. See [value inference](field-validation-and-value-types#value-inference).
+
+## Match a list
+
+Separate values with commas after the colon:
+
+```text
+status:active,draft
+status:!=sold,expired
+location:37.7749,-122.4194
 ```
 
-## Value comparison semantics
+An equal list matches any value. A not-equal list excludes every listed value, so `status:!=sold,expired` means `status:!=sold AND status:!=expired`.
 
-Values compare case-insensitively. Adapters must compare text that way for exact, prefix, substring, whole-word, and explicit wildcard searches, including exclusions. MySQL integrations can use case-insensitive collations; PostgreSQL integrations can use `ILIKE`, `lower()`, or `citext` as appropriate. Quoting makes a value literal and overrides configured text match modes to exact, but does not make comparisons case-sensitive. Field names and alias tokens remain exact and case-sensitive.
+On a field with several stored values, `tag:a,b` matches either tag. Repeating the field, `tag:a tag:b`, requires both. A literal list stays one `InNode`; a list containing a wildcard expands into comparisons and patterns.
 
-`in()` returns its configured canonical string, and `enum()` accepts either backing values or case names, ignoring case. Enum backing values take precedence when a token also matches another case's name. Non-string allowed members retain their existing matching rules. See [field validation and value types](field-validation-and-value-types) for configuration errors and storage conversions.
+## Match a range
 
-`prefix()`, `contains()`, and `words()` select how unquoted text matches; the last configured mode wins. `words()` requests whole-word matching; the adapter implements word boundaries appropriate to its backend. On a `words()` field a wildcard pattern is a word prefix, so it must be literal text followed by `*`, as in `coff*` or `"coffee ma"*`. A quoted value forces exact matching for that comparison or list item. Explicit wildcard patterns keep their own meaning regardless of the field's configured mode.
+Write an inclusive range as `field:[a TO b]` or `field:a..b`:
 
-## Complements and missing values
-
-`NOT x`, `-x`, and `field:!=v` mean set complement. When a field is `nullable()`, its stored value can be missing: a NULL column, an optional relation, or an absent key. Adapters must include those records in the complement. For example, `NOT price:>10` includes a missing price as well as prices at most 10; replacing it with `price:<=10` would lose missing values.
-
-On multi-valued fields, `tag:!=a` means "no element equals a" and includes records without elements. `tag:!=a,b` excludes records with either value, including records that also have other elements. A positive list matches any value; repeated field clauses require all of them.
-
-These semantics apply to custom adapters too. SQL integrations must account for missing values explicitly rather than relying on SQL's three-valued logic. The optional [negation normal form transformer](../advanced-usage/custom-adapters-and-visitors#negation-normal-form) keeps complements explicit.
-
-## Quoted text
-
-Single or double quotes preserve literal text. `ComparisonNode::isQuoted()` and `InNode::isQuoted(int $index)` retain field value quoting, including each item of a mixed list; array output exposes the same flags under `quoted`. Default values are unquoted. The string adapter retains explicit value quotes, so `title:"mug"` remains `title:"mug"`. Quote values with whitespace or reserved punctuation: `(`, `)`, `[`, `]`, `:`, `,`, `<`, `>`, and `!=`. A leading `-` negates a standalone term, so quote it to search for literal text beginning with a hyphen.
-
-Inside quotes, only `\\`, `\"`, and `\'` are unescaped. Other backslashes remain literal. Unterminated quotes throw a parse error. ISO datetimes such as `2025-01-01T12:30:45.123Z` may be unquoted, with or without a timezone; quote other values containing colons, such as URLs and times.
-
-```php
-use HosmelQ\SearchSyntaxParser\SearchParser;
-
-assert(SearchParser::query('url:"https://example.com"')->allowAnyField()->build()['value'] === 'https://example.com');
-assert(SearchParser::query('time:"12:30"')->allowAnyField()->build()['value'] === '12:30');
-assert(SearchParser::query('title:"co*fee"')->allowAnyField()->build()['value'] === 'co*fee');
+```text
+price:[10 TO 50]
+price:-5.5..20
+created:2024-01-01T10:00..2024-01-01T12:00
+price:*..20
+price:10..*
 ```
 
-## Wildcards
+`TO` must be uppercase and is a separator only inside brackets. An unquoted `*` opens that end of the range and skips casting and validation. Open ends are null in the syntax tree and array output. A quoted `"*"` is a literal bound and follows the field's rules.
 
-Unquoted terms and field values containing `*` produce `WildcardNode` leaves. Their segments are the literal text between wildcards: `nike*` gives `['nike', '']` and `a**b` gives `['a', 'b']`. With leading wildcards enabled, `*fee` gives `['', 'fee']`. Consecutive wildcards collapse. A quoted string immediately followed by `*`, such as `"a b"*`, creates a prefix pattern with segments `['a b', '']`; asterisks inside the quotes stay literal.
+Compact ranges need one `..`, two non-empty ends, and no slash or adjacent dot. `wait...`, `a...b`, `a..b..c`, and `src/../lib` remain literal text, as does `"1..2"`. A range cannot be a list item or follow an ordering operator: `price:1..5,10` and `price:>1..5` are invalid. Wildcard patterns cannot be range bounds. The string adapter writes both range forms with brackets.
 
-Leading wildcards are rejected by default, including patterns inside lists. Enable them on a configured field with `AllowedField::allowLeadingWildcards()`, or use `SearchParser::allowLeadingWildcards()` for free-text patterns and fields accepted only through `allowAnyField()`. The parser-level option does not override a configured field's rules. Trailing and infix patterns, quoted literal asterisks, and `field:*` exists checks remain available. `AllowedField::minWildcardLength($characters)` can require a minimum number of literal Unicode characters across the pattern's segments; `*` operators do not count. These restrictions run before aliases, casting, and value validation. A pattern after an ordering operator, such as `name:<=*fee`, is reported as `invalid_wildcard_pattern` instead.
+## Check whether a value exists
 
-Field patterns support `:` and `:!=`/`!=`, and reject ordering comparisons. A list containing any pattern expands into OR for equality or AND for inequality. Each expanded leaf counts toward the clause limit. Patterns are cast and validated using the original pattern text, including its asterisks.
+`category:*` checks whether a stored value exists. Use `NOT category:*` for a missing value. `category:!=*`, `category:>*`, and a standalone `*` are invalid.
 
-```php
-use HosmelQ\SearchSyntaxParser\SearchParser;
+## Quote literal text
 
-assert(SearchParser::query('co*fee')->build()['segments'] === ['co', 'fee']);
-assert(SearchParser::query('*son')->allowLeadingWildcards()->build()['segments'] === ['', 'son']);
-assert(SearchParser::query('name:"a b"*')->allowAnyField()->build()['segments'] === ['a b', '']);
-assert(SearchParser::query('name:jo*,ann')->allowAnyField()->build()['operator'] === 'OR');
-assert(SearchParser::query('name:!=jo*,ann')->allowAnyField()->build()['operator'] === 'AND');
+Single or double quotes preserve spaces and syntax characters:
+
+```text
+title:"Cold Brew"
+url:"https://example.com"
+time:'12:30'
+title:"co*fee"
 ```
 
-See the [array reference](../advanced-usage/adapters) for output shapes and the [string adapter](../advanced-usage/string-adapter) for normalized query text.
+Quote values containing parentheses, brackets, colons, commas, comparison punctuation, or whitespace. Quote a standalone term starting with `-` to keep the hyphen literal.
+
+Inside quotes, `\\`, `\"`, and `\'` are unescaped; other backslashes stay. A missing closing quote is an error. ISO datetimes may be unquoted, with or without a timezone, but other values containing colons need quotes.
+
+Terms and comparisons expose `isQuoted()`. Lists expose `isQuoted($index)` for each item. The array adapter includes these flags under `quoted`, and the string adapter preserves explicit quotes. Typed fields still cast quoted numbers and booleans.
+
+## Use wildcards
+
+An unquoted `*` inside a term or field value is a wildcard:
+
+| Query | Literal segments |
+| --- | --- |
+| `coff*` | `['coff', '']` |
+| `title:co*fee` | `['co', 'fee']` |
+| `title:a**b` | `['a', 'b']` |
+| `title:"a b"*` | `['a b', '']` |
+
+Runs of stars collapse. A quoted string followed immediately by `*` is a prefix pattern; stars inside the quotes stay literal. Patterns have their own `WildcardNode` rather than a scalar comparison value.
+
+Leading wildcards are rejected by default. Enable them on a field with `allowLeadingWildcards()`, or on the parser for bare terms and unconfigured fields. The parser's option does not override a configured field. `minWildcardLength()` sets the minimum number of literal Unicode characters. These rules run before aliases, casts, or validators, including every pattern in a list.
+
+Patterns support equality and inequality. `name:jo*,ann` expands with OR; `name:!=jo*,ann` expands with AND. Every expanded item counts toward the clause limit. Patterns are validated using their original text, stars included. Ordering comparisons such as `name:>jo*` fail with `wildcard.invalid_pattern`.
+
+A `words()` field accepts only trailing word prefixes, such as `coff*` or `"coffee ma"*`. See [text match modes](field-validation-and-value-types#text-match-modes).
+
+## Compare text
+
+Text comparisons are case-insensitive, including exact, prefix, substring, word, and wildcard matches. The adapter implements this with its backend's comparison rules. Field names and alias tokens remain case-sensitive.
+
+Quotes force exact match metadata for a comparison or list item. For prefix and contains fields, the clause compiler uses equality. For `words()` fields, it uses an ordered phrase. Quoting does not make a comparison case-sensitive.
+
+## Include missing values in complements
+
+`NOT x`, `-x`, and `field:!=value` mean set complement. A field marked `nullable()` may have a null column, an absent key, or a missing relation. Its complement includes those records: `NOT price:>10` includes a missing price as well as prices at most 10.
+
+On a multi-valued field, `tag:!=a` means no element equals `a`, including records without elements. `tag:!=a,b` excludes a record with either value, even if it also has other elements.
+
+Adapters must apply those rules explicitly. The [negation transformer](../advanced-usage/custom-adapters-and-visitors#negation-normal-form) and [clause compiler](../advanced-usage/compiling-clauses) preserve the information they need.

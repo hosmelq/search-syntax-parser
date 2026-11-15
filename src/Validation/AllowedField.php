@@ -17,46 +17,28 @@ use InvalidArgumentException;
 class AllowedField
 {
     /**
-     * Default value for this field.
-     *
      * @var null|bool|float|int|non-empty-list<bool|float|int|string>|string
      */
     protected null|array|bool|float|int|string $default = null;
 
-    /**
-     * Whether this field expects an array value.
-     */
     protected bool $expectsArray = false;
 
-    /**
-     * Whether this field has a default value.
-     */
     protected bool $hasDefault = false;
 
     /**
-     * Values that remove query constraints after casting.
-     *
      * @var array<int|string, mixed>
      */
     protected array $ignored = [];
 
     /**
-     * Rules applied to a specific item index when the value is an array.
-     *
      * @var array<int, AllowedFieldItemRules>
      */
     protected array $indexItemRules = [];
 
-    /**
-     * Internal field name for mapping.
-     */
     protected string $internalName;
 
     protected AllowedFieldItemRules $itemRules;
 
-    /**
-     * Whether the stored value can be missing: a NULL column, optional relation, or absent key.
-     */
     protected bool $nullable = false;
 
     protected AllowedFieldItemRules $rules;
@@ -68,14 +50,8 @@ class AllowedField
 
     private bool $allowsLeadingWildcards = false;
 
-    /**
-     * Whether map() received keys that are equal as decimal numbers, such as '1.5' and '1.50'.
-     */
     private bool $decimalKeyCollision = false;
 
-    /**
-     * Whether clauses of this field are top-level settings instead of filters.
-     */
     private bool $directive = false;
 
     /**
@@ -93,14 +69,9 @@ class AllowedField
      */
     private null|array $operators = null;
 
-    /**
-     * Whether the name ends in ".*" and declares dynamic keys.
-     */
     private readonly bool $pattern;
 
     /**
-     * Converts a value given the effective type of its field or array item.
-     *
      * @var null|Closure(bool|float|int|string, null|string): (bool|float|int|string)
      */
     private null|Closure $storageConversion = null;
@@ -111,9 +82,6 @@ class AllowedField
 
     private int $wildcardMinimumLength = 0;
 
-    /**
-     * Create a new field with the specified name.
-     */
     final public function __construct(
         protected string $name,
         null|string $internalName = null,
@@ -129,9 +97,6 @@ class AllowedField
         $this->itemRules = new AllowedFieldItemRules();
     }
 
-    /**
-     * Create an array field (list of values).
-     */
     public static function array(string $name, null|string $internalName = null): static
     {
         $field = new static($name, $internalName);
@@ -140,9 +105,6 @@ class AllowedField
         return $field;
     }
 
-    /**
-     * Create a boolean field (true/false).
-     */
     public static function boolean(string $name, null|string $internalName = null): static
     {
         $field = new static($name, $internalName);
@@ -153,8 +115,6 @@ class AllowedField
     }
 
     /**
-     * Create a field with a custom validation callback.
-     *
      * @param callable(mixed $value, string $attribute): bool $callback
      */
     public static function callback(
@@ -169,9 +129,6 @@ class AllowedField
         return $field;
     }
 
-    /**
-     * Create a date field, preserving its original text.
-     */
     public static function date(
         string $name,
         null|string $format = null,
@@ -184,9 +141,6 @@ class AllowedField
         return $field;
     }
 
-    /**
-     * Create a decimal field with precision constraints.
-     */
     public static function decimal(
         string $name,
         int $min,
@@ -201,8 +155,6 @@ class AllowedField
     }
 
     /**
-     * Create a field accepting backed enum values or case names, ignoring case.
-     *
      * @param class-string<BackedEnum> $enum
      */
     public static function enum(
@@ -218,8 +170,6 @@ class AllowedField
     }
 
     /**
-     * Create a field that accepts only specified values.
-     *
      * @param list<mixed> $values
      */
     public static function in(string $name, array $values, null|string $internalName = null): static
@@ -231,9 +181,6 @@ class AllowedField
         return $field;
     }
 
-    /**
-     * Create an integer field.
-     */
     public static function integer(string $name, null|string $internalName = null): static
     {
         $field = new static($name, $internalName);
@@ -243,9 +190,6 @@ class AllowedField
         return $field;
     }
 
-    /**
-     * Create a numeric field (integer or float).
-     */
     public static function numeric(string $name, null|string $internalName = null): static
     {
         $field = new static($name, $internalName);
@@ -255,9 +199,6 @@ class AllowedField
         return $field;
     }
 
-    /**
-     * Create a string field.
-     */
     public static function string(string $name, null|string $internalName = null): static
     {
         $field = new static($name, $internalName);
@@ -267,9 +208,6 @@ class AllowedField
         return $field;
     }
 
-    /**
-     * Create a ULID field, normalized to uppercase.
-     */
     public static function ulid(string $name, null|string $internalName = null): static
     {
         $field = new static($name, $internalName);
@@ -279,9 +217,6 @@ class AllowedField
         return $field;
     }
 
-    /**
-     * Create a UUID field, normalized to lowercase.
-     */
     public static function uuid(string $name, null|string $internalName = null): static
     {
         $field = new static($name, $internalName);
@@ -292,8 +227,6 @@ class AllowedField
     }
 
     /**
-     * Check whether this field accepts the typed field name: its own name, or a valid dynamic key.
-     *
      * @internal
      */
     public function accepts(string $field): bool
@@ -302,15 +235,11 @@ class AllowedField
             return true;
         }
 
-        // A dynamic key is never empty and never a wildcard.
         $key = mb_substr($field, mb_strlen($this->name) - 1);
 
         return $key !== '' && ! str_contains($key, '*') && $this->allowsKey($key);
     }
 
-    /**
-     * Replace an exact unquoted value with a scalar, or with the result of a closure called at parse time.
-     */
     public function alias(string $token, bool|Closure|float|int|string $value): static
     {
         if (str_contains($token, '*')) {
@@ -322,9 +251,6 @@ class AllowedField
         return $this;
     }
 
-    /**
-     * Accept wildcard patterns whose first literal segment is empty.
-     */
     public function allowLeadingWildcards(): static
     {
         $this->allowsLeadingWildcards = true;
@@ -332,9 +258,6 @@ class AllowedField
         return $this;
     }
 
-    /**
-     * Accept whole years and months on a date field without a format.
-     */
     public function allowPartialDates(): static
     {
         if ($this->expectsArray) {
@@ -349,8 +272,6 @@ class AllowedField
     }
 
     /**
-     * Check a dynamic key against the configured rule.
-     *
      * @internal
      */
     public function allowsKey(string $key): bool
@@ -361,8 +282,6 @@ class AllowedField
     }
 
     /**
-     * Throw when the clause kind is disabled for this field.
-     *
      * @internal
      */
     public function assertClauseAllowed(string $clause, int $position, string $field): void
@@ -373,8 +292,6 @@ class AllowedField
     }
 
     /**
-     * Throw when the operator is not allowed for this field.
-     *
      * @internal
      */
     public function assertOperatorAllowed(string $operator, int $position, string $field): void
@@ -389,8 +306,6 @@ class AllowedField
     }
 
     /**
-     * Validate pattern metadata when this field is configured into a parser.
-     *
      * @internal
      */
     public function assertValidConfiguration(): void
@@ -418,8 +333,6 @@ class AllowedField
     }
 
     /**
-     * Check a wildcard pattern's shape before aliases, casts, or validators run.
-     *
      * @internal
      */
     public function assertWildcardAllowed(
@@ -429,7 +342,6 @@ class AllowedField
         string $field,
         bool $prefix,
     ): void {
-        // Whole words support only word prefixes: literal text followed by trailing wildcards.
         if ($this->textMatch === TextMatch::Words && ! $prefix) {
             throw InvalidFieldOperatorException::wordWildcardNotAllowed($field, $position);
         }
@@ -448,8 +360,6 @@ class AllowedField
     }
 
     /**
-     * Configure validators that apply to a specific item index when the value is an array.
-     *
      * @param callable(AllowedFieldItemRules $rules): (AllowedFieldItemRules|void) $callback
      */
     public function at(int $index, callable $callback): static
@@ -465,9 +375,6 @@ class AllowedField
         return $this;
     }
 
-    /**
-     * Add a between constraint (min <= value <= max).
-     */
     public function between(float|int $min, float|int $max): static
     {
         $this->rules->between($min, $max);
@@ -475,9 +382,6 @@ class AllowedField
         return $this;
     }
 
-    /**
-     * Cast a field value, using index-specific or shared item types for arrays.
-     */
     public function cast(string $value, bool $quoted, int $index = 0): bool|float|int|string
     {
         if (! $quoted && array_key_exists($value, $this->aliases)) {
@@ -502,9 +406,11 @@ class AllowedField
         return $this->rules->cast($value, $quoted);
     }
 
-    /**
-     * Match unquoted text anywhere within the stored text.
-     */
+    public function comparesText(bool|float|int|string $value): bool
+    {
+        return $this->isText() && is_string($value);
+    }
+
     public function contains(): static
     {
         $this->assertTextMatchAllowed();
@@ -514,9 +420,6 @@ class AllowedField
         return $this;
     }
 
-    /**
-     * Set a raw default value, validated against this field when the parser applies it.
-     */
     public function default(mixed $value): static
     {
         if ($this->isPattern()) {
@@ -550,9 +453,6 @@ class AllowedField
         return $this;
     }
 
-    /**
-     * Treat this exact scalar field as a top-level query setting instead of a filter.
-     */
     public function directive(): static
     {
         if ($this->isPattern() || $this->expectsArray) {
@@ -569,8 +469,6 @@ class AllowedField
     }
 
     /**
-     * Configure validators that apply to each item when the value is an array.
-     *
      * @param callable(AllowedFieldItemRules $rules): (AllowedFieldItemRules|void) $callback
      */
     public function each(callable $callback): static
@@ -584,17 +482,12 @@ class AllowedField
         return $this;
     }
 
-    /**
-     * Check whether this field expects an array value.
-     */
     public function expectsArray(): bool
     {
         return $this->expectsArray;
     }
 
     /**
-     * Get the default value for this field.
-     *
      * @return null|bool|float|int|non-empty-list<bool|float|int|string>|string
      */
     public function getDefault(): null|array|bool|float|int|string
@@ -602,26 +495,16 @@ class AllowedField
         return $this->default;
     }
 
-    /**
-     * Get the internal field name used for mapping.
-     */
     public function getInternalName(): string
     {
         return $this->internalName;
     }
 
-    /**
-     * Get the field name.
-     */
     public function getName(): string
     {
         return $this->name;
     }
 
-    /**
-     * Get the configured text match mode, or a comparison's or list item's effective mode,
-     * where quotes force exact matching.
-     */
     public function getTextMatch(null|ComparisonNode|InNode $node = null, int $index = 0): TextMatch
     {
         if ($node === null) {
@@ -634,8 +517,6 @@ class AllowedField
     }
 
     /**
-     * Check whether an exact unquoted value is an alias token, without resolving it.
-     *
      * @internal
      */
     public function hasAlias(string $token): bool
@@ -644,8 +525,6 @@ class AllowedField
     }
 
     /**
-     * Check that a typed value has the type this field casts query text to at the given index.
-     *
      * @internal
      */
     public function hasCastType(bool|float|int|string $value, int $index = 0): bool
@@ -659,17 +538,12 @@ class AllowedField
             : $this->itemRules->hasCastType($value);
     }
 
-    /**
-     * Check if this field has a default value.
-     */
     public function hasDefault(): bool
     {
         return $this->hasDefault;
     }
 
     /**
-     * Check whether operators or clause kinds are restricted.
-     *
      * @internal
      */
     public function hasUsageRules(): bool
@@ -677,9 +551,6 @@ class AllowedField
         return $this->directive || $this->operators !== null || $this->disabledClauses !== [];
     }
 
-    /**
-     * Remove query constraints matching these cast values, ignoring case for strings.
-     */
     public function ignore(mixed ...$values): static
     {
         $this->ignored = array_merge($this->ignored, $values);
@@ -692,9 +563,6 @@ class AllowedField
         return $this->directive;
     }
 
-    /**
-     * Check whether a resolved and cast query value should be removed.
-     */
     public function isIgnored(mixed $value): bool
     {
         return array_any($this->ignored, static fn (mixed $ignored): bool
@@ -703,25 +571,22 @@ class AllowedField
                 : $value === $ignored);
     }
 
-    /**
-     * Check whether the stored value can be missing.
-     */
     public function isNullable(): bool
     {
         return $this->nullable;
     }
 
-    /**
-     * Check whether this field declares dynamic keys with a trailing ".*".
-     */
     public function isPattern(): bool
     {
         return $this->pattern;
     }
 
+    public function isText(): bool
+    {
+        return $this->rules->getType() === 'string';
+    }
+
     /**
-     * Restrict a pattern field's non-empty key with a regex or predicate.
-     *
      * @param (Closure(string): bool)|string $rule
      */
     public function keys(Closure|string $rule): static
@@ -750,8 +615,6 @@ class AllowedField
     }
 
     /**
-     * Convert cast values to stored values, matching string keys ignoring case; unmapped values pass through.
-     *
      * @param array<int|string, bool|float|int|string> $map
      */
     public function map(array $map): static
@@ -789,7 +652,6 @@ class AllowedField
             null|string $type,
         ) use ($decimals, $lookup, $text): bool|float|int|string {
             if ($type === 'decimal' && ! is_bool($value)) {
-                // Decimal values match keys by value, so 7.00 and 1.5 match the keys 7 and '1.50'.
                 $value = (string) self::toDecimal($value)->strippedOfTrailingZeros();
                 $stored = array_key_exists($value, $decimals) ? $decimals[$value] : $value;
             } else {
@@ -802,7 +664,6 @@ class AllowedField
                 $stored = array_key_exists($key, $lookup) ? $lookup[$key] : $value;
             }
 
-            // A map that stores text stores every value as text, so numbers and booleans become exact text.
             return match (true) {
                 ! $text, is_string($stored) => $stored,
                 is_bool($stored) => $stored ? '1' : '0',
@@ -815,9 +676,6 @@ class AllowedField
         return $this->withoutWildcards();
     }
 
-    /**
-     * Add a maximum value constraint.
-     */
     public function max(float|int $value): static
     {
         $this->rules->max($value);
@@ -825,9 +683,6 @@ class AllowedField
         return $this;
     }
 
-    /**
-     * Add a minimum value constraint.
-     */
     public function min(float|int $value): static
     {
         $this->rules->min($value);
@@ -835,9 +690,6 @@ class AllowedField
         return $this;
     }
 
-    /**
-     * Require a minimum number of literal characters in each wildcard pattern.
-     */
     public function minWildcardLength(int $characters): static
     {
         if ($characters < 0) {
@@ -849,10 +701,6 @@ class AllowedField
         return $this;
     }
 
-    /**
-     * Declare that the stored value can be missing: a NULL column, optional relation, or absent key.
-     * Adapters include missing values in complements; validate(null) also passes.
-     */
     public function nullable(bool $nullable = true): static
     {
         $this->nullable = $nullable;
@@ -860,9 +708,6 @@ class AllowedField
         return $this;
     }
 
-    /**
-     * Restrict the comparison operators accepted by comparisons, lists and wildcard patterns.
-     */
     public function operators(string ...$operators): static
     {
         foreach ($operators as $operator) {
@@ -878,9 +723,6 @@ class AllowedField
         return $this;
     }
 
-    /**
-     * Match unquoted text at the start of stored text.
-     */
     public function prefix(): static
     {
         $this->assertTextMatchAllowed();
@@ -890,9 +732,6 @@ class AllowedField
         return $this;
     }
 
-    /**
-     * Multiply integer, numeric, or decimal values when adapting them for storage.
-     */
     public function scale(int|string $factor): static
     {
         $this->assertNoStorageConversion();
@@ -919,7 +758,6 @@ class AllowedField
             bool|float|int|string $value,
             null|string $type,
         ) use ($multiplier): bool|float|int|string {
-            // Array positions with another type keep their value.
             if (! in_array($type, ['integer', 'numeric', 'decimal'], true)) {
                 return $value;
             }
@@ -940,9 +778,6 @@ class AllowedField
         return $this->withoutWildcards();
     }
 
-    /**
-     * Add an exact size constraint.
-     */
     public function size(float|int $value): static
     {
         $this->rules->size($value);
@@ -950,18 +785,11 @@ class AllowedField
         return $this;
     }
 
-    /**
-     * Check whether every storage value is text, which holds when map() stores a string.
-     */
     public function storesText(): bool
     {
         return $this->storesText;
     }
 
-    /**
-     * Convert a validated cast value for an adapter, without changing the AST.
-     * Array fields convert each item with the rules of its index.
-     */
     public function toStorage(bool|float|int|string $value, int $index = 0): bool|float|int|string
     {
         return $this->storageConversion instanceof Closure
@@ -969,10 +797,6 @@ class AllowedField
             : $value;
     }
 
-    /**
-     * Cast and validate a candidate value, returning null when it does not validate.
-     * Array candidates are validated as a one-item collection at the supplied index.
-     */
     public function tryCast(
         string $value,
         bool $quoted = false,
@@ -983,9 +807,6 @@ class AllowedField
         return $this->validate($this->expectsArray ? [$index => $cast] : $cast) ? $cast : null;
     }
 
-    /**
-     * Validate the given value against all configured validators.
-     */
     public function validate(mixed $value): bool
     {
         if ($this->nullable && is_null($value)) {
@@ -1017,9 +838,6 @@ class AllowedField
         return true;
     }
 
-    /**
-     * Reject exists queries such as field:* for this field.
-     */
     public function withoutExists(): static
     {
         $this->disabledClauses['exists'] = true;
@@ -1027,9 +845,6 @@ class AllowedField
         return $this;
     }
 
-    /**
-     * Reject comma-separated lists for this field.
-     */
     public function withoutLists(): static
     {
         $this->disabledClauses['lists'] = true;
@@ -1037,9 +852,6 @@ class AllowedField
         return $this;
     }
 
-    /**
-     * Reject range queries such as field:[a TO b] for this field.
-     */
     public function withoutRanges(): static
     {
         $this->disabledClauses['ranges'] = true;
@@ -1047,9 +859,6 @@ class AllowedField
         return $this;
     }
 
-    /**
-     * Accept only calendar dates on a date field without a format, rejecting times and instants.
-     */
     public function withoutTime(): static
     {
         if ($this->expectsArray) {
@@ -1063,9 +872,6 @@ class AllowedField
         return $this;
     }
 
-    /**
-     * Reject wildcard patterns such as field:abc* for this field.
-     */
     public function withoutWildcards(): static
     {
         $this->disabledClauses['wildcards'] = true;
@@ -1073,9 +879,6 @@ class AllowedField
         return $this;
     }
 
-    /**
-     * Match unquoted text as whole words within stored text.
-     */
     public function words(): static
     {
         $this->assertTextMatchAllowed();
@@ -1085,13 +888,9 @@ class AllowedField
         return $this;
     }
 
-    /**
-     * Read a number exactly, using the shortest round-trip text for floats.
-     */
     private static function toDecimal(bool|float|int|string $value): BigDecimal
     {
         if (! is_float($value)) {
-            // Numeric validation accepts the surrounding whitespace that is_numeric() allows.
             return BigDecimal::of(mb_trim((string) $value, " \t\n\r\v\f"));
         }
 
@@ -1129,9 +928,6 @@ class AllowedField
         }
     }
 
-    /**
-     * Read a map key as canonical decimal text, or null when it is not a decimal number.
-     */
     private function decimalKey(int|string $key): null|string
     {
         if (is_int($key)) {
@@ -1145,9 +941,6 @@ class AllowedField
         return (string) BigDecimal::of($key)->strippedOfTrailingZeros();
     }
 
-    /**
-     * Check whether the field, or any array item rule, has the decimal type.
-     */
     private function hasDecimalItems(): bool
     {
         if (! $this->expectsArray) {
@@ -1160,9 +953,6 @@ class AllowedField
         );
     }
 
-    /**
-     * Get the type a storage conversion sees: the field type, or the item type at an array index.
-     */
     private function storageType(int $index): null|string
     {
         if (! $this->expectsArray) {

@@ -9,14 +9,8 @@ use HosmelQ\SearchSyntaxParser\SearchParser;
 
 abstract readonly class AbstractAdapter implements QueryAdapterInterface, VisitorInterface
 {
-    /**
-     * Create a new adapter instance.
-     */
     public function __construct(protected null|SearchParser $searchParser = null) {}
 
-    /**
-     * Get the internal field name for a given external field name.
-     */
     protected function getInternalFieldName(string $field): string
     {
         if (is_null($this->searchParser)) {

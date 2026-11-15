@@ -7,6 +7,29 @@ use HosmelQ\SearchSyntaxParser\SearchParser;
 use HosmelQ\SearchSyntaxParser\Support\LikePattern;
 use HosmelQ\SearchSyntaxParser\Validation\TextMatch;
 
+it('rejects invalid escapes from every entry point', function (string $escape): void {
+    expect([
+        fn (): string => LikePattern::escape('value', $escape),
+        fn (): string => LikePattern::fromWildcard(new WildcardNode(null, '=', []), $escape),
+        fn (): string => LikePattern::forMatch('value', TextMatch::Exact, $escape),
+    ])->each->toThrow(InvalidArgumentException::class);
+})->with(['', '!!', '%', '_', 'ab']);
+
+it('rejects whole word matching instead of treating it as a substring', function (): void {
+    LikePattern::forMatch('coffee', TextMatch::Words);
+})->throws(InvalidArgumentException::class);
+
+it('builds LIKE patterns for the effective text match mode', function (
+    TextMatch $match,
+    string $expected,
+): void {
+    expect(LikePattern::forMatch('a%_!', $match))->toBe($expected);
+})->with([
+    [TextMatch::Exact, 'a!%!_!!'],
+    [TextMatch::Prefix, 'a!%!_!!%'],
+    [TextMatch::Contains, '%a!%!_!!%'],
+]);
+
 it('escapes SQL pattern metacharacters and the chosen escape once', function (): void {
     expect(LikePattern::escape('50%!_off\\*'))->toBe('50!%!!!_off\\*')
         ->and(LikePattern::escape('50%#_!', '#'))->toBe('50#%###_!')
@@ -23,26 +46,3 @@ it('uses wildcard segments without interpreting quoted literal asterisks', funct
             '%a!!!_%b!%%',
         );
 });
-
-it('builds LIKE patterns for the effective text match mode', function (
-    TextMatch $match,
-    string $expected,
-): void {
-    expect(LikePattern::forMatch('a%_!', $match))->toBe($expected);
-})->with([
-    [TextMatch::Exact, 'a!%!_!!'],
-    [TextMatch::Prefix, 'a!%!_!!%'],
-    [TextMatch::Contains, '%a!%!_!!%'],
-]);
-
-it('rejects whole word matching instead of treating it as a substring', function (): void {
-    LikePattern::forMatch('coffee', TextMatch::Words);
-})->throws(InvalidArgumentException::class);
-
-it('rejects invalid escapes from every entry point', function (string $escape): void {
-    expect([
-        fn (): string => LikePattern::escape('value', $escape),
-        fn (): string => LikePattern::fromWildcard(new WildcardNode(null, '=', []), $escape),
-        fn (): string => LikePattern::forMatch('value', TextMatch::Exact, $escape),
-    ])->each->toThrow(InvalidArgumentException::class);
-})->with(['', '!!', '%', '_', 'ab']);

@@ -1,10 +1,10 @@
 ---
-title: "Field defaults"
-description: "Apply validated field defaults to the syntax tree, track their origin, and keep them out of serialized query text."
+title: "Field Defaults"
+description: "Add validated filters when a field is absent, distinguish generated nodes, and keep default values out of serialized queries."
 weight: 4
 ---
 
-Set `default()` on an allowed field to add a filter when that external field is absent from the parsed query. Defaults are appended with AND in the order given to `allowedFields()`, so backend adapters receive them. The string adapter omits default clauses.
+Call `default()` on an allowed field to add a filter when the query does not mention that field. Defaults join the filter tree with AND in the order passed to `allowedFields()`.
 
 ```php
 use HosmelQ\SearchSyntaxParser\SearchParser;
@@ -16,73 +16,74 @@ $parser = SearchParser::query('coffee')->allowedFields([
     AllowedField::string('deleted_at')->default(null),
 ]);
 
-assert($parser->build('string') === 'coffee');
+$filters = $parser->build();
+$text = $parser->build('string');
 ```
 
-## Accepted values
+`$filters` includes all three defaults. `$text` contains only `coffee`: the string adapter omits generated defaults.
 
-Pattern fields such as `meta.*` cannot have defaults; `default()` throws `InvalidArgumentException` immediately. Use an exact field such as `meta.color` for a key-specific default.
+## Choose a default value
 
-A default must be null, a boolean, an integer, a float, a string, or a non-empty list of those scalar types. Empty arrays, associative arrays, nested arrays, objects, and lists containing null throw `InvalidArgumentException` immediately.
+| Value | Filter |
+| --- | --- |
+| Scalar | Equality comparison. |
+| Non-empty scalar list | Membership list, including a one-item list. |
+| Null | `NOT field:*`; also makes the field nullable. |
 
-A scalar produces a comparison with `=`. A list produces an `InNode` with `=`, including singleton lists and defaults on `array()` fields. A null produces `NOT field:*` and also makes the field nullable. `getDefault()` returns the configured value and `hasDefault()` distinguishes an explicit null default from no default.
+Scalars can be booleans, integers, floats, or strings. Empty, associative, or nested arrays, objects, and lists containing null are configuration errors. Pattern fields such as `meta.*` cannot have defaults; configure an exact field for a specific key.
 
-## Referenced fields and empty queries
+Strings follow the same aliases and casting as unquoted query values. For example, `AllowedField::integer('age')->default('18')` produces the integer `18`. Other scalar defaults must already have the type the field accepts. A string containing `*` stays literal text.
 
-Any reference to the external field suppresses its default, including comparisons, lists, ranges, existence checks, wildcards, and references inside NOT or nested groups. A bare term matching the field's name does not count as a field reference.
+When applied, defaults pass through the field's validation rules. An invalid default throws `InvalidArgumentException` naming the field. Scalar fields validate every member of a list. Array fields validate the whole collection and its shared and positional item rules. Null defaults skip value validation.
 
-A clause removed by `ignore()` still counts as a reference. For example, `status:ALL` opts out of a status default when `ALL` is ignored.
+Defaults bypass `ignore()`, operator and clause restrictions, and depth and clause limits. The original query still obeys the length limit. Relative date defaults remain text and are resolved at request time by the backend adapter.
+
+## Override a default
+
+Any reference to the external field suppresses its default, including a reference inside NOT or a group. A bare term with the same name does not count.
+
+A clause removed by `ignore()` still counts as a reference:
 
 ```php
 use HosmelQ\SearchSyntaxParser\SearchParser;
 use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
 
-assert(SearchParser::query('NOT status:draft')->allowedFields([
-    AllowedField::string('status')->default('active'),
-])->build('string') === 'NOT status:draft');
-
-assert(SearchParser::query('   ')->allowedFields([
-    AllowedField::string('status')->default('active'),
-])->build('string') === '');
-```
-
-```php
-use HosmelQ\SearchSyntaxParser\SearchParser;
-use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
-
-assert(SearchParser::query('coffee status:ALL')->allowedFields([
+$parser = SearchParser::query('coffee status:ALL')->allowedFields([
     AllowedField::string('status')->ignore('ALL')->default('active'),
-])->build('string') === 'coffee');
+]);
+
+$text = $parser->build('string');
 ```
 
-Empty and whitespace-only queries return just the filter defaults when any exist. Without applicable defaults, an empty query or a query whose clauses are all ignored has no constraints. Both `parse()` and array/custom `build()` calls return `null`, without calling the adapter. The string adapter can still render explicit directives or sorting when the filter tree is null. When defaults alone remain, `parse()` returns their tree and `build('string')` returns `''`.
+The result is `coffee`, and no status filter is added. Defaults are optional search settings; apply mandatory access filters separately.
 
-When applying a default, `parse()` validates it like the equivalent query clause. A failing default throws `InvalidArgumentException` naming the field because it is a configuration error. On scalar fields, every item of a list default must be valid, as in `field:a,b`. On `array()` fields, a list default is validated as a whole collection, including collection size, shared item rules, and positional rules, and a scalar default as a one-item collection. Null defaults skip value rules, like the `NOT field:*` clause they produce.
+Empty queries contain only the applicable defaults. Without filter defaults, an empty query or a query whose filters are all ignored returns null from `parse()` and array or custom `build()` calls. Custom adapters are not called for a null tree.
 
-String defaults are read like unquoted query text: aliases resolve, typed fields cast them, and untyped fields infer booleans and numbers, so `AllowedField::integer('age')->default('18')` produces `18`. Other scalars must already have the type the field casts text to, such as an `int` for `integer()` or an allowed value for `in()`. Defaults bypass ignored values and per-field operator and clause restrictions, which govern what users type, as well as clause and depth limits. The raw input still obeys the query length limit. A default string containing `*` is literal text rather than a wildcard pattern. Defaults can be overridden by a query reference, so enforce mandatory access filters separately from defaults.
+## Identify generated nodes
 
-Relative date defaults remain text: `AllowedField::date('due')->default('today')` produces the string `'today'` in the AST. The backend adapter resolves it with the request's time and zone using [DateValue](field-validation-and-value-types#resolving-date-intervals), so configuring a default does not freeze its date.
+`ComparisonNode`, `InNode`, `ExistsNode`, and `UnaryOperatorNode` expose `isDefault()`. Both the NOT wrapper and exists leaf of a null default return true. Parsed nodes and ordinary programmatic nodes return false.
 
-## Default origin and source spans
-
-Every node created while applying defaults has a null `getSpan()`, including generated AND joins and the NOT/exists pair for a null default. Nodes parsed from typed clauses retain their original spans. `ComparisonNode`, `InNode`, and both nodes of a null default's NOT/exists pair expose `isDefault()`. It is true only for default-origin clauses; parsed nodes and ordinary hand-built nodes return false. A null span alone does not identify a default because hand-built ASTs also have null spans. Array output includes `default: bool` on comparison, list, exists, and unary nodes. String output omits default clauses, including a null default's entire NOT/exists pair. Neither adapter includes spans.
+Generated nodes and their AND joins have null spans. A null span alone does not identify a default because programmatic trees can also have no span. Parsed clauses retain their original spans.
 
 ```php
 use HosmelQ\SearchSyntaxParser\SearchParser;
 use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
 
-$node = SearchParser::query('coffee')->allowedFields([
+$tree = SearchParser::query('coffee')->allowedFields([
     AllowedField::string('status')->default('active'),
 ])->parse();
 
-assert($node->getSpan() === null);
-assert($node->getLeft()->getSpan()->length === 6);
-assert($node->getRight()->getSpan() === null);
-assert($node->getRight()->isDefault());
+$default = $tree->getRight();
 ```
 
-## Directive and sort defaults
+`$default->isDefault()` is true and `$default->getSpan()` is null. Array output includes the `default` flag on these node types. Compiled clauses keep a null `position` for generated leaves.
 
-A [directive](directives-and-sorting) default is a resolved scalar setting in `getDirectives()`, never a filter node. `getTypedDirectives()` excludes it. Directive defaults are validated and cast like scalar field defaults and bypass ignored values and usage restrictions; typed ignored directives suppress their defaults. Null and list directive defaults throw `InvalidArgumentException` in either configuration order.
+On the field definition, `hasDefault()` distinguishes an explicit null default from no default; `getDefault()` returns the configured value.
 
-`defaultSort('created-desc')` applies an allowed sort when no `sort:` clause was supplied. `getSort()->isDefault()` identifies its origin. Default directives and the default sort are omitted by the string adapter. If only these settings remain and no filter tree exists, both `parse()` and `build('string')` return null, and the settings remain available through their accessors.
+## Set directive and sort defaults
+
+A [directive](directives-and-sorting) default must be scalar. It appears in `getDirectives()`, never in the filter tree or `getTypedDirectives()`. Aliases, casting, and validation apply. An explicitly ignored directive suppresses its default.
+
+`defaultSort('created-desc')` supplies an allowed sort when no `sort:` clause was typed. Check `getSort()->isDefault()` to identify it.
+
+The string adapter omits both kinds of default. If only default settings remain and there is no filter tree, `build('string')` returns null. If a tree consists entirely of filter defaults, it returns an empty string. Explicit directives and sorts can still produce text when the filter tree is null.

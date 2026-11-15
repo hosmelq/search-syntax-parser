@@ -14,8 +14,6 @@ readonly class InValidator implements ValidatorInterface
     use ValidatesAttributes;
 
     /**
-     * Create an in validator with the given allowed values.
-     *
      * @param list<mixed> $values
      */
     public function __construct(private array $values)
@@ -39,12 +37,9 @@ readonly class InValidator implements ValidatorInterface
         }
     }
 
-    /**
-     * Validate that the value is one of the allowed values.
-     */
     #[Override]
     public function __invoke(mixed $value, string $attribute): bool
     {
-        return $this->validateIn($attribute, $value, $this->values);
+        return $this->validateIn($value, $this->values);
     }
 }

@@ -1,10 +1,10 @@
 ---
-title: "Error handling"
-description: "Catch parser and field errors through one exception base and locate failures with Unicode character offsets in the original query."
+title: "Error Handling"
+description: "Handle query failures with structured reasons and parameters, and locate invalid input using Unicode character positions."
 weight: 6
 ---
 
-Catch `SearchSyntaxException` to handle all query errors. It extends `RuntimeException` and exposes `getPosition()`, `getReason()`, and `getParameters()`. `ParseException`, `InvalidFieldException`, `InvalidFieldValueException`, and `InvalidFieldOperatorException` extend this common base; the field exceptions also expose `getField()` using the external query name.
+Catch `SearchSyntaxException` to handle query errors. It exposes `getReason()`, `getParameters()`, and `getPosition()`:
 
 ```php
 use HosmelQ\SearchSyntaxParser\Exception\SearchSyntaxException;
@@ -16,103 +16,84 @@ try {
         AllowedField::integer('age', 'user_age'),
     ])->build();
 } catch (SearchSyntaxException $exception) {
-    assert($exception->getPosition() === 6);
-    assert($exception->getField() === 'age');
+    $reason = $exception->getReason()->value;
+    $parameters = $exception->getParameters();
+    $position = $exception->getPosition();
 }
 ```
 
-## Positions
+The reason is `field.invalid_value`, the parameters contain `['field' => 'age']`, and the position is `6`.
 
-Positions are zero-based Unicode code point offsets in the exact original string, including leading whitespace. `query()` does not trim input. A position is a character offset, not a byte offset or a rendered grapheme index.
+`ParseException`, `InvalidFieldException`, `InvalidFieldValueException`, and `InvalidFieldOperatorException` extend this base. Field exceptions also expose `getField()` with the external query name. The base extends `RuntimeException`.
+
+## Locate a failure
+
+Positions are zero-based Unicode code point offsets in the exact input, including leading whitespace. They are neither byte offsets nor rendered grapheme indices. The parser does not trim the query.
 
 | Failure | Position |
 | --- | --- |
 | Unterminated quote | Opening quote. |
-| Unexpected or missing token/value | Offending token, or the query's character length at end of input. |
-| Invalid wildcard, leading wildcard, or short wildcard pattern | Start of the offending pattern or bound; a list points to its offending item. |
-| Maximum length | Configured character limit, the first character past the limit. |
-| Maximum depth | The `(`, `NOT`, or `-` token that exceeds the limit. |
-| Too many clauses | First token of the clause that exceeds the limit; an expanded list uses the item's token. |
-| Field not allowed | Field token. |
-| Disallowed operator or clause | Explicit comparison operator token, or the value start when no explicit operator exists. |
-| Invalid directive placement or duplicate directive, including `sort` | Field token. |
-| Invalid directive clause | Comparison operator token or value start. |
-| Invalid field value | First value token; the first list item for lists, or `[` for bracket ranges and the first bound for compact ranges. |
-| Invalid UTF-8 or a PCRE failure | Null because no position applies. |
+| Unexpected or missing token | Offending token, or input length at the end. |
+| Invalid wildcard | Offending pattern or bound; lists identify the item. |
+| Maximum length | First character past the configured limit. |
+| Maximum depth | Group or negation that exceeds the limit. |
+| Maximum clauses | First token of the excess clause; expanded lists identify the item. |
+| Disallowed field | Field token. |
+| Disallowed operator or clause | Explicit operator, otherwise the value start. |
+| Misplaced or duplicate directive | Field token. |
+| Invalid directive shape | Operator or value start. |
+| Invalid value | First value token; `[` for bracket ranges or the first compact bound. |
+| Invalid UTF-8 or tokenization failure | Null. |
 
-Empty input, or input whose constraints are all ignored, returns `null` when no default applies. It is not a query error.
+An invalid list value points to the first item. Leading-wildcard and minimum-length failures point to the offending pattern item. Invalid sort values point to the sort value.
 
-Exception messages remain descriptive and can be displayed alongside a highlighted query location.
+An empty query, or a query whose filters are all ignored, is not an error. Without applicable defaults it returns a null tree.
 
-## Error reasons and parameters
+## Translate errors
 
-`getReason()` returns the backed `ErrorReason` enum; its snake_case `value` is suitable for application error codes. `getParameters()` returns an array keyed by strings with null, scalar, or string-list values, so applications can translate messages without parsing their English text.
+`getReason()` returns `ErrorReason`. Its backed value is a dotted code grouped by topic. `getParameters()` supplies null, scalar, or string-list values keyed by strings, so you can translate errors without parsing English messages.
 
-Dynamic keys that fail their configured rule use `field_not_allowed`, with the full typed field name and configured patterns such as `meta.*` in `allowed`. `field_not_allowed` includes an empty `allowed` list when no fields are configured; its message then says "No fields are allowed."
-
-| Reason value | Parameters |
+| Reason | Parameters |
 | --- | --- |
-| `unexpected_token` | `token` |
-| `expected_token` | `expected`, `actual` token names |
-| `expected_value` | None |
-| `unexpected_end_of_input` | None |
-| `unterminated_quote` | None |
-| `invalid_utf8` | None |
-| `tokenization_failed` | None |
-| `invalid_wildcard_usage` | `field` |
-| `invalid_wildcard_pattern` | None |
-| `leading_wildcard_not_allowed` (`LeadingWildcardNotAllowed`) | `field` for a field pattern; none for free text |
-| `wildcard_too_short` (`WildcardTooShort`) | `field`, `minimum` literal character count |
-| `word_wildcard_not_allowed` (`WordWildcardNotAllowed`) | `field` |
-| `maximum_length`, `maximum_depth`, `maximum_clauses` | `limit` |
-| `field_not_allowed` | `field`, `allowed` field-name list |
-| `invalid_field_value` | `field` |
-| `directive_not_top_level` (`DirectiveNotTopLevel`) | `field` |
-| `duplicate_directive` (`DuplicateDirective`) | `field` |
-| `directive_invalid_clause` (`DirectiveInvalidClause`) | `field` |
-| `operator_not_allowed` | `field` and either `operator` or `clause` |
-| `unsupported` | Defined by a third-party adapter |
+| `directive.duplicate` | `field` |
+| `directive.invalid_clause` | `field` |
+| `directive.not_top_level` | `field` |
+| `field.invalid_value` | `field` |
+| `field.not_allowed` | `field`, `allowed` |
+| `field.operator_not_allowed` | `field`, and `operator` or `clause` |
+| `query.invalid_utf8` | None. |
+| `query.maximum_clauses` | `limit` |
+| `query.maximum_depth` | `limit` |
+| `query.maximum_length` | `limit` |
+| `query.tokenization_failed` | None. |
+| `syntax.expected_token` | `expected`, `actual` |
+| `syntax.expected_value` | None. |
+| `syntax.unexpected_end_of_input` | None. |
+| `syntax.unexpected_token` | `token` |
+| `syntax.unterminated_quote` | None. |
+| `wildcard.invalid_pattern` | None. |
+| `wildcard.invalid_usage` | `field` |
+| `wildcard.leading_not_allowed` | `field` for a field pattern; none for a bare term. |
+| `wildcard.too_short` | `field`, `minimum` |
+| `wildcard.word_not_allowed` | `field` |
 
-```php
-use HosmelQ\SearchSyntaxParser\Exception\ErrorReason;
-use HosmelQ\SearchSyntaxParser\Exception\SearchSyntaxException;
-use HosmelQ\SearchSyntaxParser\SearchParser;
+Rejected dynamic keys use `field.not_allowed` with the complete typed name and configured patterns in `allowed`. With no configured fields, `allowed` is empty and the message says "No fields are allowed."
 
-try {
-    SearchParser::query('coffee )')->parse();
-} catch (SearchSyntaxException $exception) {
-    assert($exception->getReason() === ErrorReason::UnexpectedToken);
-    assert($exception->getParameters() === ['token' => ')']);
-}
-```
+Directive placement, duplicates, and shape errors use `InvalidFieldOperatorException`, including `sort:`. Unknown sort keys and directions use `InvalidFieldValueException` for `sort`. Free-text leading wildcard failures use `ParseException`; field wildcard failures use `InvalidFieldOperatorException`.
 
-Leading wildcard violations use `ParseException` for free-text terms and `InvalidFieldOperatorException` for fields. Minimum wildcard length violations also use `InvalidFieldOperatorException`, so `getField()` always returns the complete typed field name, including a dynamic key.
+## Fix configuration errors
 
-```php
-use HosmelQ\SearchSyntaxParser\Exception\ErrorReason;
-use HosmelQ\SearchSyntaxParser\Exception\InvalidFieldOperatorException;
-use HosmelQ\SearchSyntaxParser\SearchParser;
-use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
+Invalid application configuration throws `InvalidArgumentException` without a query reason or position. Examples include:
 
-try {
-    SearchParser::query('name:valid,*son')->allowedFields([
-        AllowedField::string('name'),
-    ])->parse();
-} catch (InvalidFieldOperatorException $exception) {
-    assert($exception->getField() === 'name');
-    assert($exception->getReason() === ErrorReason::LeadingWildcardNotAllowed);
-    assert($exception->getPosition() === 11);
-}
-```
+- Unknown adapters, non-positive limits, or invalid defaults.
+- Unsupported configured operators, invalid alias results, or ambiguous allowed values and enum names.
+- Invalid storage conversions, colliding map keys, or text modes on non-text fields.
+- Dynamic patterns without key rules, invalid key expressions, or defaults on patterns.
+- Invalid directive declarations, conflicting sort names, or invalid sort directions.
+- Invalid LIKE escape characters or whole-word matching requested from `LikePattern`.
 
-Directive placement, duplicates, and invalid clause shapes use `InvalidFieldOperatorException`, including `sort:`. Unknown sort keys or directions use `InvalidFieldValueException` with field `sort` and the value token's position. Directive placement is checked even when an operand is ignored. See [directives and sorting](directives-and-sorting) for the allowed forms.
+A default that fails validation throws when applied, naming its field. A default sort with an unknown key or direction also fails when applied. These are configuration problems rather than invalid user input.
 
-## Programmer errors
+The string adapter throws `LogicException` for values it cannot represent, such as non-finite floats or programmatic wildcard segments outside the grammar.
 
-Unknown adapters, non-positive limits, defaults that have an invalid shape or fail the field's rules when applied, unknown configured operators, nonscalar alias closure results, and non-backed enum rules throw `InvalidArgumentException`. So do `in()` strings, enum values or case names, and `map()` keys that collide ignoring case; a second storage conversion; an invalid `scale()` factor or a non-numeric scaled field; and a text match mode on a field whose values are not text. They indicate invalid application configuration rather than a user's query error. A string adapter asked to serialize an unrepresentable wildcard throws `LogicException`.
-
-Pattern fields without a `keys()` rule throw `InvalidArgumentException` when configured through `allowedFields()`. A pattern's internal name must end in `.*`, and pattern defaults, invalid key regexes, and key rules on exact fields also throw `InvalidArgumentException`. Negative `minWildcardLength()` values, invalid LIKE escape characters, and `LikePattern::forMatch()` with `TextMatch::Words` are configuration errors too. They carry no query position or `ErrorReason`.
-
-Read [query limits and untrusted input](../advanced-usage/query-limits-and-untrusted-input) for limits that bound parser work.
-
-Directive declarations require exact scalar fields and scalar defaults. Array or pattern directives, null or list directive defaults, conflicting `sort` field declarations when sorts are configured, empty or duplicate sort names ignoring case, and invalid configured sort directions throw `InvalidArgumentException`. A default sort with an unknown key or direction throws the same exception when applied, rather than reporting a user's query error.
+Use [query limits](../advanced-usage/query-limits-and-untrusted-input) to bound parser work before adapting user input.

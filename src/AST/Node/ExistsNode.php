@@ -10,35 +10,23 @@ use Override;
 
 readonly class ExistsNode implements NodeInterface
 {
-    /**
-     * Create a new exists node.
-     */
     public function __construct(
         private string $field,
         private null|Span $span = null,
         private bool $default = false,
     ) {}
 
-    /**
-     * {@inheritDoc}
-     */
     #[Override]
     public function accept(VisitorInterface $visitor): mixed
     {
         return $visitor->visitExists($this);
     }
 
-    /**
-     * Get the field name for this exists query.
-     */
     public function getField(): string
     {
         return $this->field;
     }
 
-    /**
-     * {@inheritDoc}
-     */
     #[Override]
     public function getSpan(): null|Span
     {
@@ -51,9 +39,6 @@ readonly class ExistsNode implements NodeInterface
         return 'Exists';
     }
 
-    /**
-     * Whether this check was created from a configured null field default.
-     */
     public function isDefault(): bool
     {
         return $this->default;

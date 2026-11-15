@@ -2,9 +2,84 @@
 
 declare(strict_types=1);
 
-use HosmelQ\SearchSyntaxParser\Date\DateBounds;
 use HosmelQ\SearchSyntaxParser\Date\DatePrecision;
 use HosmelQ\SearchSyntaxParser\Date\DateValue;
+
+it('rejects relative values outside the years 0001 to 9999', function (string $text): void {
+    expect(fn (): DateValue => DateValue::parse($text, new DateTimeZone('UTC')))
+        ->toThrow(InvalidArgumentException::class, 'The date is outside the years 0001 to 9999.');
+})->with(['today+999999y', 'now-999999M', '+999999w', 'today-3000y']);
+
+it('rejects values outside the format-less date grammar', function (string $text): void {
+    DateValue::parse($text, new DateTimeZone('UTC'));
+})->throws(InvalidArgumentException::class)->with([
+    '0000', '2024-13', '2025-02-29', '2024-02-30', '2024-03-15T24',
+    '2024-03-15T10:60', '2024-03-15T10:30:60', '2024-03-15t10:30z',
+    '2024-03-15T10:30+24:00', '2024-03-15T10:30-05:60', '15/03/2024',
+]);
+
+it('requires adapters to negate equality rather than represent its complement as one interval', function (): void {
+    DateValue::parse('today', new DateTimeZone('UTC'))->bounds('!=');
+})->throws(InvalidArgumentException::class);
+
+it('clamps month and year offsets to the last day of the target month', function (
+    string $text,
+    string $now,
+    string $expected,
+): void {
+    $value = DateValue::parse($text, new DateTimeZone('UTC'), new DateTimeImmutable($now));
+
+    expect($value->start()->format('Y-m-d H:i:s'))->toBe($expected);
+})->with([
+    ['today-1M', '2025-03-31T12:00:00Z', '2025-02-28 00:00:00'],
+    ['today+1M', '2025-01-31T12:00:00Z', '2025-02-28 00:00:00'],
+    ['today+1y', '2024-02-29T12:00:00Z', '2025-02-28 00:00:00'],
+    ['today-12M', '2024-02-29T12:00:00Z', '2023-02-28 00:00:00'],
+    ['now-1M', '2025-03-31T12:00:00Z', '2025-02-28 12:00:00'],
+    ['today-1M', '2024-03-31T12:00:00Z', '2024-02-29 00:00:00'],
+]);
+
+it('computes each day boundary in the real zone including missing midnights', function (
+    string $zone,
+    string $date,
+    string $from,
+    string $to,
+    int $hours,
+): void {
+    $zone = new DateTimeZone($zone);
+
+    foreach ([$date, 'today', 'tomorrow-1d', 'yesterday+1d'] as $text) {
+        $value = DateValue::parse($text, $zone, new DateTimeImmutable($date.' 12:00:00', $zone));
+
+        expect($value->start()->format('Y-m-d H:i:sP'))->toBe($from)
+            ->and($value->end()->format('Y-m-d H:i:sP'))->toBe($to)
+            ->and($value->end()->getTimestamp() - $value->start()->getTimestamp())->toBe(
+                $hours * 3_600,
+            );
+    }
+})->with([
+    [
+        'America/New_York',
+        '2024-03-10',
+        '2024-03-10 00:00:00-05:00',
+        '2024-03-11 00:00:00-04:00',
+        23,
+    ],
+    [
+        'America/New_York',
+        '2024-11-03',
+        '2024-11-03 00:00:00-04:00',
+        '2024-11-04 00:00:00-05:00',
+        25,
+    ],
+    [
+        'America/Santiago',
+        '2024-09-08',
+        '2024-09-08 01:00:00-03:00',
+        '2024-09-09 00:00:00-03:00',
+        23,
+    ],
+]);
 
 it('covers each written precision with half-open bounds', function (
     string $text,
@@ -82,131 +157,6 @@ it('covers each written precision with half-open bounds', function (
     ],
 ]);
 
-it('uses explicit offsets independently of the request zone', function (
-    string $text,
-    string $expectedUtc,
-    int $seconds,
-): void {
-    $value = DateValue::parse($text, new DateTimeZone('Pacific/Auckland'));
-
-    expect($value->hasExplicitOffset())->toBeTrue()
-        ->and($value->isRelative())->toBeFalse()
-        ->and($value->start()->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s'))
-        ->toBe($expectedUtc)
-        ->and($value->end()->getTimestamp() - $value->start()->getTimestamp())->toBe($seconds);
-})->with([
-    ['2024-03-15T10:30Z', '2024-03-15 10:30:00', 60],
-    ['2024-03-15T10:30+05', '2024-03-15 05:30:00', 60],
-    ['2024-03-15T10:30-05:30', '2024-03-15 16:00:00', 60],
-    ['2024-03-15T10+05:30', '2024-03-15 04:30:00', 3_600],
-    ['2024-03-15T10:30:45+23:59', '2024-03-14 10:31:45', 1],
-]);
-
-it('resolves instant anchors and offsets against the supplied request time', function (
-    string $text,
-    string $expected,
-): void {
-    $value = DateValue::parse(
-        $text,
-        new DateTimeZone('America/Managua'),
-        new DateTimeImmutable('2024-03-15T16:30:45.123456Z'),
-    );
-
-    expect($value->start()->format('Y-m-d H:i:s.uP'))->toBe($expected)
-        ->and((float) $value->end()->format('U.u') - (float) $value->start()->format('U.u'))
-        ->toEqualWithDelta(0.000_001, 0.000_000_1)
-        ->and($value->precision())->toBe(DatePrecision::Instant)
-        ->and($value->isRelative())->toBeTrue()
-        ->and($value->hasExplicitOffset())->toBeFalse();
-})->with([
-    ['NoW', '2024-03-15 10:30:45.123456-06:00'],
-    ['now-7d', '2024-03-08 10:30:45.123456-06:00'],
-    ['-7d', '2024-03-08 10:30:45.123456-06:00'],
-    ['+3d', '2024-03-18 10:30:45.123456-06:00'],
-    ['now+2h', '2024-03-15 12:30:45.123456-06:00'],
-    ['now+2m', '2024-03-15 10:32:45.123456-06:00'],
-    ['now+2M', '2024-05-15 10:30:45.123456-06:00'],
-    ['now-1y', '2023-03-15 10:30:45.123456-06:00'],
-    ['now-1w', '2024-03-08 10:30:45.123456-06:00'],
-    ['now+0d', '2024-03-15 10:30:45.123456-06:00'],
-]);
-
-it('resolves day anchors using the request zone before applying calendar offsets', function (
-    string $text,
-    string $from,
-    string $to,
-): void {
-    $value = DateValue::parse(
-        $text,
-        new DateTimeZone('America/Managua'),
-        new DateTimeImmutable('2024-03-16T01:30:45.123456Z'),
-    );
-
-    expect($value->start()->format('Y-m-d H:i:s'))->toBe($from.' 00:00:00')
-        ->and($value->end()->format('Y-m-d H:i:s'))->toBe($to.' 00:00:00')
-        ->and($value->precision())->toBe(DatePrecision::Day)
-        ->and($value->isRelative())->toBeTrue();
-})->with([
-    ['TODAY', '2024-03-15', '2024-03-16'],
-    ['yesterday', '2024-03-14', '2024-03-15'],
-    ['tomorrow', '2024-03-16', '2024-03-17'],
-    ['today-7d', '2024-03-08', '2024-03-09'],
-    ['tomorrow+1w', '2024-03-23', '2024-03-24'],
-    ['yesterday+1M', '2024-04-14', '2024-04-15'],
-    ['today-1y', '2023-03-15', '2023-03-16'],
-]);
-
-it('uses the current time when no request time is supplied', function (): void {
-    $before = new DateTimeImmutable();
-    $value = DateValue::parse('now', new DateTimeZone('UTC'));
-    $after = new DateTimeImmutable();
-
-    expect($value->start() >= $before && $value->start() <= $after)->toBeTrue()
-        ->and($value->start()->getTimezone()->getName())->toBe('UTC');
-});
-
-it('computes each day boundary in the real zone including missing midnights', function (
-    string $zone,
-    string $date,
-    string $from,
-    string $to,
-    int $hours,
-): void {
-    $zone = new DateTimeZone($zone);
-
-    foreach ([$date, 'today', 'tomorrow-1d', 'yesterday+1d'] as $text) {
-        $value = DateValue::parse($text, $zone, new DateTimeImmutable($date.' 12:00:00', $zone));
-
-        expect($value->start()->format('Y-m-d H:i:sP'))->toBe($from)
-            ->and($value->end()->format('Y-m-d H:i:sP'))->toBe($to)
-            ->and($value->end()->getTimestamp() - $value->start()->getTimestamp())->toBe(
-                $hours * 3_600,
-            );
-    }
-})->with([
-    [
-        'America/New_York',
-        '2024-03-10',
-        '2024-03-10 00:00:00-05:00',
-        '2024-03-11 00:00:00-04:00',
-        23,
-    ],
-    [
-        'America/New_York',
-        '2024-11-03',
-        '2024-11-03 00:00:00-04:00',
-        '2024-11-04 00:00:00-05:00',
-        25,
-    ],
-    [
-        'America/Santiago',
-        '2024-09-08',
-        '2024-09-08 01:00:00-03:00',
-        '2024-09-09 00:00:00-03:00',
-        23,
-    ],
-]);
-
 it('keeps calendar periods distinct from elapsed hours at DST transitions', function (): void {
     $zone = new DateTimeZone('America/New_York');
     $now = new DateTimeImmutable('2024-03-09 12:00:00', $zone);
@@ -237,6 +187,47 @@ it('keeps fractional and instant intervals exact when the clock moves backwards'
         ->and($fraction->end()->format('U.u'))->toBe('1730613600.000000');
 });
 
+it('keeps now exact for zero calendar offsets during a repeated hour', function (
+    string $text,
+): void {
+    $now = new DateTimeImmutable('2024-11-03T06:30:00Z');
+
+    expect(
+        DateValue::parse($text, new DateTimeZone('America/New_York'), $now)
+            ->start()
+            ->getTimestamp(),
+    )->toBe($now->getTimestamp());
+})->with(['now+0d', '-0d', 'now-0M', 'now+0y']);
+
+it('keeps now inside today when a repeated hour crosses midnight', function (): void {
+    $zone = new DateTimeZone('America/Goose_Bay');
+    $now = new DateTimeImmutable('2000-10-28T23:30:00-04:00');
+    $today = DateValue::parse('today', $zone, $now);
+
+    expect($now >= $today->start() && $now < $today->end())->toBeTrue()
+        ->and(DateValue::parse('yesterday', $zone, $now)->end()->getTimestamp())->toBe(
+            $today->start()->getTimestamp(),
+        );
+});
+
+it('keeps the wall-clock time for day offsets on now and elapsed time for hours', function (): void {
+    $zone = new DateTimeZone('America/New_York');
+    $now = new DateTimeImmutable('2024-03-12T16:00:00Z');
+
+    expect(DateValue::parse('now-7d', $zone, $now)->start()->format('Y-m-d H:i:sP'))->toBe(
+        '2024-03-05 12:00:00-05:00',
+    )
+        ->and(DateValue::parse('now-168h', $zone, $now)->start()->format('Y-m-d H:i:sP'))->toBe(
+            '2024-03-05 11:00:00-05:00',
+        )
+        ->and(
+            DateValue::parse('now', $zone, new DateTimeImmutable('2024-11-03T06:30:00Z'))
+                ->start()
+                ->format('Y-m-d H:i:sP'),
+        )
+        ->toBe('2024-11-03 01:30:00-05:00');
+});
+
 it('maps every comparison operator to inclusive from and exclusive to bounds', function (
     string $operator,
     null|string $from,
@@ -254,30 +245,58 @@ it('maps every comparison operator to inclusive from and exclusive to bounds', f
     ['<=', null, '2024-04-01'],
 ]);
 
-it('builds inclusive written ranges with optional open ends', function (
-    bool $openFrom,
-    bool $openTo,
+it('resolves day anchors using the request zone before applying calendar offsets', function (
+    string $text,
+    string $from,
+    string $to,
 ): void {
-    $zone = new DateTimeZone('UTC');
-    $bounds = DateBounds::range(
-        $openFrom ? null : DateValue::parse('2023', $zone),
-        $openTo ? null : DateValue::parse('2024-06', $zone),
+    $value = DateValue::parse(
+        $text,
+        new DateTimeZone('America/Managua'),
+        new DateTimeImmutable('2024-03-16T01:30:45.123456Z'),
     );
 
-    expect($bounds->from?->format('Y-m-d'))->toBe($openFrom ? null : '2023-01-01')
-        ->and($bounds->to?->format('Y-m-d'))->toBe($openTo ? null : '2024-07-01');
-})->with([[false, false], [true, false], [false, true], [true, true]]);
+    expect($value->start()->format('Y-m-d H:i:s'))->toBe($from.' 00:00:00')
+        ->and($value->end()->format('Y-m-d H:i:s'))->toBe($to.' 00:00:00')
+        ->and($value->precision())->toBe(DatePrecision::Day)
+        ->and($value->isRelative())->toBeTrue();
+})->with([
+    ['TODAY', '2024-03-15', '2024-03-16'],
+    ['yesterday', '2024-03-14', '2024-03-15'],
+    ['tomorrow', '2024-03-16', '2024-03-17'],
+    ['today-7d', '2024-03-08', '2024-03-09'],
+    ['tomorrow+1w', '2024-03-23', '2024-03-24'],
+    ['yesterday+1M', '2024-04-14', '2024-04-15'],
+    ['today-1y', '2023-03-15', '2023-03-16'],
+]);
 
-it('requires adapters to negate equality rather than represent its complement as one interval', function (): void {
-    DateValue::parse('today', new DateTimeZone('UTC'))->bounds('!=');
-})->throws(InvalidArgumentException::class);
+it('resolves instant anchors and offsets against the supplied request time', function (
+    string $text,
+    string $expected,
+): void {
+    $value = DateValue::parse(
+        $text,
+        new DateTimeZone('America/Managua'),
+        new DateTimeImmutable('2024-03-15T16:30:45.123456Z'),
+    );
 
-it('rejects values outside the format-less date grammar', function (string $text): void {
-    DateValue::parse($text, new DateTimeZone('UTC'));
-})->throws(InvalidArgumentException::class)->with([
-    '0000', '2024-13', '2025-02-29', '2024-02-30', '2024-03-15T24',
-    '2024-03-15T10:60', '2024-03-15T10:30:60', '2024-03-15t10:30z',
-    '2024-03-15T10:30+24:00', '2024-03-15T10:30-05:60', '15/03/2024',
+    expect($value->start()->format('Y-m-d H:i:s.uP'))->toBe($expected)
+        ->and((float) $value->end()->format('U.u') - (float) $value->start()->format('U.u'))
+        ->toEqualWithDelta(0.000_001, 0.000_000_1)
+        ->and($value->precision())->toBe(DatePrecision::Instant)
+        ->and($value->isRelative())->toBeTrue()
+        ->and($value->hasExplicitOffset())->toBeFalse();
+})->with([
+    ['NoW', '2024-03-15 10:30:45.123456-06:00'],
+    ['now-7d', '2024-03-08 10:30:45.123456-06:00'],
+    ['-7d', '2024-03-08 10:30:45.123456-06:00'],
+    ['+3d', '2024-03-18 10:30:45.123456-06:00'],
+    ['now+2h', '2024-03-15 12:30:45.123456-06:00'],
+    ['now+2m', '2024-03-15 10:32:45.123456-06:00'],
+    ['now+2M', '2024-05-15 10:30:45.123456-06:00'],
+    ['now-1y', '2023-03-15 10:30:45.123456-06:00'],
+    ['now-1w', '2024-03-08 10:30:45.123456-06:00'],
+    ['now+0d', '2024-03-15 10:30:45.123456-06:00'],
 ]);
 
 it('starts a day at the first occurrence of a repeated midnight', function (): void {
@@ -316,65 +335,31 @@ it('treats repeated sub-day times as their first occurrence and skipped ones as 
     'minute before the gap' => ['2024-03-10T01:59', '2024-03-10 06:59:00', '2024-03-10 07:00:00'],
 ]);
 
-it('clamps month and year offsets to the last day of the target month', function (
+it('uses explicit offsets independently of the request zone', function (
     string $text,
-    string $now,
-    string $expected,
+    string $expectedUtc,
+    int $seconds,
 ): void {
-    $value = DateValue::parse($text, new DateTimeZone('UTC'), new DateTimeImmutable($now));
+    $value = DateValue::parse($text, new DateTimeZone('Pacific/Auckland'));
 
-    expect($value->start()->format('Y-m-d H:i:s'))->toBe($expected);
+    expect($value->hasExplicitOffset())->toBeTrue()
+        ->and($value->isRelative())->toBeFalse()
+        ->and($value->start()->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s'))
+        ->toBe($expectedUtc)
+        ->and($value->end()->getTimestamp() - $value->start()->getTimestamp())->toBe($seconds);
 })->with([
-    ['today-1M', '2025-03-31T12:00:00Z', '2025-02-28 00:00:00'],
-    ['today+1M', '2025-01-31T12:00:00Z', '2025-02-28 00:00:00'],
-    ['today+1y', '2024-02-29T12:00:00Z', '2025-02-28 00:00:00'],
-    ['today-12M', '2024-02-29T12:00:00Z', '2023-02-28 00:00:00'],
-    ['now-1M', '2025-03-31T12:00:00Z', '2025-02-28 12:00:00'],
-    ['today-1M', '2024-03-31T12:00:00Z', '2024-02-29 00:00:00'],
+    ['2024-03-15T10:30Z', '2024-03-15 10:30:00', 60],
+    ['2024-03-15T10:30+05', '2024-03-15 05:30:00', 60],
+    ['2024-03-15T10:30-05:30', '2024-03-15 16:00:00', 60],
+    ['2024-03-15T10+05:30', '2024-03-15 04:30:00', 3_600],
+    ['2024-03-15T10:30:45+23:59', '2024-03-14 10:31:45', 1],
 ]);
 
-it('keeps the wall-clock time for day offsets on now and elapsed time for hours', function (): void {
-    $zone = new DateTimeZone('America/New_York');
-    $now = new DateTimeImmutable('2024-03-12T16:00:00Z');
+it('uses the current time when no request time is supplied', function (): void {
+    $before = new DateTimeImmutable();
+    $value = DateValue::parse('now', new DateTimeZone('UTC'));
+    $after = new DateTimeImmutable();
 
-    expect(DateValue::parse('now-7d', $zone, $now)->start()->format('Y-m-d H:i:sP'))->toBe(
-        '2024-03-05 12:00:00-05:00',
-    )
-        ->and(DateValue::parse('now-168h', $zone, $now)->start()->format('Y-m-d H:i:sP'))->toBe(
-            '2024-03-05 11:00:00-05:00',
-        )
-        ->and(
-            DateValue::parse('now', $zone, new DateTimeImmutable('2024-11-03T06:30:00Z'))
-                ->start()
-                ->format('Y-m-d H:i:sP'),
-        )
-        ->toBe('2024-11-03 01:30:00-05:00');
+    expect($value->start() >= $before && $value->start() <= $after)->toBeTrue()
+        ->and($value->start()->getTimezone()->getName())->toBe('UTC');
 });
-
-it('keeps now inside today when a repeated hour crosses midnight', function (): void {
-    $zone = new DateTimeZone('America/Goose_Bay');
-    $now = new DateTimeImmutable('2000-10-28T23:30:00-04:00');
-    $today = DateValue::parse('today', $zone, $now);
-
-    expect($now >= $today->start() && $now < $today->end())->toBeTrue()
-        ->and(DateValue::parse('yesterday', $zone, $now)->end()->getTimestamp())->toBe(
-            $today->start()->getTimestamp(),
-        );
-});
-
-it('keeps now exact for zero calendar offsets during a repeated hour', function (
-    string $text,
-): void {
-    $now = new DateTimeImmutable('2024-11-03T06:30:00Z');
-
-    expect(
-        DateValue::parse($text, new DateTimeZone('America/New_York'), $now)
-            ->start()
-            ->getTimestamp(),
-    )->toBe($now->getTimestamp());
-})->with(['now+0d', '-0d', 'now-0M', 'now+0y']);
-
-it('rejects relative values outside the years 0001 to 9999', function (string $text): void {
-    expect(fn (): DateValue => DateValue::parse($text, new DateTimeZone('UTC')))
-        ->toThrow(InvalidArgumentException::class, 'The date is outside the years 0001 to 9999.');
-})->with(['today+999999y', 'now-999999M', '+999999w', 'today-3000y']);

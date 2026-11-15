@@ -12,13 +12,7 @@ final class LikePattern
 {
     public static function escape(string $value, string $escape = '!'): string
     {
-        if (mb_strlen($escape) !== 1 || $escape === '%' || $escape === '_') {
-            throw new InvalidArgumentException(
-                'A LIKE escape must be one character other than % or _.',
-            );
-        }
-
-        return strtr($value, [$escape => $escape.$escape, '%' => $escape.'%', '_' => $escape.'_']);
+        return strtr($value, self::replacements($escape));
     }
 
     public static function forMatch(string $value, TextMatch $match, string $escape = '!'): string
@@ -37,12 +31,25 @@ final class LikePattern
 
     public static function fromWildcard(WildcardNode $node, string $escape = '!'): string
     {
-        // Validate the escape even when a programmatically constructed node has no segments.
-        self::escape('', $escape);
+        $replacements = self::replacements($escape);
 
         return implode('%', array_map(
-            static fn (string $segment): string => self::escape($segment, $escape),
+            static fn (string $segment): string => strtr($segment, $replacements),
             $node->getSegments(),
         ));
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private static function replacements(string $escape): array
+    {
+        if (mb_strlen($escape) !== 1 || $escape === '%' || $escape === '_') {
+            throw new InvalidArgumentException(
+                'A LIKE escape must be one character other than % or _.',
+            );
+        }
+
+        return [$escape => $escape.$escape, '%' => $escape.'%', '_' => $escape.'_'];
     }
 }

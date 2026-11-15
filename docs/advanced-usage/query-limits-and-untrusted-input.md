@@ -1,38 +1,48 @@
 ---
-title: "Query limits and untrusted input"
-description: "Bound raw input length, group depth, and leaf clauses before adapting user queries into backend search operations."
+title: "Query Limits and Untrusted Input"
+description: "Limit query length, nesting, and clause counts before converting user input into search operations in your backend."
 weight: 4
 ---
 
-No fields are allowed by default. Configure `allowedFields()` before parsing field queries from untrusted input; unknown fields throw `InvalidFieldException` with reason `field_not_allowed`. Bare terms need no field configuration. `allowAnyField()` explicitly accepts every field, so use it only when your backend is prepared to handle arbitrary field names.
-
-Default limits cap a query at 10,000 Unicode characters, 32 nested groups or negations, and 1,024 leaf clauses. Excess input throws `ParseException` before the adapter runs.
+Configure allowed fields and query limits before accepting user input. Unknown fields fail with `field.not_allowed`; bare terms need no field configuration.
 
 ```php
 use HosmelQ\SearchSyntaxParser\SearchParser;
 
-$result = SearchParser::query('NOT (title:Coffee OR title:Tea)')
+$filters = SearchParser::query('NOT (title:Coffee OR title:Tea)')
     ->allowedFields(['title'])
     ->maxLength(500)
     ->maxDepth(16)
     ->maxClauses(100)
     ->build();
-
-assert($result['operator'] === 'NOT');
 ```
 
-## What each limit counts
+The limits are checked before the adapter runs. Exceeding one throws `ParseException` with a reason and source position.
 
-Length counts the raw string, including leading and trailing whitespace, and is checked before tokenizing. Depth counts parenthesized groups and `NOT`/`-` operators along a nested path. Leaf clauses include comparisons, literal lists, ranges, existence checks, terms, and wildcard nodes, as well as directive and `sort:` clauses.
+## Set limits
 
-A list without patterns counts once. When a list contains a wildcard, every expanded item counts separately, including items removed by `ignore()`. Ignored clauses still count toward input limits. Defaults bypass the clause and depth limits; the original input still obeys the length limit.
+| Method | Default | Counts |
+| --- | --- | --- |
+| `maxLength()` | 10,000 | Unicode characters in the raw input, including whitespace. |
+| `maxDepth()` | 32 | Groups and NOT or minus operators along a nested path. |
+| `maxClauses()` | 1,024 | Leaf clauses, including directives and sorting. |
 
-Limits must be positive integers; non-positive values throw `InvalidArgumentException`. Very large custom limits can exhaust memory or the PHP stack while building or releasing an AST, so keep them bounded for untrusted queries.
+Length is checked before tokenization. A literal list counts as one clause. A list with wildcard patterns counts every expanded item, including items removed by `ignore()`.
 
-## Backend integration
+Ignored clauses still count toward input limits. Defaults bypass depth and clause limits, while the original input still obeys the length limit.
 
-Configure [allowed fields and their value rules](../basic-usage/field-validation-and-value-types) before adapting untrusted input. Bind values as parameters, and map field names to trusted backend identifiers. Adapters own wildcard semantics, backend-specific range behavior, and actual query execution.
+All limits must be positive integers. Choose bounds appropriate for the application; very large limits can exhaust memory or the PHP stack when building or releasing a tree.
 
-[Defaults](../basic-usage/defaults) supply optional filters and can be overridden by field references. Enforce mandatory authorization filters independently. Use [error positions](../basic-usage/error-handling) to report invalid input without exposing backend details.
+## Apply backend rules
 
-An ignored clause also suppresses its field's default. When every clause disappears and no default applies, the query has no constraints and returns `null` from both `parse()` and `build()`; `build()` resolves the adapter but does not call it. Decide how your application should handle that result before executing a search.
+Use [field definitions](../basic-usage/field-validation-and-value-types) to validate names and values. `allowAnyField()` accepts arbitrary field names, so enable it only when the backend can handle them.
+
+Map accepted names to trusted backend identifiers and bind values as parameters. The [clause compiler](compiling-clauses) prepares operators, storage values, and text patterns. Your adapter still applies backend comparisons, ranges, complements, and query execution.
+
+[Defaults](../basic-usage/defaults) can be overridden by field references. Apply mandatory authorization filters independently.
+
+## Handle an empty result
+
+An ignored clause suppresses its field's default. If every filter disappears and no default applies, `parse()` and array or custom `build()` return null. The adapter is resolved but is not called for that tree.
+
+Decide whether an unconstrained search is allowed in your application. Use [structured errors and positions](../basic-usage/error-handling) to report invalid input without exposing backend details.

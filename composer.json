@@ -5,7 +5,9 @@
     "keywords": [
         "ast",
         "dsl",
+        "hosmelq",
         "lexer",
+        "php",
         "query-language",
         "query-parser",
         "search-query",
@@ -18,7 +20,7 @@
             "email": "hosmelq@gmail.com"
         }
     ],
-    "homepage": "https://github.com/hosmelq/search-syntax-parser",
+    "homepage": "https://hosmelq.com/docs/search-syntax-parser",
     "support": {
         "docs": "https://hosmelq.com/docs/search-syntax-parser"
     },

@@ -12,17 +12,11 @@ class SizeValidator implements ValidatorInterface
 {
     use ValidatesAttributes;
 
-    /**
-     * Create a size validator for exact size matching.
-     */
     public function __construct(private readonly float|int $size) {}
 
-    /**
-     * Validate that the value has exactly the specified size.
-     */
     #[Override]
     public function __invoke(mixed $value, string $attribute, bool $length = false): bool
     {
-        return $this->validateSize($attribute, $value, [$this->size], $length);
+        return $this->validateSize($value, [$this->size], $length);
     }
 }

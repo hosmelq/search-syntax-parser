@@ -10,27 +10,18 @@ use Override;
 
 readonly class TermNode implements NodeInterface
 {
-    /**
-     * Create a new term node.
-     */
     public function __construct(
         private string $value,
         private bool $quoted = false,
         private null|Span $span = null,
     ) {}
 
-    /**
-     * {@inheritDoc}
-     */
     #[Override]
     public function accept(VisitorInterface $visitor): mixed
     {
         return $visitor->visitTerm($this);
     }
 
-    /**
-     * {@inheritDoc}
-     */
     #[Override]
     public function getSpan(): null|Span
     {
@@ -43,9 +34,6 @@ readonly class TermNode implements NodeInterface
         return 'Term';
     }
 
-    /**
-     * Get the term value.
-     */
     public function getValue(): string
     {
         return $this->value;

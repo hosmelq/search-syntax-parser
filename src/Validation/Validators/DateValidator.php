@@ -73,12 +73,10 @@ final readonly class DateValidator implements ValidatorInterface
 
         $relative = DateExpression::relative($value);
 
-        // Without time, only day anchors resolve to whole days; now and bare offsets are instants.
         if ($relative === null || ($this->withoutTime && $relative['anchor'] === 'now')) {
             return false;
         }
 
-        // Accept a relative value only when it resolves to a supported year right now.
         try {
             DateValue::parse($value, new DateTimeZone('UTC'));
         } catch (InvalidArgumentException) {

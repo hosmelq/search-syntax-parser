@@ -1,6 +1,7 @@
 # Search Syntax Parser
 
-Parse search queries into structured data with field searches, boolean logic, ranges, lists, and adapters.
+Search Syntax Parser parses search queries into structured data, with field searches, boolean
+logic, ranges, lists, and adapters.
 
 ```bash
 composer require hosmelq/search-syntax-parser
@@ -8,7 +9,9 @@ composer require hosmelq/search-syntax-parser
 
 Read the [full documentation](https://hosmelq.com/docs/search-syntax-parser).
 
-## Testing
+## Development
+
+Run the test suite with:
 
 ```bash
 composer test
@@ -16,12 +19,11 @@ composer test
 
 ## Changelog
 
-Please see [CHANGELOG.md](CHANGELOG.md) for more information on what has changed recently.
+See [CHANGELOG.md](CHANGELOG.md) for a list of changes.
 
-## Credits
+## Contributing
 
-- [Hosmel Quintana](https://github.com/hosmelq)
-- [All Contributors](../../contributors)
+Pull requests are welcome. Please run the test suite before submitting changes.
 
 ## License
 

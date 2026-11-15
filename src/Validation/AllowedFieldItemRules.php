@@ -23,11 +23,6 @@ use HosmelQ\SearchSyntaxParser\Validation\Validators\UlidValidator;
 use HosmelQ\SearchSyntaxParser\Validation\Validators\UuidValidator;
 use InvalidArgumentException;
 
-/**
- * Builder for per-item validation rules on array fields.
- *
- * Use with AllowedField::array(...)->each(fn ($rules) => $rules->string()->max(20)).
- */
 final class AllowedFieldItemRules
 {
     /**
@@ -54,9 +49,6 @@ final class AllowedFieldItemRules
 
     private bool $withoutTime = false;
 
-    /**
-     * Infer untyped values without losing identifiers or quoted text.
-     */
     public static function infer(string $value, bool $quoted): bool|float|int|string
     {
         if ($quoted) {
@@ -95,13 +87,9 @@ final class AllowedFieldItemRules
 
         $float = (float) $value;
 
-        // A decimal beyond the float range stays text, like an overflowing integer.
         return is_finite($float) ? $float : $value;
     }
 
-    /**
-     * Accept whole years and months with a date rule without a format.
-     */
     public function allowPartialDates(): self
     {
         if ($this->type !== 'date') {
@@ -121,9 +109,6 @@ final class AllowedFieldItemRules
         return $this;
     }
 
-    /**
-     * Require size/value between min and max for each item.
-     */
     public function between(float|int $min, float|int $max): self
     {
         $this->validators[] = new BetweenValidator($min, $max);
@@ -131,9 +116,6 @@ final class AllowedFieldItemRules
         return $this;
     }
 
-    /**
-     * Require each item to be boolean or boolean-like.
-     */
     public function boolean(): self
     {
         $this->setType('boolean');
@@ -144,8 +126,6 @@ final class AllowedFieldItemRules
     }
 
     /**
-     * Validate each item using a custom callback.
-     *
      * @param callable(mixed $value, string $attribute): bool $callback
      */
     public function callback(callable $callback): self
@@ -155,9 +135,6 @@ final class AllowedFieldItemRules
         return $this;
     }
 
-    /**
-     * Cast raw text using this type or the fallback rules' type.
-     */
     public function cast(
         string $value,
         bool $quoted,
@@ -180,9 +157,6 @@ final class AllowedFieldItemRules
         };
     }
 
-    /**
-     * Require a valid date or datetime, preserving its raw text.
-     */
     public function date(null|string $format = null): self
     {
         $validator = new DateValidator($format);
@@ -202,9 +176,6 @@ final class AllowedFieldItemRules
         return $this;
     }
 
-    /**
-     * Require each numeric item to have decimal places within the range.
-     */
     public function decimal(int $min, null|int $max = null): self
     {
         $this->setType('decimal');
@@ -215,8 +186,6 @@ final class AllowedFieldItemRules
     }
 
     /**
-     * Require a backing value or case name from a backed enum, preferring values over names.
-     *
      * @param class-string<BackedEnum> $enum
      */
     public function enum(string $enum): self
@@ -243,8 +212,6 @@ final class AllowedFieldItemRules
     }
 
     /**
-     * Get the configured cast type for field metadata constraints.
-     *
      * @internal
      *
      * @return null|'boolean'|'date'|'decimal'|'in'|'integer'|'numeric'|'string'|'ulid'|'uuid'
@@ -255,16 +222,6 @@ final class AllowedFieldItemRules
     }
 
     /**
-     * @return list<ValidatorInterface>
-     */
-    public function getValidators(): array
-    {
-        return $this->validators;
-    }
-
-    /**
-     * Check that a typed value has the type query text is cast to, using the fallback rules when untyped.
-     *
      * @internal
      */
     public function hasCastType(bool|float|int|string $value, null|self $fallback = null): bool
@@ -282,8 +239,6 @@ final class AllowedFieldItemRules
     }
 
     /**
-     * Require each item to be in the given list.
-     *
      * @param list<mixed> $values
      */
     public function in(array $values): self
@@ -299,9 +254,6 @@ final class AllowedFieldItemRules
         return $this;
     }
 
-    /**
-     * Require each item to be an integer.
-     */
     public function integer(): self
     {
         $this->setType('integer');
@@ -311,9 +263,6 @@ final class AllowedFieldItemRules
         return $this;
     }
 
-    /**
-     * Require each item to have size/value <= given max.
-     */
     public function max(float|int $value): self
     {
         $this->validators[] = new MaxValidator($value);
@@ -321,17 +270,11 @@ final class AllowedFieldItemRules
         return $this;
     }
 
-    /**
-     * Check whether size rules measure strings by length, using the fallback rules' type when untyped.
-     */
     public function measuresLength(null|self $fallback = null): bool
     {
         return ($this->type ?? $fallback?->type) === 'string';
     }
 
-    /**
-     * Require each item to have size/value >= given min.
-     */
     public function min(float|int $value): self
     {
         $this->validators[] = new MinValidator($value);
@@ -339,9 +282,6 @@ final class AllowedFieldItemRules
         return $this;
     }
 
-    /**
-     * Require each item to be numeric.
-     */
     public function numeric(): self
     {
         $this->setType('numeric');
@@ -351,9 +291,6 @@ final class AllowedFieldItemRules
         return $this;
     }
 
-    /**
-     * Require each item to have size/value equal to given size.
-     */
     public function size(float|int $value): self
     {
         $this->validators[] = new SizeValidator($value);
@@ -361,9 +298,6 @@ final class AllowedFieldItemRules
         return $this;
     }
 
-    /**
-     * Require each item to be a string.
-     */
     public function string(): self
     {
         $this->setType('string');
@@ -373,9 +307,6 @@ final class AllowedFieldItemRules
         return $this;
     }
 
-    /**
-     * Require a ULID and normalize its text to uppercase.
-     */
     public function ulid(): self
     {
         $this->setType('ulid');
@@ -385,9 +316,6 @@ final class AllowedFieldItemRules
         return $this;
     }
 
-    /**
-     * Require a UUID and normalize its text to lowercase.
-     */
     public function uuid(): self
     {
         $this->setType('uuid');
@@ -397,9 +325,6 @@ final class AllowedFieldItemRules
         return $this;
     }
 
-    /**
-     * Validate the value; string types size strings by length regardless of rule order.
-     */
     public function validate(mixed $value, string $attribute, null|bool $length = null): bool
     {
         $length ??= $this->measuresLength();
@@ -418,9 +343,6 @@ final class AllowedFieldItemRules
         return true;
     }
 
-    /**
-     * Accept only calendar dates with a date rule without a format, rejecting times and instants.
-     */
     public function withoutTime(): self
     {
         if ($this->type !== 'date') {
@@ -440,9 +362,6 @@ final class AllowedFieldItemRules
         return $this;
     }
 
-    /**
-     * Match boolean allowed values like boolean(), and other scalars by text or inferred number.
-     */
     private function castMember(string $value, bool $quoted): bool|float|int|string
     {
         $boolean = $this->toBoolean($value);
@@ -487,9 +406,6 @@ final class AllowedFieldItemRules
         $this->type = $type;
     }
 
-    /**
-     * Map true/1 and false/0, case-insensitively, to booleans.
-     */
     private function toBoolean(string $value): null|bool
     {
         return match (mb_strtolower($value)) {

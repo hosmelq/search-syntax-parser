@@ -24,8 +24,6 @@ class InvalidFieldException extends SearchSyntaxException
     }
 
     /**
-     * Field is not in the allowed list.
-     *
      * @param list<string> $allowedFields
      */
     public static function fieldNotAllowed(

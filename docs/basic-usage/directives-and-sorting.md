@@ -1,14 +1,14 @@
 ---
-title: "Directives and sorting"
-description: "Extract typed query settings and mapped sort keys separately from filters, with strict placement, defaults, and normalized text output."
+title: "Directives and Sorting"
+description: "Extract typed query settings and mapped sort keys separately from filters, with placement rules and optional defaults."
 weight: 5
 ---
 
-Directives describe settings for the whole search. They are separate from the filter AST and have no framework-specific behavior. An adapter or application decides how to apply them.
+Directives hold settings for the whole search. They are separate from the filter tree; your application or adapter decides how to apply them.
 
-## Declaring directives
+## Declare a directive
 
-Call `directive()` on an exact scalar `AllowedField`. The usual aliases, casts, validation, and ignored values apply. Public field names identify the results; internal field mappings and storage conversions do not change directive values.
+Call `directive()` on an exact scalar field:
 
 ```php
 use HosmelQ\SearchSyntaxParser\SearchParser;
@@ -20,43 +20,38 @@ $parser = SearchParser::query('coffee trashed:ONLY limit:25')->allowedFields([
 ]);
 
 $filters = $parser->build();
-assert($filters['type'] === 'term');
-assert($filters['value'] === 'coffee');
-assert($parser->getDirectives() === ['trashed' => 'only', 'limit' => 25]);
-assert($parser->getTypedDirectives() === ['trashed' => 'only', 'limit' => 25]);
+$settings = $parser->getDirectives();
 ```
 
-`getDirectives()` returns resolved scalar values, including defaults. `getTypedDirectives()` returns only explicitly supplied, non-ignored directives, in configuration order. Both read the latest parse/build result without parsing or resolving aliases again. Values can be booleans, floats, integers, or strings. Numeric public names become integer array keys according to PHP's array rules.
+`$filters` contains the term `coffee`. `$settings` contains `['trashed' => 'only', 'limit' => 25]`.
 
-A directive default must be a scalar. Null and list defaults, array fields, and dynamic pattern fields cannot be directives and throw `InvalidArgumentException`. Defaults use the same alias, cast, and validation rules as field defaults, bypassing usage restrictions and ignored values. A typed value removed by `ignore()` still suppresses its default.
+Aliases, casts, validation, and ignored values work as they do on filter fields. Results use public field names and cast values; internal names and storage conversions do not change them. Numeric names follow PHP's array-key conversion rules.
 
-```php
-use HosmelQ\SearchSyntaxParser\SearchParser;
-use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
+`getDirectives()` returns resolved values, including defaults. `getTypedDirectives()` returns explicitly supplied, non-ignored values in configuration order. Both read the latest parse or build result without parsing again.
 
-$field = AllowedField::in('trashed', ['only', 'without'])
-    ->directive()->alias('all', 'without')->ignore('any')->default('without');
-$parser = SearchParser::query('')->allowedFields([$field]);
-assert($parser->parse() === null);
-assert($parser->getDirectives() === ['trashed' => 'without']);
-assert($parser->getTypedDirectives() === []);
+Directive defaults must be scalar. Array fields, pattern fields, null defaults, and list defaults are configuration errors. An ignored explicit value suppresses its default. See [field defaults](defaults#set-directive-and-sort-defaults).
 
-$ignored = SearchParser::query('trashed:any')->allowedFields([$field]);
-assert($ignored->parse() === null);
-assert($ignored->getDirectives() === []);
-```
+## Place directives in the query
 
-## Placement and clause rules
+Each directive may appear once and must use a single equality value, such as `limit:25`. Lists, ranges, existence checks, wildcard patterns, and other comparison operators are rejected before value rules run. A quoted asterisk is literal text and is allowed if the field accepts it.
 
-Every ancestor of a directive must be `AND`. Parenthesized AND groups are allowed, for example `(coffee AND (trashed:only))`. A directive cannot occur below `OR`, `NOT`, or `-`, including double negation or an OR whose other operand is ignored. A filter-only OR group beside a directive is valid: `(coffee OR tea) trashed:only`.
+Every ancestor of a directive must be AND. Parentheses around AND groups are allowed:
 
-Each directive may occur once and must be a single equality comparison, written `field:value`. Lists, ranges, wildcard patterns, existence checks, `!=`, and ordering comparisons are rejected before aliases, casts, or value validators run. Quotes can make syntax characters literal: `trashed:"*"` is a scalar string if its field rules accept it. Ignored directives still count toward duplicates and placement rules.
+| Query | Result |
+| --- | --- |
+| `(coffee AND (limit:25))` | Accepted. |
+| `(coffee OR tea) limit:25` | Accepted. |
+| `coffee OR limit:25` | Rejected. |
+| `NOT limit:25` | Rejected. |
+| `limit:10 limit:25` | Rejected. |
 
-These errors use `InvalidFieldOperatorException`: `DirectiveNotTopLevel`, `DuplicateDirective`, and `DirectiveInvalidClause`. Placement and duplicate positions point to the field token; invalid clause positions point to the operator or value start. Invalid resolved values use `InvalidFieldValueException` at the value token. See [error handling](error-handling).
+Ignored directives still count toward placement and duplicate checks. Double negation and ignored operands do not make an invalid placement valid.
 
-## Sort keys and directions
+Placement, duplicate, and clause-shape errors use `InvalidFieldOperatorException` with `directive.not_top_level`, `directive.duplicate`, or `directive.invalid_clause`. Invalid values use `InvalidFieldValueException`. See [error handling](error-handling).
 
-Configure sorts independently of filter fields with `Sorting\AllowedSort`. A string declaration is shorthand for a sort with the same public and internal name. `defaultDirection()` accepts `asc` or `desc`, ignoring case; the initial direction is `asc`.
+## Allow sort keys
+
+Declare sorts separately with `AllowedSort`. A string is shorthand for a sort whose public and internal names are equal:
 
 ```php
 use HosmelQ\SearchSyntaxParser\SearchParser;
@@ -67,41 +62,44 @@ $parser = SearchParser::query('coffee sort:CREATED-AT-desc')->allowedSorts([
     'title',
 ])->defaultSort('title');
 
-assert($parser->build('string') === 'coffee AND sort:created-at-desc');
+$parser->parse();
 $sort = $parser->getSort();
-assert($sort->getName() === 'created-at');
-assert($sort->getInternalName() === 'created_at');
-assert($sort->getDirection() === 'desc');
-assert($sort->isDefault() === false);
 ```
 
-`sort:created-at` uses that declaration's default direction. `sort:created-at-asc` and `sort:created-at-desc` set an explicit direction. Keys and directions match ignoring case, and only the final hyphen separates a direction from a hyphenated key. Because a valid direction suffix always takes precedence, declaring both `created` and `created-desc` throws `InvalidArgumentException`: `sort:created-desc` could never reach the second one with its own default direction. Directive values and the sort are resolved after the whole query is parsed, so an error in a filter elsewhere in the query can be reported before an invalid directive value or sort.
+The sort has public name `created-at`, internal name `created_at`, and direction `desc`. Its `isDefault()` flag is false.
 
-There may be one `sort:` clause, subject to the same placement and scalar equality rules as directives. Unknown keys and directions throw `InvalidFieldValueException` with field `sort` and the value's position. Configuring sorts reserves the field name `sort`, ignoring case: `allowedFields()` and `allowedSorts()` reject a conflicting field declaration in either configuration order. Without configured sorts, `sort` follows ordinary field permissions.
+Use `sort:created-at` for the declaration's default direction, or append `-asc` or `-desc`. Keys and directions ignore case. The initial default direction is `asc`.
 
-`defaultSort('created-at-desc')` applies only if no sort was typed. Its argument uses the same key/direction syntax, and a bare key uses its configured default direction. `getSort()` returns a `Sorting\Sort` or null; the result exposes `getName()`, `getInternalName()`, `getDirection()`, and `isDefault()`. Invalid default sorts throw `InvalidArgumentException` when applied. Duplicate sort declarations ignoring case and invalid configured default directions are configuration errors too.
+Only the final hyphen can separate a direction. A valid direction suffix takes precedence over a full key, so declaring both `created` and `created-desc` is a configuration error. Empty names, duplicate names ignoring case, and invalid configured directions are also rejected.
 
-## Output and empty filters
+`getSort()` returns a `Sort` or null. Read `getName()`, `getInternalName()`, `getDirection()`, and `isDefault()` after parsing. `defaultSort()` uses the same key-and-direction syntax; an invalid default throws `InvalidArgumentException` when applied.
 
-`parse()` and array output contain only filters. A query containing only directives or a sort returns a null tree while its settings remain available. Custom adapters are not called for a null tree. The string adapter is the exception: it accepts a null filter tree and renders explicit settings, appending directives in configuration order and then `sort:key-direction` with top-level AND joins. It groups an OR filter root before appending settings.
+## Use one sort per query
+
+`sort:` follows the same placement and scalar equality rules as directives. Unknown keys or directions throw `InvalidFieldValueException` for `sort`, positioned at its value.
+
+Configuring sorts reserves the field name `sort`, ignoring case. Conflicting field declarations are rejected in either configuration order. Without configured sorts, `sort` is an ordinary field subject to field permissions.
+
+Directive values and sorting resolve after the filter tree has been parsed. A filter error can therefore be reported before an invalid setting elsewhere in the query.
+
+## Serialize settings
+
+Array output and `parse()` contain only filters. A query with only settings has a null filter tree, while its directives and sort remain available through their accessors. Custom adapters are not called for that tree.
+
+The string adapter writes explicit directives in configuration order, followed by the sort. It joins them with AND and groups an OR filter root when needed:
 
 ```php
 use HosmelQ\SearchSyntaxParser\SearchParser;
 use HosmelQ\SearchSyntaxParser\Sorting\AllowedSort;
 use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
 
-$configure = static fn (string $query): SearchParser => SearchParser::query($query)
+$parser = SearchParser::query('sort:created-desc trashed:only')
     ->allowedFields([AllowedField::string('trashed')->directive()->default('without')])
     ->allowedSorts([AllowedSort::field('created', 'created_at')]);
-$parser = $configure('sort:created-desc trashed:only');
-$text = $parser->build('string');
-assert($text === 'trashed:only AND sort:created-desc');
-assert($parser->build() === null);
 
-$reparsed = $configure($text);
-assert($reparsed->parse() === null);
-assert($reparsed->getDirectives() === $parser->getDirectives());
-assert($reparsed->getSort() == $parser->getSort());
+$text = $parser->build('string');
 ```
 
-Directive defaults and the default sort are omitted from string output. With only default settings and no filters, `build('string')` returns null; an existing filter tree containing only default filters still serializes to `''`. Reapply the same schema when reparsing. As with ignored filters, serialization omits ignored directive mentions, so reparsing can restore a default that an ignored mention originally suppressed.
+The result is `trashed:only AND sort:created-desc`. Reapply the same declarations when parsing this text.
+
+Default settings and ignored mentions are omitted. Parsing the serialized text with defaults can therefore restore a default that an ignored directive originally suppressed.

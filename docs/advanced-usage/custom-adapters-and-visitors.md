@@ -1,10 +1,10 @@
 ---
-title: "Custom adapters and visitors"
-description: "Implement custom output formats through AST visitors and translate explicit wildcard segments into escaped LIKE patterns."
+title: "Custom Adapters and Visitors"
+description: "Create output formats with AST visitors, transform query trees, and preserve source positions, quoting, and default metadata."
 weight: 3
 ---
 
-Implement `QueryAdapterInterface::build(NodeInterface $ast): mixed` to produce an output format. Register a creator with `extend()`, then select it by name. When parsing returns `null`, `SearchParser::build()` still resolves the adapter, so an unknown name fails, but returns `null` without calling it; direct adapter calls require a non-null tree. Creators receive no arguments; capture the parser when your adapter needs field mappings.
+Implement `QueryAdapterInterface` to produce another output format. Register a creator with `extend()` and select it by name:
 
 ```php
 use HosmelQ\SearchSyntaxParser\Adapter\QueryAdapterInterface;
@@ -14,7 +14,6 @@ use HosmelQ\SearchSyntaxParser\SearchParser;
 
 final readonly class QueryEnvelopeAdapter implements QueryAdapterInterface
 {
-    #[\Override]
     public function build(NodeInterface $ast): array
     {
         return ['query' => new StringAdapter()->build($ast)];
@@ -24,22 +23,37 @@ final readonly class QueryEnvelopeAdapter implements QueryAdapterInterface
 $parser = SearchParser::query('coffee tea');
 $parser->extend('envelope', fn (): QueryEnvelopeAdapter => new QueryEnvelopeAdapter());
 
-assert($parser->build('envelope') === ['query' => 'coffee AND tea']);
+$result = $parser->build('envelope');
 ```
 
-## Visiting nodes
+The result is `['query' => 'coffee AND tea']`. Creators receive no arguments; capture the parser if the adapter needs field metadata.
 
-Each node implements `getType()`, `getSpan()`, and `accept(VisitorInterface $visitor)`. A visitor implements `visitBinaryOperator()`, `visitComparison()`, `visitExists()`, `visitIn()`, `visitRange()`, `visitTerm()`, `visitUnaryOperator()`, and `visitWildcard()`. Binary nodes expose left/right children; unary nodes expose an operand. Call `accept()` on children to traverse them.
+Custom adapters receive a non-null tree. When parsing returns null, `build()` resolves the selected adapter but does not call it. Unknown adapter names still fail.
 
-AST type names are `BinaryOperator`, `Comparison`, `Exists`, `In`, `Range`, `Term`, `UnaryOperator`, and `Wildcard`. All field nodes retain external names. `WildcardNode::getField()` can be null for a bare term; `getOperator()` returns `=` or `!=`; `getSegments()` returns literal segments, with runs of unquoted asterisks collapsed.
+## Visit nodes
 
-Dynamic field nodes retain their full typed name, such as `meta.color`. `getAllowedField()` resolves its pattern metadata, while internal mappings replace the pattern suffix, for example `meta.*` to `attributes.*`. Adapters must map accepted keys to trusted backend identifiers. Compact and bracket syntax both produce `RangeNode`; adapters need no separate compact-range handler.
+Every node implements `getType()`, `getSpan()`, and `accept(VisitorInterface $visitor)`. Implement these visitor methods to handle each node:
 
-`AbstractAdapter` supplies `getInternalFieldName()` when constructed with a parser. Get a configured field through `SearchParser::getAllowedField($node->getField())`; its `getTextMatch($node, $index)` resolves effective text matching, and `toStorage($value)` converts cast values for your backend. Apply conversions to comparison values, list items, and non-null range bounds, and implement case-insensitive text comparisons. `ArrayAdapter` is also extensible, so a visitor can override one representation while inheriting the remaining node handling.
+| Method | Node type |
+| --- | --- |
+| `visitBinaryOperator()` | AND or OR with left and right children. |
+| `visitComparison()` | A field, operator, and scalar value. |
+| `visitExists()` | An existence check. |
+| `visitIn()` | A field and list of values. |
+| `visitRange()` | A field and inclusive bounds. |
+| `visitTerm()` | A bare text term. |
+| `visitUnaryOperator()` | NOT with an operand. |
+| `visitWildcard()` | Literal segments separated by wildcard operators. |
 
-## Rewriting nodes
+Call `accept()` on children to traverse them. Field nodes retain external names, including complete dynamic keys. A wildcard's field is null for a bare term. Compact and bracket ranges share `RangeNode`.
 
-Extend `NodeTransformer` to override a single `visit*()` method instead of implementing the whole visitor interface. `transform(NodeInterface $node): NodeInterface` recursively rewrites children and returns an equivalent tree by default. Unchanged readonly leaves are shared; rebuilt binary and unary nodes retain their spans, and default-origin flags survive.
+`AbstractAdapter` provides `getInternalFieldName()` when constructed with a parser. Use `getAllowedField()` to retrieve field metadata, `getTextMatch()` for effective matching, and `toStorage()` for backend values. The [clause compiler](compiling-clauses) handles these value and operator conversions for scalar field schemas.
+
+`ArrayAdapter` is extensible, so you can override one visitor method while keeping the rest of its representation. Adapters must implement case-insensitive text comparisons and map accepted fields to trusted backend identifiers.
+
+## Rewrite a tree
+
+Extend `NodeTransformer` to replace selected nodes. Its default implementation recursively transforms children and returns an equivalent tree:
 
 ```php
 use HosmelQ\SearchSyntaxParser\Adapter\StringAdapter;
@@ -50,109 +64,86 @@ use HosmelQ\SearchSyntaxParser\SearchParser;
 
 final class UppercaseTerms extends NodeTransformer
 {
-    #[\Override]
     public function visitTerm(TermNode $node): NodeInterface
     {
         return new TermNode(mb_strtoupper($node->getValue()), $node->isQuoted(), $node->getSpan());
     }
 }
 
-$ast = SearchParser::query('coffee OR NOT tea')->parse();
-$rewritten = new UppercaseTerms()->transform($ast);
-
-assert(new StringAdapter()->build($rewritten) === 'COFFEE OR NOT TEA');
+$tree = SearchParser::query('coffee OR NOT tea')->parse();
+$rewritten = new UppercaseTerms()->transform($tree);
+$text = new StringAdapter()->build($rewritten);
 ```
 
-When replacing a comparison, exists, list, or unary node in a custom override, pass its `isDefault()` value as the new node's `default` argument. Comparisons and lists also accept an optional `quoted` argument: a boolean for comparisons or a list of booleans aligned with list values. Preserve these flags with `ComparisonNode::isQuoted()` or `InNode::isQuoted($index)` so quoted values retain exact text matching. Defaults are unquoted. Lists also take `positions`; pass `InNode::getPositions()` so array storage conversions keep each item's written position.
+The result is `COFFEE OR NOT TEA`. Unchanged readonly leaves are shared; rebuilt groups retain their spans.
+
+When replacing nodes, preserve the metadata they expose:
+
+- Pass `isDefault()` to replacement comparisons, lists, exists checks, and unary nodes.
+- Preserve `isQuoted()` on terms and comparisons, and each item's quote flag on lists.
+- Pass `InNode::getPositions()` so array storage conversion keeps the written item positions.
 
 ## Negation normal form
 
-`NegationNormalFormTransformer` extends `NodeTransformer` and is opt-in. `parse()` never runs it automatically. The result has `NOT` only directly around a leaf: a comparison, list, range, exists check, wildcard, or term. Leaves have positive operators, so `field:!=v`, not-equal lists, and not-equal wildcards become `NOT` around their `=` form. De Morgan's laws push negation through AND/OR, and double negations disappear. Comparisons such as `>`, `>=`, `<`, and `<=` keep their operators.
+Use `NegationNormalFormTransformer` before compiling backend clauses. It moves NOT directly around leaves, applies De Morgan's laws, and removes double negation. Not-equal comparisons, lists, and wildcards become NOT around their positive form.
 
 ```php
 use HosmelQ\SearchSyntaxParser\Adapter\StringAdapter;
 use HosmelQ\SearchSyntaxParser\AST\Visitor\NegationNormalFormTransformer;
 use HosmelQ\SearchSyntaxParser\SearchParser;
 
-$ast = SearchParser::query('NOT (price:>10 OR status:!=open)')->allowAnyField()->parse();
-$normalized = new NegationNormalFormTransformer()->transform($ast);
+$tree = SearchParser::query('NOT (price:>10 OR status:!=open)')
+    ->allowedFields(['price', 'status'])
+    ->parse();
 
-assert(new StringAdapter()->build($normalized) === 'NOT price:>10 AND status:open');
+$normalized = new NegationNormalFormTransformer()->transform($tree);
+$text = new StringAdapter()->build($normalized);
 ```
 
-Negation means set complement. A field declared `nullable()` can have a missing stored value, and its complement must include that value. `NOT price:>10` therefore stays `NOT price:>10`; changing it to `price:<=10` would exclude missing prices. For multi-valued fields, `tag:!=a` means no element equals `a`, including records with no elements.
+The result is `NOT price:>10 AND status:open`. `parse()` does not run this transformer automatically.
 
-Adapters must implement that contract explicitly. A SQL adapter needs to include `IS NULL` or absent relations where appropriate instead of relying on SQL's three-valued logic or a plain `NOT LIKE`. See [query semantics](../basic-usage/query-syntax#complements-and-missing-values).
+Ordering comparisons retain their operators. `NOT price:>10` includes missing prices for a nullable field, so replacing it with a plain `price:<=10` would change the result. For a multi-valued field, negation means no element matches, including records with no elements.
 
-## Wildcards to LIKE
+Adapters must apply [set-complement semantics](../basic-usage/query-syntax#include-missing-values-in-complements), including missing columns, keys, or relations. SQL's ordinary NOT or NOT LIKE is not sufficient for nullable values.
 
-This adapter converts wildcard leaves into LIKE instructions and leaves other array output intact. It uses the framework-independent `LikePattern` helper to escape literal `%`, `_`, and `!`, then join segments with `%`. Apply the resulting pattern as a bound parameter with `LIKE ? ESCAPE '!'`; resolve the returned field through trusted database identifiers. Bare patterns target the configured title field in this example.
+## Build LIKE patterns
+
+`Support\LikePattern` escapes literal SQL pattern characters and converts wildcard segments:
 
 ```php
-use HosmelQ\SearchSyntaxParser\Adapter\ArrayAdapter;
 use HosmelQ\SearchSyntaxParser\AST\Node\WildcardNode;
-use HosmelQ\SearchSyntaxParser\SearchParser;
-use HosmelQ\SearchSyntaxParser\Support\LikePattern;
-use HosmelQ\SearchSyntaxParser\Validation\AllowedField;
-
-final readonly class LikeAdapter extends ArrayAdapter
-{
-    #[\Override]
-    public function visitWildcard(WildcardNode $node): array
-    {
-        return [
-            'field' => $this->getInternalFieldName($node->getField() ?? 'title'),
-            'operator' => $node->getOperator() === '!=' ? 'NOT LIKE' : 'LIKE',
-            'pattern' => LikePattern::fromWildcard($node),
-        ];
-    }
-}
-
-$parser = SearchParser::query('title:co*fee')->allowedFields([
-    AllowedField::string('title', 'product_title'),
-]);
-$parser->extend('like', fn (): LikeAdapter => new LikeAdapter($parser));
-
-assert($parser->build('like') === [
-    'field' => 'product_title',
-    'operator' => 'LIKE',
-    'pattern' => 'co%fee',
-]);
-```
-
-`LikePattern::escape(string $value, string $escape = '!')` escapes literal SQL pattern characters. `fromWildcard(WildcardNode $node, string $escape = '!')` joins the escaped literal segments with `%`. `forMatch(string $value, TextMatch $match, string $escape = '!')` returns escaped text for `Exact`, `value%` for `Prefix`, and `%value%` for `Contains`. It throws `InvalidArgumentException` for `Words`, since LIKE cannot express whole-word matching. The escape must be a single Unicode character other than `%` and `_`; an invalid escape throws `InvalidArgumentException`. Emit the same escape in the backend's `ESCAPE` clause.
-
-```php
 use HosmelQ\SearchSyntaxParser\Support\LikePattern;
 use HosmelQ\SearchSyntaxParser\Validation\TextMatch;
 
-assert(LikePattern::escape('50%_!') === '50!%!_!!');
-assert(LikePattern::forMatch('50%', TextMatch::Exact) === '50!%');
-assert(LikePattern::forMatch('50%', TextMatch::Prefix) === '50!%%');
-assert(LikePattern::forMatch('50%', TextMatch::Contains) === '%50!%%');
-assert(LikePattern::escape('a_b#', '#') === 'a#_b##');
+$wildcard = new WildcardNode('title', '=', ['co', 'fee']);
+$pattern = LikePattern::fromWildcard($wildcard);
+$prefix = LikePattern::forMatch('50%', TextMatch::Prefix);
 ```
 
-A quoted asterisk is literal text inside its segment and is not converted to `%`. Keep field allowlists and bound values in your backend integration; parsing alone does not execute or authorize a database query.
+`$pattern` is `co%fee`, and `$prefix` is `50!%%`. Bind these values and use `LIKE ? ESCAPE '!'`. The helper escapes literal `%`, `_`, and `!`; quoted asterisks remain literal text.
 
-## Source spans and literal values
+`escape()` protects a literal string. `forMatch()` supports exact, prefix, and contains modes. Whole-word matching needs a backend operation, so `TextMatch::Words` throws `InvalidArgumentException`.
 
-`getSpan()` returns a readonly `Span` with public `offset` and `length` integers, measured in Unicode code points from the exact query string. It uses the same coordinates as `SearchSyntaxException::getPosition()`. Quotes, a trailing wildcard, and closing range brackets are included. Binary nodes cover both operands, including consumed group delimiters; unary nodes start at `NOT` or `-` and include their operand's closing parenthesis. A group's inner node covers only its inner content. Each generated leaf and join in an expanded wildcard list covers the whole field clause.
+All three methods accept a custom escape character. It must be one Unicode character other than `%` or `_`, and the backend must use the same character in its ESCAPE clause.
 
-Every node constructor accepts an optional `span: null|Span` argument; direct constructions default to null. `TermNode` also accepts `quoted: bool = false` before `span`, and exposes `isQuoted()`. Default-generated nodes and joins also have null spans. Use `isDefault()` on `ComparisonNode`, `ExistsNode`, `InNode`, and `UnaryOperatorNode` to identify default-origin clauses, because hand-built trees may also be spanless. Those constructors accept `default: bool = false` after `span`. For a null default, both the NOT wrapper and its `ExistsNode` carry the flag. Parsed nodes always use false. Neither built-in adapter emits spans. `RangeNode::getFrom()` and `getTo()` return null for open bounds and scalar values for literal bounds, including a quoted `*`.
+## Read source positions
+
+`getSpan()` returns a readonly `Span` with `offset` and `length`, measured in Unicode code points from the original query. These are the same coordinates used by exception positions:
 
 ```php
 use HosmelQ\SearchSyntaxParser\SearchParser;
 
-$node = SearchParser::query('  title:"Café"')->allowAnyField()->parse();
-
-assert($node->getSpan()->offset === 2);
-assert($node->getSpan()->length === 12);
-assert(SearchParser::query('"Cold Brew"')->parse()->isQuoted());
-assert(SearchParser::query('price:[* TO 10]')->allowAnyField()->parse()->getFrom() === null);
+$node = SearchParser::query('  title:"Café"')->allowedFields(['title'])->parse();
+$span = $node->getSpan();
 ```
 
-Adapters can report unsupported operations with a subclass of `SearchSyntaxException`. Its public constructor accepts the message, an `ErrorReason`, an array of parameters, and an optional character position.
+The offset is `2` and the length is `12`. Quotes, trailing wildcards, and closing range brackets are included. Binary nodes cover their operands and consumed group delimiters; unary nodes start at NOT or minus. A group's inner node covers its inner content. Expanded wildcard-list nodes cover the whole field clause.
+
+Node constructors accept an optional span. Programmatic and default-generated nodes can have null spans, so use `isDefault()` to identify defaults. Neither built-in adapter emits spans. Compiled clauses retain the leaf's offset as `position`.
+
+## Report adapter errors
+
+Extend `SearchSyntaxException` when an adapter needs a structured query error:
 
 ```php
 use HosmelQ\SearchSyntaxParser\Exception\ErrorReason;
@@ -162,11 +153,10 @@ final class UnsupportedQueryException extends SearchSyntaxException {}
 
 $exception = new UnsupportedQueryException(
     'Ranges are not supported by this adapter.',
-    ErrorReason::Unsupported,
-    ['field' => 'price'],
+    ErrorReason::OperatorNotAllowed,
+    ['field' => 'price', 'clause' => 'ranges'],
     0,
 );
-
-assert($exception->getReason() === ErrorReason::Unsupported);
-assert($exception->getParameters() === ['field' => 'price']);
 ```
+
+The constructor accepts a message, reason, parameters, and optional source position. Use the reason and parameters for application translations; see [error handling](../basic-usage/error-handling).

@@ -9,8 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 This release includes breaking changes to field permissions, ignored values, operators, wildcard AST nodes, exception inheritance, value typing, validation, default origin and serialization, nullable AST results, case-insensitive values, quoted field metadata, text match modes, storage conversions, query limits, leading wildcard permissions, dynamic field patterns, compact ranges, directives, query sorting, and the lexer and parser APIs.
 
-### Added
-
+- Add `Query\ClauseCompiler`, `Query\Clause`, `Query\Bounds`, `Query\Operator`, and `Support\FullText` for backend-independent leaf compilation, operator complements, storage values, text patterns, word and phrase matches, and eligible free-text fields.
+- Add `AllowedField::isText()` and `comparesText()` for scalar text matching metadata.
+- **Breaking:** group `ErrorReason` values under `directive.*`, `field.*`, `query.*`, `syntax.*`, and `wildcard.*`; update error-code consumers and translation keys.
+- **Breaking:** remove the unused `ErrorReason::Unsupported` case and `AllowedFieldItemRules::getValidators()`. Adapters rejecting a clause can use `OperatorNotAllowed` with a `clause` parameter.
+- **Breaking:** remove unused validation-trait helpers `requireParameterCount()` and `trim()`, remove the unused attribute arguments from its protected validation methods, and require the numeric parameter shapes already supplied by validator constructors.
+- Organize tests by their source classes, move fixtures under `tests/Fixtures`, and remove redundant accessor and validation-helper tests.
+- Rewrite documentation for the v3 release and align the README, configuration, and project links with the package conventions.
 - Add `AllowedField::directive()` for unique top-level scalar equality settings, resolved through aliases, casting, validation, and ignored values, with scalar defaults and separate `getDirectives()` and `getTypedDirectives()` results.
 - Add framework-independent `Sorting\AllowedSort` and `Sorting\Sort`, `allowedSorts()`, `defaultSort()`, and `getSort()` for case-insensitive query sort keys, internal mappings, explicit directions, and default origin.
 - Add positioned `DirectiveNotTopLevel`, `DuplicateDirective`, and `DirectiveInvalidClause` error reasons through `InvalidFieldOperatorException`; reserve `sort` when sorts are configured and report invalid sort values through `InvalidFieldValueException`.
@@ -39,9 +44,6 @@ This release includes breaking changes to field permissions, ignored values, ope
 - Add `SearchSyntaxException` as the common runtime exception base, Unicode character positions on query errors, and external field accessors on field exceptions.
 - Add `date()` field and array-item rules with strict calendar/time validation and optional exact formats, and `enum()` rules using backed enum values and types.
 - Publish complete usage documentation under `docs/`, including adapter output, visitors, wildcard-to-LIKE conversion, defaults, errors, and query limits.
-
-### Changed
-
 - Keep directives and sorting out of filter ASTs and array output. Append explicit directives in configuration order and then the typed sort to string output, omitting defaults and supporting a null filter tree only for the string adapter when explicit settings remain.
 - Reject leading wildcards by default, including list items and free-text terms; field violations use `InvalidFieldOperatorException` with the complete external name.
 - Accept hour-precision ISO datetimes such as `2024-03-15T10` on format-less date fields.
@@ -73,9 +75,6 @@ This release includes breaking changes to field permissions, ignored values, ope
 - Measure `string()` values by character length in size rules, including numeric-looking text; numbers and numeric strings in other fields are still compared by value. Values without a size, such as booleans, fail validation instead of throwing a `TypeError`.
 - Limit queries to 10,000 characters, 32 levels of group/negation nesting and 1024 leaf clauses by default, configurable with `maxLength()`, `maxDepth()` and `maxClauses()`.
 - Reject queries made only of connectives, repeated connectives such as `a OR OR b`, a bare `*`, and values starting with reserved punctuation such as `title:(a OR b)`.
-
-### Fixed
-
 - Preserve Unicode datetime-like field names when serializing query text so their colon cannot merge with the value during reparsing.
 - Preserve Unicode, hyphenated words, punctuation and embedded wildcards.
 - Support negative field values, list items and range bounds, including coordinate tuples.
@@ -87,9 +86,6 @@ This release includes breaking changes to field permissions, ignored values, ope
 - Parse ISO datetimes without timezones and with fractional seconds.
 - Prevent long, deeply nested or clause-heavy queries from crashing the process under the default limits.
 - Correct the documented equivalence of not-equal lists to use AND.
-
-### Removed
-
 - Remove `ErrorReason::EmptyQuery` and `ParseException::emptyQuery()`.
 - Remove unused token cases and `ParseException::expectedIdentifier()`.
 - Remove the doctrine/lexer, archtechx/enums and thecodingmachine/safe runtime dependencies.

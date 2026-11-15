@@ -4,42 +4,56 @@ declare(strict_types=1);
 
 use HosmelQ\SearchSyntaxParser\Validation\Validators\MaxValidator;
 
-it('validates numbers against maximum', function (
+it('rejects arrays above the maximum size', function (
+    int $max,
+    array $value,
+): void {
+    $validator = new MaxValidator($max);
+
+    expect($validator($value, 'items'))->toBeFalse();
+})->with(['too many' => [2, [1, 2, 3]]]);
+
+it('rejects numbers above the maximum', function (
     float|int $max,
     float|int $value,
-    bool $expected,
 ): void {
     $validator = new MaxValidator($max);
 
-    expect($validator($value, 'field'))->toBe($expected);
-})->with([
-    'above max' => [3, 3.01, false],
-    'negative above max' => [-5, -4.99, false],
-    'at max' => [3, 3, true],
-    'below max' => [3, 2.99, true],
-    'negative ok' => [-5, -6, true],
-]);
+    expect($validator($value, 'field'))->toBeFalse();
+})->with(['above max' => [3, 3.01], 'negative above max' => [-5, -4.99]]);
 
-it('validates string length against maximum', function (
+it('rejects strings above the maximum length', function (
     int $max,
     string $value,
-    bool $expected,
 ): void {
     $validator = new MaxValidator($max);
 
-    expect($validator($value, 'name'))->toBe($expected);
-})->with([
-    'too long' => [3, 'abcd', false],
-    'boundary' => [3, 'abc', true],
-    'shorter ok' => [3, 'ab', true],
-]);
+    expect($validator($value, 'name'))->toBeFalse();
+})->with(['too long' => [3, 'abcd']]);
 
-it('validates array size against maximum', function (int $max, array $value, bool $expected): void {
+it('accepts arrays within the maximum size', function (
+    int $max,
+    array $value,
+): void {
     $validator = new MaxValidator($max);
 
-    expect($validator($value, 'items'))->toBe($expected);
-})->with([
-    'too many' => [2, [1, 2, 3], false],
-    'boundary' => [2, [1, 2], true],
-    'fewer ok' => [2, [1], true],
-]);
+    expect($validator($value, 'items'))->toBeTrue();
+})->with(['boundary' => [2, [1, 2]], 'fewer ok' => [2, [1]]]);
+
+it('accepts numbers within the maximum', function (
+    float|int $max,
+    float|int $value,
+): void {
+    $validator = new MaxValidator($max);
+
+    expect($validator($value, 'field'))->toBeTrue();
+})->with(['at max' => [3, 3], 'below max' => [3, 2.99], 'negative ok' => [-5, -6]]);
+
+it('accepts strings within the maximum length', function (
+    int $max,
+    string $value,
+): void {
+    $validator = new MaxValidator($max);
+
+    expect($validator($value, 'name'))->toBeTrue();
+})->with(['boundary' => [3, 'abc'], 'shorter ok' => [3, 'ab']]);

@@ -4,20 +4,23 @@ declare(strict_types=1);
 
 use HosmelQ\SearchSyntaxParser\Validation\Validators\IntegerValidator;
 
-it('validates integer values', function (mixed $value, bool $expected): void {
+it('rejects values that are not whole integers', function (mixed $value): void {
     $validator = new IntegerValidator();
 
-    expect($validator($value, 'v'))->toBe($expected);
+    expect($validator($value, 'v'))->toBeFalse();
 })->with([
-    'float number' => [10.5, false],
-    'float string' => ['10.5', false],
-    'scientific notation' => ['1e5', false],
-    'non-numeric string' => ['abc', false],
-    'empty string' => ['', false],
-    'null' => [null, false],
-    'array' => [[1], false],
-    'padded int string' => ['02', false],
-    'zero int' => [0, true],
-    'negative int' => [-10, true],
-    'int string' => ['10', true],
+    'float number' => [10.5],
+    'float string' => ['10.5'],
+    'scientific notation' => ['1e5'],
+    'non-numeric string' => ['abc'],
+    'empty string' => [''],
+    'null' => [null],
+    'array' => [[1]],
+    'padded int string' => ['02'],
 ]);
+
+it('accepts whole integers', function (mixed $value): void {
+    $validator = new IntegerValidator();
+
+    expect($validator($value, 'v'))->toBeTrue();
+})->with(['zero int' => [0], 'negative int' => [-10], 'int string' => ['10']]);

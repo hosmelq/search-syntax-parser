@@ -222,9 +222,6 @@ final readonly class StringAdapter extends AbstractAdapter
             .$value;
     }
 
-    /**
-     * Write a field name and its colon, refusing names the query syntax cannot express.
-     */
     private function fieldPrefix(string $name): string
     {
         if ($name === '*' || ! $this->canBeBare($name)) {
@@ -235,9 +232,6 @@ final readonly class StringAdapter extends AbstractAdapter
         return preg_match('/^\d{4}-\d{2}-\d{2}[Tt]\d{2}/u', $name) === 0 ? $name.':' : $name.' :';
     }
 
-    /**
-     * Check whether text lexes as one field value; a leading `-` joins the value after a colon.
-     */
     private function isBareValue(string $value): bool
     {
         // The parser reads a leading minus as its own token, then splits the rest.
@@ -257,14 +251,14 @@ final readonly class StringAdapter extends AbstractAdapter
     }
 
     /**
-     * Render text and its surviving root operator so omitted defaults cannot change precedence.
-     *
      * @return array{string, null|string}
      */
     private function render(NodeInterface $node): array
     {
         if (! $node instanceof BinaryOperatorNode) {
-            /** @var string $text */
+            /**
+             * @var string $text
+             */
             $text = $node->accept($this);
 
             return [$text, null];

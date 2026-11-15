@@ -10,9 +10,6 @@ use Override;
 
 readonly class BinaryOperatorNode implements NodeInterface
 {
-    /**
-     * Create a new binary operator node.
-     */
     public function __construct(
         private string $operator,
         private NodeInterface $left,
@@ -20,42 +17,27 @@ readonly class BinaryOperatorNode implements NodeInterface
         private null|Span $span = null,
     ) {}
 
-    /**
-     * {@inheritDoc}
-     */
     #[Override]
     public function accept(VisitorInterface $visitor): mixed
     {
         return $visitor->visitBinaryOperator($this);
     }
 
-    /**
-     * Get the left operand.
-     */
     public function getLeft(): NodeInterface
     {
         return $this->left;
     }
 
-    /**
-     * Get the binary operator (e.g., AND, OR).
-     */
     public function getOperator(): string
     {
         return $this->operator;
     }
 
-    /**
-     * Get the right operand.
-     */
     public function getRight(): NodeInterface
     {
         return $this->right;
     }
 
-    /**
-     * {@inheritDoc}
-     */
     #[Override]
     public function getSpan(): null|Span
     {

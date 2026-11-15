@@ -9,9 +9,6 @@ use HosmelQ\SearchSyntaxParser\AST\Visitor\VisitorInterface;
 
 interface NodeInterface
 {
-    /**
-     * Accept a visitor for traversing or transforming the AST.
-     */
     public function accept(VisitorInterface $visitor): mixed;
 
     /**
@@ -19,8 +16,5 @@ interface NodeInterface
      */
     public function getSpan(): null|Span;
 
-    /**
-     * Gets the type of the node.
-     */
     public function getType(): string;
 }

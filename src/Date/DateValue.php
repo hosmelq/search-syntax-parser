@@ -150,9 +150,6 @@ final readonly class DateValue
         return new self($start, $end, $precision, false, $offset !== '');
     }
 
-    /**
-     * Add calendar months, clamping the day to the last day of the target month.
-     */
     private static function addMonths(DateTimeImmutable $wall, int $months): DateTimeImmutable
     {
         $total = (int) $wall->format('Y') * 12 + (int) $wall->format('n') - 1 + $months;
@@ -165,9 +162,7 @@ final readonly class DateValue
 
     /**
      * The earliest instant whose local time in the zone is the given wall-clock time.
-     *
-     * A repeated local time resolves to its first occurrence. A local time skipped by a
-     * daylight saving change resolves to the first instant after the gap.
+     * Repeated local times use their first occurrence; skipped times use the first instant after the gap.
      */
     private static function instant(DateTimeImmutable $wall, DateTimeZone $zone): DateTimeImmutable
     {
@@ -234,11 +229,11 @@ final readonly class DateValue
         if ($parts['anchor'] === 'now') {
             $start = match (true) {
                 $amount === 0 => $local,
-                // Hours and minutes are elapsed time.
+
                 $unit === 'h', $unit === 'm' => $local->setTimezone($utc)
                     ->modify(sprintf('%+d %s', $amount, $unit === 'h' ? 'hours' : 'minutes'))
                     ->setTimezone($zone),
-                // Calendar units keep the local wall-clock time.
+
                 default => self::instant(
                     self::withinYears(self::shift(
                         new DateTimeImmutable($local->format('X-m-d H:i:s.u'), $utc),
@@ -285,9 +280,6 @@ final readonly class DateValue
         );
     }
 
-    /**
-     * Move a wall-clock time by calendar units.
-     */
     private static function shift(
         DateTimeImmutable $wall,
         string $unit,
@@ -302,9 +294,6 @@ final readonly class DateValue
         };
     }
 
-    /**
-     * Reject relative results outside the years absolute dates can express.
-     */
     private static function withinYears(DateTimeImmutable $date): DateTimeImmutable
     {
         $year = (int) $date->format('Y');

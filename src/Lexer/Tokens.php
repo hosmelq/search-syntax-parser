@@ -6,7 +6,7 @@ namespace HosmelQ\SearchSyntaxParser\Lexer;
 
 /**
  * Parallel lists avoid allocating an object for every token.
- * Offsets and exclusive ends use Unicode code points, as does the input length.
+ * Offsets, exclusive ends, and input length count Unicode code points.
  *
  * @internal
  */
