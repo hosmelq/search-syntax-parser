@@ -29,6 +29,8 @@ Aliases, casts, validation, and ignored values work as they do on filter fields.
 
 `getDirectives()` returns resolved values, including defaults. `getTypedDirectives()` returns explicitly supplied, non-ignored values in configuration order. Both read the latest parse, build, or compile result without parsing again.
 
+`getDirectiveClauses()` returns equality clauses in configuration order, including defaults, after applying `toStorage()`. Each clause retains its public name and the written value offset, or null for a default. Like the value accessors, it reads the latest parse without parsing again. Backend adapters should use these clauses.
+
 Directive defaults must be scalar. Array fields, pattern fields, null defaults, and list defaults are configuration errors. An ignored explicit value suppresses its default. See [field defaults](defaults#set-directive-and-sort-defaults).
 
 ## Place directives in the query

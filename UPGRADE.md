@@ -80,8 +80,9 @@ validation callbacks to accept the cast value.
 
 ### Decimal output
 
-Decimal fields return strings with their decimal places preserved. Update adapter bindings and
-strict comparisons that expect floats.
+Decimal fields return canonical strings that keep their written decimal places: `+.5` becomes
+`0.5`, `00010.50` becomes `10.50`, `10.` becomes `10`, and `-0.0` becomes `0.0`. Update adapter
+bindings and strict comparisons that expect floats.
 
 ### Untyped values
 

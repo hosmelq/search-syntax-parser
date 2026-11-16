@@ -8,6 +8,7 @@ use HosmelQ\SearchSyntaxParser\AST\Visitor\NegationNormalFormTransformer;
 use HosmelQ\SearchSyntaxParser\Query\Bounds;
 use HosmelQ\SearchSyntaxParser\Query\ClauseCompiler;
 use HosmelQ\SearchSyntaxParser\Query\Operator;
+use HosmelQ\SearchSyntaxParser\Query\TextPattern;
 use HosmelQ\SearchSyntaxParser\SearchParser;
 use HosmelQ\SearchSyntaxParser\Validation\Field;
 
@@ -38,6 +39,30 @@ it('propagates invalid term alias configuration', function (): void {
 
     new ClauseCompiler()->term($field, new TermNode('mine'));
 })->throws(InvalidArgumentException::class, 'alias must resolve');
+
+it('compiles empty word list members into groups alongside their alternatives', function (
+    bool $negated,
+): void {
+    $field = Field::string('text')->words();
+    $node = SearchParser::query('text:"!!!",coffee')->allowedFields([$field])->parse();
+    $clauses = new ClauseCompiler()->compile($field, $node, $negated);
+
+    expect($clauses[0]->children)->toBeEmpty()->and($clauses[0]->and)->toBe($negated)
+        ->and($clauses[1]->fullText->words)->toBe(['coffee']);
+})->with([false, true]);
+
+it('compiles open ranges as existence checks for every field type', function (
+    Field $field,
+    string $range,
+    bool $negated,
+): void {
+    $node = SearchParser::query('value:'.$range)->allowedFields([$field])->parse();
+    $clause = new ClauseCompiler()->compile($field, $node, $negated)[0];
+
+    expect($clause->operator)->toBe($negated ? Operator::NotExists : Operator::Exists)
+        ->and($clause->value)->toBeNull()->and($clause->negated)->toBe($negated);
+})->with([Field::date('value'), Field::string('value'), Field::integer('value')])
+    ->with(['*..*', '[* TO *]'])->with([false, true]);
 
 it('compiles scalar leaves and their complements with source positions', function (
     string $query,
@@ -73,7 +98,7 @@ it('compiles scalar leaves and their complements with source positions', functio
     ['quantity:5..10', Operator::Between, new Bounds(5, 10)],
     ['quantity:*..10', Operator::Between, new Bounds(null, 10)],
     ['quantity:5..*', Operator::Between, new Bounds(5, null)],
-    ['quantity:*..*', Operator::Between, new Bounds(null, null)],
+    ['quantity:*..*', Operator::Exists, null],
     ['quantity:*', Operator::Exists, null],
 ]);
 
@@ -106,7 +131,7 @@ it('expands text lists into alternatives with quoted overrides and complements',
 
     expect($clauses)->toHaveCount(2)
         ->and($clauses[0]->operator)->toBe($negated ? Operator::NotLike : Operator::Like)
-        ->and($clauses[0]->value)->toBe('%cof%')
+        ->and($clauses[0]->value->segments)->toBe(['', 'cof', ''])
         ->and($clauses[1]->operator)->toBe($negated ? Operator::NotEqual : Operator::Equal)
         ->and($clauses[1]->value)->toBe('tea')
         ->and($clauses[0]->position)->toBe(1)
@@ -160,7 +185,11 @@ it('normalizes inequalities from parsed leaves and combines surrounding negation
         expect($clause->operator)->toBe(
             $negated ? $operators[$index]->complement() : $operators[$index],
         )
-            ->and($clause->value)->toBe($values[$index])
+            ->and(
+                $clause->value instanceof TextPattern ? $clause->value->toLike() : $clause->value,
+            )->toBe(
+                $values[$index],
+            )
             ->and($clause->negated)->toBe(! $negated)
             ->and($clause->position)->toBe(2);
     }
@@ -206,7 +235,6 @@ it('preserves phrases words and prefixes when compiling full-text leaves', funct
     ['text:"coffee*"', ['coffee'], true, false],
     ['text:coff*', ['coff'], false, true],
     ['text:"fresh coff"*', ['fresh', 'coff'], false, true],
-    ['text:"!!!"', [], true, false],
 ]);
 
 it('preserves whole-word phrase flags for every list item', function (bool $negated): void {
@@ -237,7 +265,11 @@ it('resolves eligible terms with storage conversions and text matching', functio
 
         expect($clause->field)->toBe('value')
             ->and($clause->operator)->toBe($negated ? $operator->complement() : $operator)
-            ->and($clause->value)->toBe($value)
+            ->and(
+                $clause->value instanceof TextPattern ? $clause->value->toLike() : $clause->value,
+            )->toBe(
+                $value,
+            )
             ->and($clause->text)->toBe($text)
             ->and($clause->position)->toBe(1)
             ->and($clause->negated)->toBe($negated);
@@ -286,7 +318,11 @@ it('translates text matches and wildcard segments with literal LIKE escapes', fu
     $clause = new ClauseCompiler()->compile($field, $node)[0];
 
     expect($clause->operator)->toBe($operator)
-        ->and($clause->value)->toBe($value)
+        ->and(
+            $clause->value instanceof TextPattern ? $clause->value->toLike() : $clause->value,
+        )->toBe(
+            $value,
+        )
         ->and($clause->text)->toBeTrue();
 })->with([
     ['title:a%_!', 'prefix', Operator::Like, 'a!%!_!!%'],

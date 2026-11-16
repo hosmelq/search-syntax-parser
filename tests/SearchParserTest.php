@@ -122,6 +122,16 @@ it('rejects denied names without reopening them through patterns or allowAnyFiel
     }
 })->with(['meta.secret', 'meta.private.key', 'mode'])->with([false, true]);
 
+it('rejects duplicate public names for exact pattern and shorthand fields', function (
+    array $fields,
+): void {
+    SearchParser::query('')->allowedFields($fields);
+})->throws(InvalidArgumentException::class, 'is configured more than once.')->with([
+    [[Field::string('name'), Field::integer('name', 'count')]],
+    [[Field::string('meta.*')->keys('/^a$/'), Field::string('meta.*')->keys('/^b$/')]],
+    [['name', 'name']],
+]);
+
 it('rejects duplicate sort names ignoring case', function (): void {
     SearchParser::query('')->allowedSorts(['created', 'CREATED']);
 })->throws(InvalidArgumentException::class);
@@ -660,11 +670,33 @@ it('compiles boolean chains without flattening field leaf groups', function (boo
     expect($leaf)->toBeInstanceOf(ClauseGroup::class)
         ->and($leaf->field)->toBe('title')
         ->and($leaf->and)->toBe($negated)
-        ->and(array_column($leaf->children, 'value'))->toBe(['%coffee%', '%tea%'])
+        ->and(
+            array_map(fn (Clause $clause): array => $clause->value->segments, $leaf->children),
+        )->toBe(
+            [['', 'coffee', ''], ['', 'tea', '']],
+        )
         ->and(array_column($leaf->children, 'negated'))->toBe([$negated, $negated])
         ->and($group->children[1])->toBeInstanceOf(Clause::class)
         ->and($group->children[2]->and)->toBe(! $negated);
 })->with([false, true]);
+
+it('compiles empty word clauses in place without dropping their boolean meaning', function (
+    string $query,
+    bool $and,
+): void {
+    $parser = SearchParser::query($query)
+        ->allowedFields([Field::string('text')->words()])
+        ->terms(['text']);
+    $group = $parser->compile();
+
+    expect($group->children)->toBeEmpty()->and($group->and)->toBe($and);
+})->with([
+    ['text:"!!!"', false],
+    ['NOT text:"!!!"', true],
+    ['text:!="!!!"', true],
+    ['"!!!"', false],
+    ['NOT "!!!"', true],
+]);
 
 it('compiles parsed wildcard lists as boolean groups', function (): void {
     $group = SearchParser::query('title:coffee,te*')
@@ -703,6 +735,26 @@ it('compiles unmatched terms into empty groups', function (string $query, bool $
         ->and($group->children)->toBeEmpty()
         ->and($group->field)->toBeNull();
 })->with([['coffee', false], ['NOT coffee', true], ['coff*', false], ['NOT coff*', true]]);
+
+it('converts array list storage using written positions after ignored items', function (
+    string $input,
+    array $expected,
+): void {
+    $field = Field::array('values')
+        ->each(fn (FieldItemRules $rules): FieldItemRules => $rules->numeric())
+        ->at(1, fn (FieldItemRules $rules): FieldItemRules => $rules->string())
+        ->scale(100)
+        ->ignore(0)
+        ->default([1, '2', 3]);
+    $parser = SearchParser::query($input)->allowedFields([$field]);
+
+    expect($parser->compile()->children[0]->value)->toBe($expected)
+        ->and($parser->build()['values'])->toBe($expected);
+})->with([
+    ['values:1,2,3', [100, '2', 300]],
+    ['values:0,2,3', ['2', 300]],
+    ['', [100, '2', 300]],
+]);
 
 it('decides authorization once per parser and resets it with allowedFields', function (): void {
     $calls = 0;
@@ -833,6 +885,36 @@ it('exposes normalized field definitions by their public names without parsing',
             'status',
         )
         ->and(new SearchParser()->getAllowedFields())->toBeEmpty();
+});
+
+it('exposes stored directive clauses in configuration order with written value positions', function (): void {
+    $parser = SearchParser::query('  take:3 mode:open')->allowedFields([
+        Field::in('mode', ['open', 'closed'])->directive()->map(['open' => 1]),
+        Field::integer('take')->directive()->scale(10),
+        Field::integer('page')->directive()->default(2)->scale(5),
+    ]);
+
+    expect($parser->getDirectiveClauses())->toBeEmpty()->and($parser->compile())->toBeNull();
+
+    $clauses = $parser->getDirectiveClauses();
+
+    expect(array_column($clauses, 'field'))->toBe(['mode', 'take', 'page'])
+        ->and(array_column($clauses, 'operator'))->toBe([
+            Operator::Equal,
+            Operator::Equal,
+            Operator::Equal,
+        ])
+        ->and(array_column($clauses, 'value'))->toBe([1, 30, 10])
+        ->and(array_column($clauses, 'position'))->toBe([14, 7, null])
+        ->and($parser->getDirectives())->toBe(['mode' => 'open', 'take' => 3, 'page' => 2]);
+
+    $parser->allowedFields([
+        Field::integer('take')->directive()->ignore(3),
+        Field::string('mode')->directive()->ignore('open'),
+    ])
+        ->parse();
+
+    expect($parser->getDirectiveClauses())->toBeEmpty();
 });
 
 it('flags both nodes of a null default', function (): void {
@@ -1089,15 +1171,6 @@ it('reports no constraints exactly like an empty query when everything is ignore
     'status:ALL AND status:ALL',
     'status:ALL OR NOT (status:ALL)',
 ])->with(['parse', 'build'])->with([false, true]);
-
-it('resolves a repeated pattern name to the last configured field', function (): void {
-    $parser = SearchParser::query('meta.b:x')->allowedFields([
-        Field::string('meta.*')->keys('/^a$/'),
-        Field::string('meta.*')->keys('/^b$/'),
-    ]);
-
-    expect($parser->build()['field'])->toBe('meta.b');
-});
 
 it('resolves aliases for string defaults but not for quoted range bounds', function (): void {
     $field = Field::string('x')->alias('token', 'resolved')->default('token');

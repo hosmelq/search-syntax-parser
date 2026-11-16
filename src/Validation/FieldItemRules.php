@@ -7,6 +7,7 @@ namespace HosmelQ\SearchSyntaxParser\Validation;
 use BackedEnum;
 use Closure;
 use HosmelQ\SearchSyntaxParser\Exception\ParseException;
+use HosmelQ\SearchSyntaxParser\Support\Decimal;
 use HosmelQ\SearchSyntaxParser\Validation\Validators\BetweenValidator;
 use HosmelQ\SearchSyntaxParser\Validation\Validators\BooleanValidator;
 use HosmelQ\SearchSyntaxParser\Validation\Validators\CallbackValidator;
@@ -145,7 +146,8 @@ final class FieldItemRules
         }
 
         return match ($this->type) {
-            'string', 'decimal', 'date' => $value,
+            'string', 'date' => $value,
+            'decimal' => Decimal::canonical($value),
             'integer' => filter_var($value, FILTER_VALIDATE_INT) !== false ? (int) $value : $value,
             'numeric' => filter_var($value, FILTER_VALIDATE_INT) !== false
                 ? (int) $value

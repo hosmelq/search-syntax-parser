@@ -11,6 +11,13 @@ use Brick\Math\BigDecimal;
  */
 final class Decimal
 {
+    public static function canonical(string $value): string
+    {
+        return preg_match('/^[+-]?(?:\d+\.?\d*|\.\d+)$/D', $value) === 1
+            ? (string) self::from($value)
+            : $value;
+    }
+
     public static function from(bool|float|int|string $value): BigDecimal
     {
         if (! is_float($value)) {

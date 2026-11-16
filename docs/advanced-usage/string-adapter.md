@@ -31,7 +31,7 @@ Output uses explicit AND and OR, with NOT instead of a leading minus. Parenthese
 
 Comparisons and lists keep their operators. Ranges always use brackets, with `*` for open ends and `"*"` for literal asterisk bounds. Existence checks use `field:*`.
 
-Booleans use `true` or `false`. Integers use digits, and floats retain a decimal point so they reparse as floats. Exponent notation expands to decimal text. Non-finite floats cannot be serialized and throw `LogicException`.
+Booleans use `true` or `false`. Integers use digits, and floats retain a decimal point so they reparse as floats. Exponent notation expands to decimal text. Non-finite floats cannot be serialized and throw `LogicException`. Decimal fields serialize canonical decimal strings while preserving scale: `+.5` becomes `0.5`, `00010.50` becomes `10.50`, `10.` becomes `10`, and `-0.0` becomes `0.0`.
 
 ## Preserve literal values
 

@@ -47,7 +47,7 @@ Every node implements `getType()`, `getSpan()`, and `accept(VisitorInterface $vi
 
 Call `accept()` on children to traverse them. Field nodes retain external names, including complete dynamic keys. A wildcard's field is null for a bare term. Compact and bracket ranges share `RangeNode`.
 
-`AbstractAdapter` provides `getInternalFieldName()` when constructed with a parser. Use `getAllowedField()` to retrieve field metadata, `getTextMatch()` for effective matching, and `toStorage()` for backend values. The [clause compiler](compiling-clauses) handles these value and operator conversions for scalar field schemas.
+`AbstractAdapter` provides `getInternalFieldName()` when constructed with a parser. Use `getAllowedField()` to retrieve field metadata, `getTextMatch()` for effective matching, and `toStorage()` for backend values. The [clause compiler](compiling-clauses) handles these value and operator conversions for scalar and array field schemas.
 
 `ArrayAdapter` is extensible, so you can override one visitor method while keeping the rest of its representation. Adapters must implement case-insensitive text comparisons and map accepted fields to trusted backend identifiers.
 
@@ -108,23 +108,29 @@ Adapters must apply [set-complement semantics](../basic-usage/query-syntax#inclu
 
 ## Build LIKE patterns
 
-`Support\LikePattern` escapes literal SQL pattern characters and converts wildcard segments:
+`Query\TextPattern` preserves literal segments until a backend renders them:
 
 ```php
 use HosmelQ\SearchSyntaxParser\AST\Node\WildcardNode;
-use HosmelQ\SearchSyntaxParser\Support\LikePattern;
+use HosmelQ\SearchSyntaxParser\Query\TextPattern;
 use HosmelQ\SearchSyntaxParser\Validation\TextMatch;
 
 $wildcard = new WildcardNode('title', '=', ['co', 'fee']);
-$pattern = LikePattern::fromWildcard($wildcard);
-$prefix = LikePattern::forMatch('50%', TextMatch::Prefix);
+$pattern = TextPattern::fromWildcard($wildcard)->toLike();
+$prefix = TextPattern::forMatch('50%', TextMatch::Prefix)->toLike();
 ```
 
 `$pattern` is `co%fee`, and `$prefix` is `50!%%`. Bind these values and use `LIKE ? ESCAPE '!'`. The helper escapes literal `%`, `_`, and `!`; quoted asterisks remain literal text.
 
-`escape()` protects a literal string. `forMatch()` supports exact, prefix, and contains modes. Whole-word matching needs a backend operation, so `TextMatch::Words` throws `InvalidArgumentException`.
+`new TextPattern([$literal])` represents literal text. `forMatch()` supports exact, prefix, and contains modes. Whole-word matching needs a backend operation, so `TextMatch::Words` throws `InvalidArgumentException`.
 
-All three methods accept a custom escape character. It must be one Unicode character other than `%` or `_`, and the backend must use the same character in its ESCAPE clause.
+`toLike()` accepts a custom escape character. It must be one Unicode character other than `%` or `_`, and the backend must use the same character in its ESCAPE clause.
+
+## Extend field validation
+
+Override `Field::accepts(string $name): bool` to narrow accepted public names, calling the parent to retain dynamic key validation. `keyOf($name)` returns the suffix of a matching pattern name, including an empty suffix, or null for a different prefix or an exact field; extraction does not validate the key.
+
+Override `Field::assertValidConfiguration(): void` to reject invalid backend targets when fields are registered. Call the parent to preserve core configuration checks. Both methods are public extension points.
 
 ## Read source positions
 
@@ -159,4 +165,4 @@ $exception = new UnsupportedQueryException(
 );
 ```
 
-The constructor accepts a message, reason, parameters, and optional source position. Use the reason and parameters for application translations; see [error handling](../basic-usage/error-handling).
+The constructor accepts a message, reason, parameters, and optional source position. Use `getMessageKey()` and `getMessageParameters()` for application translations; see [error handling](../basic-usage/error-handling).

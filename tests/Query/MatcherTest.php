@@ -635,6 +635,23 @@ it('matches only authorized term targets and defaults', function (): void {
         ->and($matcher->matches(['secret' => 'coffee']))->toBeFalse();
 });
 
+it('matches presence fields and their exact complements without a backend', function (
+    string $syntax,
+    array $expected,
+): void {
+    $records = [[], ['photo' => null], ['photo' => 'image'], ['photo' => false], ['photo' => []]];
+    $matcher = new Matcher(
+        SearchParser::query('has_photo:'.$syntax)->allowedFields([
+            Field::presence('has_photo', 'photo'),
+        ]),
+    );
+
+    expect(array_keys(array_filter($records, $matcher->matches(...))))->toBe($expected);
+})->with([
+    ['true', [2, 3]], ['false', [0, 1, 4]], ['!=true', [0, 1, 4]], ['!=false', [2, 3]],
+    ['true,false', [0, 1, 2, 3, 4]], ['!=true,false', []], ['false,false', [0, 1, 4]],
+]);
+
 it('matches shared item types and storage conversions', function (
     Field $field,
     string $query,
@@ -718,6 +735,21 @@ it('normalizes stringable values and enum values inside iterables', function ():
         )->toBeTrue()
         ->and($matcher->matches(['value' => new stdClass()]))->toBeFalse();
 });
+
+it('preserves empty word alternatives under nested boolean complements', function (
+    string $syntax,
+    bool $matched,
+): void {
+    $matcher = new Matcher(
+        SearchParser::query($syntax)->allowedFields([Field::string('text')->words()]),
+    );
+
+    expect($matcher->matches(['text' => 'coffee']))->toBe($matched);
+})->with([
+    ['text:"!!!",coffee', true], ['NOT text:"!!!",coffee', false],
+    ['text:"!!!" OR text:coffee', true], ['text:"!!!" AND text:coffee', false],
+    ['NOT (text:"!!!" OR text:tea)', true],
+]);
 
 it('reads a field from each list element while preserving explicit indexes and whole keys', function (): void {
     $fields = [Field::string('sku', 'items.sku'), Field::string('first', 'items.0.sku')];

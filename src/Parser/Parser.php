@@ -134,7 +134,7 @@ class Parser
     }
 
     /**
-     * @return array<int|string, bool|float|int|string>
+     * @return array<int|string, array{value: bool|float|int|string, position: int}>
      */
     public function resolveDirectives(): array
     {
@@ -155,7 +155,10 @@ class Parser
 
             $this->validateValue((string) $name, $value, $setting['valueIndex']);
 
-            $directives[$name] = $value;
+            $directives[$name] = [
+                'value' => $value,
+                'position' => $this->position($setting['valueIndex']),
+            ];
         }
 
         return $directives;

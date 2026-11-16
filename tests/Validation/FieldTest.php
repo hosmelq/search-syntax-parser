@@ -383,6 +383,23 @@ it('rejects negated wildcard patterns when wildcards are disabled', function (st
     throw new RuntimeException('Expected an operator exception.');
 })->with(['x:-*', 'x:a,-*', 'x:-a*']);
 
+it('rejects non-equality presence operators and unsupported presence clauses', function (
+    string $syntax,
+): void {
+    SearchParser::query('has_photo:'.$syntax)
+        ->allowedFields([Field::presence('has_photo', 'photo')])
+        ->compile();
+})->throws(InvalidFieldOperatorException::class)->with([
+    '>true',
+    '>=true',
+    '<true',
+    '<=true',
+    '*',
+    '*..*',
+    '[true TO false]',
+    'tr*',
+]);
+
 it('rejects numeric values above the maximum regardless of their text length', function (
     string $type,
 ): void {
@@ -432,6 +449,10 @@ it('rejects quoted aliases and invalid alias results', function (): void {
 
     expect($field->tryCast('@me'))->toBeNull();
 });
+
+it('rejects reenabled ordering on presence fields', function (): void {
+    Field::presence('has_photo', 'photo')->operators('>');
+})->throws(InvalidArgumentException::class);
 
 it('rejects restricted comparisons and clauses at their operator or value start', function (
     string $query,
@@ -863,6 +884,17 @@ it('calls aliases without arguments at parse time on every parse', function (): 
     expect($parser->parse()->getValue())->toBe(9)->and($calls)->toBe([[], []]);
 });
 
+it('canonicalizes decimal alias results like written decimals', function (): void {
+    $field = Field::decimal('price', 0, 2)
+        ->alias('half', '+.5')
+        ->alias('ten', static fn (): string => '00010.50');
+
+    expect(SearchParser::query('price:half')->allowedFields([$field])->parse()->getValue())
+        ->toBe('0.5')
+        ->and(SearchParser::query('price:ten')->allowedFields([$field])->parse()->getValue())
+        ->toBe('10.50');
+});
+
 it('casts item strings, booleans and membership values', function (
     Closure $configure,
     string $query,
@@ -916,6 +948,23 @@ it('casts negative tuple items with their index rules', function (): void {
         [37.774_9, -122.419_4],
     );
 });
+
+it('classifies stored comparisons independently of backend bindings', function (
+    Field $field,
+    bool|float|int|string $value,
+    string $expected,
+): void {
+    expect($field->comparisonType($value))->toBe($expected);
+})->with([
+    [Field::integer('value'), '10', 'number'],
+    [Field::numeric('value'), '10.5', 'number'],
+    [Field::decimal('value', 2), '10.50', 'number'],
+    [Field::integer('value')->map([1 => 'one']), 'one', 'string'],
+    [Field::string('value')->map(['one' => 1]), 1, 'number'],
+    [Field::string('value'), 1.5, 'number'],
+    [Field::boolean('value'), true, 'boolean'],
+    [Field::string('value'), '10', 'string'],
+]);
 
 it('configures nullability explicitly', function (): void {
     $field = new Field('status');
@@ -1213,6 +1262,52 @@ it('evaluates authorization on each direct call', function (): void {
     $allowed = false;
 
     expect($field->isAuthorized())->toBeFalse();
+});
+
+it('exposes the finite values of membership enum and boolean fields', function (): void {
+    expect(Field::in('state', ['open', 1, true, 1.5])->getAllowedValues())->toBe([
+        'open',
+        1,
+        true,
+        1.5,
+    ])
+        ->and(Field::enum('state', PublicationStatus::class)->getAllowedValues())->toBe([
+            'draft',
+            'published',
+        ])
+        ->and(Field::enum('priority', PriorityLevel::class)->getAllowedValues())->toBe([2, 1])
+        ->and(Field::string('name')->getAllowedValues())->toBeNull()
+        ->and(Field::in('state', [])->getAllowedValues())->toBeEmpty()
+        ->and(Field::in('state', [null])->getAllowedValues())->toBeNull()
+        ->and(Field::boolean('active')->getAllowedValues())->toBe([true, false])
+        ->and(Field::presence('has_photo', 'photo')->getAllowedValues())->toBe([true, false]);
+});
+
+it('extracts only keys whose public names match a pattern prefix', function (): void {
+    $field = Field::string('meta.*', 'attributes.*')->keys('/^[a-z.]+$/D');
+
+    expect($field->keyOf('meta.color'))->toBe('color')
+        ->and($field->keyOf('meta.a.b'))->toBe('a.b')
+        ->and($field->keyOf('meta.'))->toBe('')
+        ->and($field->keyOf('other.color'))->toBeNull()
+        ->and($field->accepts('other.color'))->toBeFalse()
+        ->and(Field::string('name')->keyOf('name'))->toBeNull();
+});
+
+it('identifies date calendar-date and numeric comparison fields', function (): void {
+    expect(Field::date('created')->isDate())->toBeTrue()
+        ->and(Field::date('created')->isCalendarDate())->toBeFalse()
+        ->and(Field::date('due')->withoutTime()->isCalendarDate())->toBeTrue()
+        ->and(
+            Field::array('dates')
+                ->each(fn (FieldItemRules $rules): FieldItemRules => $rules->date())
+                ->isDate(),
+        )
+        ->toBeTrue()
+        ->and(Field::string('title')->isDate())->toBeFalse()
+        ->and(Field::integer('count')->comparesNumbers())->toBeTrue()
+        ->and(Field::integer('count')->map([1 => 'one'])->comparesNumbers())->toBeFalse()
+        ->and(Field::string('title')->comparesNumbers())->toBeFalse();
 });
 
 it('ignores and validates user values before storage conversion including defaults', function (): void {

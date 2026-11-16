@@ -29,7 +29,7 @@ final readonly class DateBounds
         DateTimeZone $timezone,
         DateTimeImmutable $now,
     ): array {
-        $operator = $clause->negated ? $clause->operator->complement() : $clause->operator;
+        $clause = $clause->positive();
         $parse = static function (bool|float|int|string $value) use (
             $clause,
             $timezone,
@@ -61,7 +61,7 @@ final readonly class DateBounds
         /** @var bool|float|int|string $value */
         $value = $clause->value;
 
-        return [$parse($value)->bounds($operator->value)];
+        return [$parse($value)->bounds($clause->operator->value)];
     }
 
     public static function range(null|DateValue $from, null|DateValue $to): self

@@ -65,7 +65,7 @@ Typed fields cast raw text even when it is quoted:
 | `string($name, $internalName = null)` | Keeps text, including numeric and boolean-looking values. |
 | `integer($name, $internalName = null)` | Accepts whole integers without leading zeros, within PHP's range. |
 | `numeric($name, $internalName = null)` | Produces an integer when possible, otherwise a finite float; accepts exponents. |
-| `decimal($name, $min, $max = null, $internalName = null)` | Keeps decimal text with exactly `$min` places, or `$min` through `$max`. |
+| `decimal($name, $min, $max = null, $internalName = null)` | Produces canonical decimal strings with exactly `$min` places, or `$min` through `$max`. |
 | `boolean($name, $internalName = null)` | Maps `true`/`1` and `false`/`0` to booleans, ignoring case. |
 | `in($name, $values, $internalName = null)` | Returns an allowed scalar with its configured type. |
 | `date($name, $format = null, $internalName = null)` | Validates date text and keeps it as a string. |
@@ -87,6 +87,25 @@ $value = $parser->parse()->getValue();
 ```
 
 `$value` is the string `10.50`. Invalid typed values fail validation instead of being silently coerced.
+
+## Preserve decimal scale
+
+Decimal casts normalize the number without changing its written number of decimal places:
+
+| Input | Value |
+| --- | --- |
+| `+.5` | `'0.5'` |
+| `00010.50` | `'10.50'` |
+| `10.` | `'10'` |
+| `-0.0` | `'0.0'` |
+
+The AST, array output, compiled values, and string adapter share these canonical decimals. Validation still checks the configured decimal scale, and exponent notation remains invalid for decimal fields. Alias results that are decimal strings are normalized the same way.
+
+## Compare presence
+
+Declare `Field::presence('has_photo', 'photo')` for a boolean query over an internal value's existence. `has_photo:true` compiles to `Exists`; `has_photo:false` compiles to `NotExists`. Negation and inequality produce the exact complement, including absent values.
+
+Presence fields allow equality, inequality, and lists. They reject ordering, ranges, wildcards, and explicit existence syntax. A list containing both `true` and `false` compiles to an empty AND group; its negation becomes an empty OR group. `isPresence()` identifies this field contract.
 
 ## Add value rules
 
@@ -110,6 +129,8 @@ The callback receives the cast value and the internal field name. Callback excep
 `nullable()` declares that the stored value may be missing and makes `validate(null)` pass. Adapters use it to include missing values in [complements](query-syntax#include-missing-values-in-complements). The query language has no null literal; use `NOT field:*` or a [null default](defaults).
 
 ## Map field names
+
+Public names must be unique in `allowedFields()`, including pattern names and string shorthand; duplicates throw `InvalidArgumentException`.
 
 Every factory accepts an internal name. Array output uses that name; the syntax tree and string output keep the external name:
 
@@ -296,7 +317,7 @@ A custom format must parse without warnings or errors and format back to exactly
 
 ### Accept calendar dates only
 
-`date()->withoutTime()` accepts full dates and day anchors such as `today-7d`. Combine it with `allowPartialDates()` to accept years and months. Times, `now`, and bare offsets such as `-7d` are rejected; write `today-7d` instead. The method also works on item rules and cannot be combined with a custom format.
+`date()->withoutTime()` defines a calendar-date field: stored values compare by calendar date without zone conversion. It accepts full dates and day anchors such as `today-7d`. Combine it with `allowPartialDates()` to accept years and months. Times, `now`, and bare offsets such as `-7d` are rejected; write `today-7d` instead. The method also works on item rules and cannot be combined with a custom format.
 
 ### Use relative dates
 
@@ -456,6 +477,12 @@ $description = $parser->getAllowedFields()['status']->jsonSerialize();
 | `values` | Configured `in()` values or enum backing values; null otherwise. Array member values belong to `items.values`. |
 
 Directives report no clause forms. Their `operators` is `["="]`, or empty when `operators()` excludes `=`. `map()` and `scale()` remove `wildcards` from the advertised forms. Descriptions do not include internal names, storage conversions, key rules, validators, size limits, defaults, ignored values, or positional `at()` rules. Alias closures are not called. Parser exports evaluate field authorization and omit denied fields; field descriptions never expose authorization callbacks.
+
+## Read comparison metadata
+
+`getAllowedValues()` returns an `in()` catalog or enum backing values in declaration order, and `[true, false]` for boolean fields. It returns null for other fields and for catalogs containing non-scalar values. `isDate()` identifies date fields and shared date items, and `isCalendarDate()` those declared with `withoutTime()`.
+
+`comparesNumbers()` reports whether an integer, numeric, or decimal field compares stored values as numbers, which `map()` to text prevents. `comparisonType($storedValue)` returns `number` for those fields and for runtime integers or floats. It returns `boolean` for other boolean values and `string` otherwise. Use it when translating typed storage comparisons.
 
 ## Extend field definitions
 

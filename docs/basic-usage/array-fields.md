@@ -61,7 +61,7 @@ The two values become floats. A position's type overrides the shared `each()` ty
 
 Ignoring an item does not change which `at()` rule validates the remaining items. Their positions still refer to the original query, even though the resulting list is renumbered.
 
-`InNode::getPositions()` returns those written positions. Custom adapters must pass the corresponding position to `Field::toStorage($value, $index)` when converting an item. The array adapter does this automatically. The clause compiler targets scalar field schemas and does not apply positional item rules.
+`InNode::getPositions()` returns those written positions. Custom adapters must pass the corresponding position to `Field::toStorage($value, $index)` when converting an item. The array adapter and clause compiler do this automatically. Compiled clauses carry the converted values without exposing positions.
 
 A list containing wildcards first removes ignored literal items and validates the remaining collection. It then expands into comparisons and wildcard leaves. Patterns are never removed by `ignore()`.
 

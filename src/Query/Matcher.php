@@ -140,10 +140,9 @@ final class Matcher
     ): Closure {
         $name = $parser->getInternalFieldName($clause->field);
         $paths[$name] = explode('.', $name);
-        $operator = $clause->negated ? $clause->operator->complement() : $clause->operator;
-        $exists = $operator === Operator::Exists || ($clause->value instanceof Bounds
-            && $clause->value->from === null && $clause->value->to === null);
-        $predicate = $exists ? $this->exists(...) : $this->positive($field, $clause, $operator);
+        $positive = $clause->positive();
+        $exists = $positive->operator === Operator::Exists;
+        $predicate = $exists ? $this->exists(...) : $this->positive($field, $positive);
 
         return static function (array $values) use ($name, $exists, $predicate, $clause): bool {
             $value = $values[$name];
@@ -184,7 +183,7 @@ final class Matcher
      */
     private function comparison(
         bool|float|int|string $expected,
-        bool $numeric,
+        Field $field,
         bool $text,
     ): Closure {
         if (is_bool($expected)) {
@@ -194,7 +193,7 @@ final class Matcher
                     : null;
         }
 
-        if ($numeric || is_int($expected) || is_float($expected)) {
+        if ($field->comparisonType($expected) === 'number') {
             $number = Decimal::from($expected);
 
             return static function (mixed $value) use ($number): null|int {
@@ -211,6 +210,7 @@ final class Matcher
             };
         }
 
+        /** @var string $expected */
         if ($text) {
             $expected = mb_strtolower($expected);
         }
@@ -256,7 +256,7 @@ final class Matcher
     private function dates(Field $field, Clause $clause): Closure
     {
         $intervals = DateBounds::forClause($clause, $this->timezone, $this->now);
-        $calendar = ($field->getDateOptions()['time'] ?? null) === false;
+        $calendar = $field->isCalendarDate();
 
         return function (mixed $value) use ($intervals, $calendar): bool {
             if ($calendar && $value instanceof DateTimeInterface) {
@@ -322,28 +322,10 @@ final class Matcher
     /**
      * @return Closure(mixed): bool
      */
-    private function like(string $pattern): Closure
+    private function like(TextPattern $pattern): Closure
     {
-        $segments = [''];
-        $last = 0;
-        $escaped = false;
-
-        foreach (mb_str_split($pattern) as $character) {
-            if (! $escaped && $character === '!') {
-                $escaped = true;
-
-                continue;
-            }
-
-            if (! $escaped && $character === '%') {
-                $segments[++$last] = '';
-            } else {
-                $segments[$last] .= $character;
-            }
-
-            $escaped = false;
-        }
-
+        $segments = $pattern->segments;
+        $last = count($segments) - 1;
         $segments = array_map(mb_strtolower(...), $segments);
 
         return static function (mixed $value) use ($segments, $last): bool {
@@ -391,9 +373,9 @@ final class Matcher
     /**
      * @return Closure(mixed): bool
      */
-    private function positive(Field $field, Clause $clause, Operator $operator): Closure
+    private function positive(Field $field, Clause $clause): Closure
     {
-        if ($field->getValueType() === 'date') {
+        if ($field->isDate()) {
             return $this->dates($field, $clause);
         }
 
@@ -403,21 +385,18 @@ final class Matcher
 
         $value = $clause->value;
 
-        if ($operator === Operator::Like) {
-            /** @var string $value */
+        if ($clause->operator === Operator::Like) {
+            /** @var TextPattern $value */
             return $this->like($value);
         }
-
-        $numeric = ! $field->storesText() && ! $clause->text
-            && in_array($field->getValueType(), ['integer', 'numeric', 'decimal'], true);
 
         if ($value instanceof Bounds) {
             $from = $value->from === null
                 ? null
-                : $this->comparison($value->from, $numeric, $clause->text);
+                : $this->comparison($value->from, $field, $clause->text);
             $to = $value->to === null
                 ? null
-                : $this->comparison($value->to, $numeric, $clause->text);
+                : $this->comparison($value->to, $field, $clause->text);
 
             return static function (mixed $stored) use ($from, $to): bool {
                 $lower = $from instanceof Closure ? $from($stored) : 0;
@@ -429,10 +408,10 @@ final class Matcher
 
         if (is_array($value)) {
             $predicates = array_map(function (bool|float|int|string $item) use (
-                $numeric,
+                $field,
                 $clause,
             ): Closure {
-                $compare = $this->comparison($item, $numeric, $clause->text);
+                $compare = $this->comparison($item, $field, $clause->text);
 
                 return static fn (mixed $stored): bool => $compare($stored) === 0;
             }, $value);
@@ -441,12 +420,12 @@ final class Matcher
         }
 
         /** @var bool|float|int|string $value */
-        $compare = $this->comparison($value, $numeric, $clause->text);
+        $compare = $this->comparison($value, $field, $clause->text);
 
-        return static function (mixed $stored) use ($compare, $operator): bool {
+        return static function (mixed $stored) use ($compare, $clause): bool {
             $order = $compare($stored);
 
-            return $order !== null && match ($operator) {
+            return $order !== null && match ($clause->operator) {
                 Operator::Equal => $order === 0,
                 Operator::Greater => $order > 0,
                 Operator::GreaterOrEqual => $order >= 0,
@@ -514,10 +493,10 @@ final class Matcher
                 array_keys($words),
             );
 
-        return function (mixed $value) use ($needles, $words): bool {
+        return function (mixed $value) use ($needles): bool {
             $haystack = $this->haystack($value);
 
-            if ($haystack === null || $words === []) {
+            if ($haystack === null) {
                 return false;
             }
 

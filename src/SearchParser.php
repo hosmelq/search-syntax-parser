@@ -24,6 +24,7 @@ use HosmelQ\SearchSyntaxParser\Parser\Parser;
 use HosmelQ\SearchSyntaxParser\Query\Clause;
 use HosmelQ\SearchSyntaxParser\Query\ClauseCompiler;
 use HosmelQ\SearchSyntaxParser\Query\ClauseGroup;
+use HosmelQ\SearchSyntaxParser\Query\Operator;
 use HosmelQ\SearchSyntaxParser\Sorting\AllowedSort;
 use HosmelQ\SearchSyntaxParser\Sorting\Sort;
 use HosmelQ\SearchSyntaxParser\Validation\Field;
@@ -68,6 +69,11 @@ class SearchParser implements JsonSerializable
     private null|string $defaultSort = null;
 
     private int $depthLimit = 32;
+
+    /**
+     * @var list<Clause>
+     */
+    private array $directiveClauses = [];
 
     private int $lengthLimit = 10_000;
 
@@ -126,11 +132,15 @@ class SearchParser implements JsonSerializable
 
         foreach ($fields as $field) {
             $field = is_string($field) ? new Field($field) : $field;
-            $this->allowedFields[$field->getName()] = $field;
-        }
 
-        // Read patterns from the final map so a repeated name resolves to the same field.
-        foreach ($this->allowedFields as $field) {
+            if (isset($this->allowedFields[$field->getName()])) {
+                throw new InvalidArgumentException(
+                    sprintf("Field '%s' is configured more than once.", $field->getName()),
+                );
+            }
+
+            $this->allowedFields[$field->getName()] = $field;
+
             $field->assertValidConfiguration();
 
             if ($field->isPattern()) {
@@ -307,6 +317,14 @@ class SearchParser implements JsonSerializable
     }
 
     /**
+     * @return list<Clause>
+     */
+    public function getDirectiveClauses(): array
+    {
+        return $this->directiveClauses;
+    }
+
+    /**
      * @return array<int|string, bool|float|int|string>
      */
     public function getDirectives(): array
@@ -317,10 +335,10 @@ class SearchParser implements JsonSerializable
     public function getInternalFieldName(string $field): string
     {
         $allowedField = $this->getAllowedField($field);
+        $key = $allowedField?->keyOf($field);
 
-        if ($allowedField?->isPattern() === true) {
-            return mb_substr($allowedField->getInternalName(), 0, -1)
-                .mb_substr($field, mb_strlen($allowedField->getName()) - 1);
+        if ($key !== null) {
+            return mb_substr($allowedField->getInternalName(), 0, -1).$key;
         }
 
         return $allowedField?->getInternalName() ?? $field;
@@ -343,7 +361,7 @@ class SearchParser implements JsonSerializable
                 $field === null
                 || $field->isPattern()
                 || $field->isDirective()
-                || $field->getValueType() === 'date'
+                || $field->isDate()
             ) {
                 throw new InvalidArgumentException(sprintf(
                     "Term field '%s' must be an exact configured field without a date type or directive.",
@@ -434,6 +452,7 @@ class SearchParser implements JsonSerializable
     public function parse(): null|NodeInterface
     {
         $this->settings = null;
+        $this->directiveClauses = [];
 
         if (
             $this->query !== null
@@ -464,7 +483,11 @@ class SearchParser implements JsonSerializable
             return $ast;
         }
 
-        $typedDirectives = $parser->resolveDirectives();
+        $resolved = $parser->resolveDirectives();
+        $typedDirectives = array_map(
+            static fn (array $directive): bool|float|int|string => $directive['value'],
+            $resolved,
+        );
         $directives = [];
         $sortInput = $parser->getSortInput();
         $sort = $sortInput !== null
@@ -535,6 +558,12 @@ class SearchParser implements JsonSerializable
 
                 if (array_key_exists($name, $resolvedDirectives)) {
                     $directives[$name] = $resolvedDirectives[$name];
+                    $this->directiveClauses[] = new Clause(
+                        $name,
+                        Operator::Equal,
+                        $field->toStorage($resolvedDirectives[$name]),
+                        $resolved[$name]['position'] ?? null,
+                    );
                 }
             }
         }
@@ -637,7 +666,7 @@ class SearchParser implements JsonSerializable
             foreach ($terms as $field) {
                 $clause = $compiler->term($field, $node, $negated);
 
-                if ($clause instanceof Clause) {
+                if ($clause !== null) {
                     $clauses[] = $clause;
                 }
             }

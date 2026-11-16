@@ -51,15 +51,18 @@ An empty query, or a query whose filters are all ignored, is not an error. Witho
 
 ## Translate errors
 
-`getReason()` returns `ErrorReason`. Its backed value is a dotted code grouped by topic. `getParameters()` supplies null, scalar, or string-list values keyed by strings, so you can translate errors without parsing English messages.
+Use `getMessageKey()` as the translation catalog key and `getMessageParameters()` for named string replacements. Lists join with `, `; scalars and null cast to strings. The key is the reason value, except `field.not_allowed` with an empty allowed list becomes `field.not_allowed_none`.
 
-| Reason | Parameters |
+`getReason()` still returns `ErrorReason`, and `getParameters()` retains raw null, scalar, and string-list values. The catalog contains these keys:
+
+| Catalog key | Parameters |
 | --- | --- |
 | `directive.duplicate` | `field` |
 | `directive.invalid_clause` | `field` |
 | `directive.not_top_level` | `field` |
 | `field.invalid_value` | `field` |
 | `field.not_allowed` | `field`, `allowed` |
+| `field.not_allowed_none` | `field`, empty `allowed` |
 | `field.operator_not_allowed` | `field`, `operation` |
 | `query.invalid_type` | None. |
 | `query.invalid_utf8` | None. |
@@ -88,12 +91,12 @@ Directive placement, duplicates, and shape errors use `InvalidFieldOperatorExcep
 
 Invalid application configuration throws `InvalidArgumentException` without a query reason or position. Examples include:
 
-- Unknown adapters, non-positive limits, invalid term targets, or invalid defaults.
+- Unknown adapters, duplicate public field names, non-positive limits, invalid term targets, or invalid defaults.
 - Unsupported configured operators, invalid alias results, or ambiguous allowed values and enum names.
 - Invalid storage conversions, colliding map keys, or text modes on non-text fields.
 - Dynamic patterns without key rules, invalid key expressions, or defaults on patterns.
 - Invalid directive declarations, conflicting sort names, or invalid sort directions.
-- Invalid LIKE escape characters or whole-word matching requested from `LikePattern`.
+- Invalid LIKE escape characters, empty text patterns, or whole-word matching requested from `TextPattern`.
 
 A default that fails validation throws whenever its field is not referenced, even for a denied field, and names the field. A default sort with an unknown key or direction also fails when applied. These are configuration problems rather than invalid user input.
 

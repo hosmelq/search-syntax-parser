@@ -59,6 +59,28 @@ it('exposes a machine-readable reason and parameters for query failures', functi
     ['age:>10', ErrorReason::OperatorNotAllowed, ['field' => 'age', 'operation' => '>']],
 ]);
 
+it('exposes translation keys and string parameters without changing raw error metadata', function (
+    array $fields,
+    string $key,
+    string $allowed,
+): void {
+    try {
+        SearchParser::query('unknown:value')->allowedFields($fields)->parse();
+
+        test()->fail('Expected a query failure.');
+    } catch (SearchSyntaxException $searchSyntaxException) {
+        expect($searchSyntaxException->getMessageKey())->toBe($key)
+            ->and($searchSyntaxException->getMessageParameters())->toBe([
+                'field' => 'unknown',
+                'allowed' => $allowed,
+            ])
+            ->and($searchSyntaxException->getParameters()['allowed'])->toBe($fields);
+    }
+})->with([
+    [[], 'field.not_allowed_none', ''],
+    [['name', 'status'], 'field.not_allowed', 'name, status'],
+]);
+
 it('preserves structured context for adapter exceptions', function (): void {
     $parameters = [
         'field' => 'age',
@@ -80,4 +102,24 @@ it('preserves structured context for adapter exceptions', function (): void {
         ->and($exception->getReason()->value)->toBe('field.operator_not_allowed')
         ->and($exception->getParameters())->toBe($parameters)
         ->and($exception->getPosition())->toBe(4);
+});
+it('stringifies scalar message parameters and only specializes disallowed field errors', function (): void {
+    $exception = new class ('error', ErrorReason::OperatorNotAllowed, [
+        'allowed' => [],
+        'yes' => true,
+        'no' => false,
+        'count' => 2,
+        'ratio' => 1.5,
+        'empty' => null,
+    ]) extends SearchSyntaxException {};
+
+    expect($exception->getMessageKey())->toBe('field.operator_not_allowed')
+        ->and($exception->getMessageParameters())->toBe([
+            'allowed' => '',
+            'yes' => '1',
+            'no' => '',
+            'count' => '2',
+            'ratio' => '1.5',
+            'empty' => '',
+        ]);
 });

@@ -165,6 +165,21 @@ it('canonicalizes case-insensitive shared and positional members', function (): 
         ->toBe(['open', 'closed']);
 });
 
+it('canonicalizes decimal casts while preserving their written scale', function (
+    string $input,
+    string $expected,
+): void {
+    $field = Field::decimal('amount', 0, 2);
+    $parser = SearchParser::query('amount:'.$input)->allowedFields([$field]);
+
+    expect($field->cast($input, false))->toBe($expected)
+        ->and($parser->compile()->children[0]->value)->toBe($expected)
+        ->and($parser->build()['value'])->toBe($expected)
+        ->and($parser->build('string'))->toBe('amount:'.$expected);
+})->with([
+    ['+.5', '0.5'], ['00010.50', '10.50'], ['10.', '10'], ['-0.0', '0.0'],
+]);
+
 it('casts backed enum values to their backing type', function (
     string $query,
     string $enum,

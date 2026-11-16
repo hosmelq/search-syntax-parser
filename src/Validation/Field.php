@@ -79,6 +79,8 @@ class Field implements JsonSerializable
 
     private readonly bool $pattern;
 
+    private bool $presence = false;
+
     /**
      * @var null|Closure(bool|float|int|string, null|string): (bool|float|int|string)
      */
@@ -207,6 +209,14 @@ class Field implements JsonSerializable
         return $field;
     }
 
+    public static function presence(string $name, null|string $internalName = null): static
+    {
+        $field = static::boolean($name, $internalName);
+        $field->presence = true;
+
+        return $field->operators('=', '!=')->withoutRanges()->withoutWildcards()->withoutExists();
+    }
+
     public static function string(string $name, null|string $internalName = null): static
     {
         $field = new static($name, $internalName);
@@ -234,18 +244,15 @@ class Field implements JsonSerializable
         return $field;
     }
 
-    /**
-     * @internal
-     */
     public function accepts(string $field): bool
     {
         if (! $this->pattern) {
             return true;
         }
 
-        $key = mb_substr($field, mb_strlen($this->name) - 1);
+        $key = $this->keyOf($field);
 
-        return $key !== '' && ! str_contains($key, '*') && $this->allowsKey($key);
+        return $key !== null && $key !== '' && ! str_contains($key, '*') && $this->allowsKey($key);
     }
 
     public function alias(string $token, bool|Closure|float|int|string $value): static
@@ -313,9 +320,6 @@ class Field implements JsonSerializable
         }
     }
 
-    /**
-     * @internal
-     */
     public function assertValidConfiguration(): void
     {
         if ($this->isPattern() && $this->keyRule === null) {
@@ -412,7 +416,9 @@ class Field implements JsonSerializable
                 );
             }
 
-            return $resolved;
+            return is_string($resolved) && $this->storageType($index) === 'decimal'
+                ? Decimal::canonical($resolved)
+                : $resolved;
         }
 
         if ($this->expectsArray) {
@@ -424,9 +430,24 @@ class Field implements JsonSerializable
         return $this->rules->cast($value, $quoted);
     }
 
+    public function comparesNumbers(): bool
+    {
+        return ! $this->storesText
+            && in_array($this->getValueType(), ['integer', 'numeric', 'decimal'], true);
+    }
+
     public function comparesText(bool|float|int|string $value): bool
     {
         return $this->isText() && is_string($value);
+    }
+
+    public function comparisonType(bool|float|int|string $value): string
+    {
+        return match (true) {
+            $this->comparesNumbers(), is_int($value), is_float($value) => 'number',
+            is_bool($value) => 'boolean',
+            default => 'string',
+        };
     }
 
     public function contains(): static
@@ -503,6 +524,34 @@ class Field implements JsonSerializable
     public function expectsArray(): bool
     {
         return $this->expectsArray;
+    }
+
+    /**
+     * @return null|list<bool|float|int|string>
+     */
+    public function getAllowedValues(): null|array
+    {
+        if ($this->getValueType() === 'boolean') {
+            return [true, false];
+        }
+
+        $values = ($this->expectsArray ? $this->itemRules : $this->rules)->getValues();
+
+        if ($values === null) {
+            return null;
+        }
+
+        $allowed = [];
+
+        foreach ($values as $value) {
+            if (! is_scalar($value)) {
+                return null;
+            }
+
+            $allowed[] = $value;
+        }
+
+        return $allowed;
     }
 
     /**
@@ -603,6 +652,16 @@ class Field implements JsonSerializable
         return ! $this->authorization instanceof Closure || ($this->authorization)();
     }
 
+    public function isCalendarDate(): bool
+    {
+        return ($this->getDateOptions()['time'] ?? null) === false;
+    }
+
+    public function isDate(): bool
+    {
+        return $this->getValueType() === 'date';
+    }
+
     public function isDirective(): bool
     {
         return $this->directive;
@@ -624,6 +683,11 @@ class Field implements JsonSerializable
     public function isPattern(): bool
     {
         return $this->pattern;
+    }
+
+    public function isPresence(): bool
+    {
+        return $this->presence;
     }
 
     public function isText(): bool
@@ -686,6 +750,15 @@ class Field implements JsonSerializable
             'type' => $this->expectsArray ? 'array' : $this->rules->getType(),
             'values' => $this->expectsArray ? null : $this->rules->getValues(),
         ];
+    }
+
+    public function keyOf(string $name): null|string
+    {
+        $prefix = mb_substr($this->name, 0, -1);
+
+        return $this->pattern && str_starts_with($name, $prefix)
+            ? mb_substr($name, mb_strlen($prefix))
+            : null;
     }
 
     /**
@@ -812,6 +885,12 @@ class Field implements JsonSerializable
 
     public function operators(string ...$operators): static
     {
+        if ($this->presence && array_diff($operators, ['=', '!=']) !== []) {
+            throw new InvalidArgumentException(
+                'Presence fields allow only the = and != operators.',
+            );
+        }
+
         foreach ($operators as $operator) {
             if (! in_array($operator, ['=', '!=', '>', '>=', '<', '<='], true)) {
                 throw new InvalidArgumentException(
