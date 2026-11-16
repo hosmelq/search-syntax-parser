@@ -4,15 +4,16 @@
     "license": "MIT",
     "keywords": [
         "ast",
-        "dsl",
+        "boolean-search",
         "hosmelq",
-        "lexer",
+        "parser",
         "php",
         "query-language",
         "query-parser",
+        "search",
         "search-query",
         "search-syntax",
-        "tokenizer"
+        "search-syntax-parser"
     ],
     "authors": [
         {
