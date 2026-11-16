@@ -2,5 +2,13 @@ includes:
   - vendor/hosmelq/php-coding-standard/config/phpstan-php.neon
 
 parameters:
+  ignoreErrors:
+    # Native preg_* calls check failures without a runtime Safe dependency.
+    - identifier: theCodingMachineSafe.function
+    # Native DateTimeImmutable constructors throw on invalid input; Safe is not a runtime dependency.
+    - identifier: theCodingMachineSafe.class
+      paths:
+        - src/Date/DateValue.php
+        - src/Query/Matcher.php
   paths:
     - src

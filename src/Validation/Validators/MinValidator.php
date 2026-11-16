@@ -12,17 +12,14 @@ class MinValidator implements ValidatorInterface
 {
     use ValidatesAttributes;
 
-    /**
-     * Create a minimum value validator.
-     */
-    public function __construct(private readonly float|int $min) {}
-
-    /**
-     * Validate that the value is at least the minimum.
-     */
-    #[Override]
-    public function __invoke(mixed $value, string $attribute): bool
+    public function __construct(private readonly float|int $min)
     {
-        return $this->validateMin($attribute, $value, [$this->min]);
+        $this->assertFinite($this->min);
+    }
+
+    #[Override]
+    public function __invoke(mixed $value, string $attribute, bool $length = false): bool
+    {
+        return $this->validateMin($value, [$this->min], $length);
     }
 }

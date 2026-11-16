@@ -1,11 +1,13 @@
 {
     "name": "hosmelq/search-syntax-parser",
-    "description": "Parse search queries into structured data with field searches, boolean logic, ranges, lists, and adapters.",
+    "description": "Parse search queries into structured data with field searches, boolean logic, ranges, and lists.",
     "license": "MIT",
     "keywords": [
         "ast",
         "dsl",
+        "hosmelq",
         "lexer",
+        "php",
         "query-language",
         "query-parser",
         "search-query",
@@ -18,24 +20,22 @@
             "email": "hosmelq@gmail.com"
         }
     ],
-    "homepage": "https://github.com/hosmelq/search-syntax-parser",
+    "homepage": "https://hosmelq.com/docs/search-syntax-parser",
     "support": {
-        "docs": "https://github.com/hosmelq/search-syntax-parser#readme"
+        "docs": "https://hosmelq.com/docs/search-syntax-parser"
     },
     "require": {
         "php": "^8.4",
-        "archtechx/enums": "^1.1",
-        "brick/math": "^0.14 || ^0.15 || ^0.16 || ^0.17 || ^0.18 || ^0.19 || ^0.20 || ^1.0",
-        "doctrine/lexer": "^3.0",
-        "thecodingmachine/safe": "^3.4"
+        "ext-mbstring": "*",
+        "brick/math": "^0.14.4 || ^0.15 || ^0.16 || ^0.17 || ^0.18 || ^0.19 || ^0.20 || ^1.0"
     },
     "require-dev": {
-        "ergebnis/composer-normalize": "^2.57",
-        "hosmelq/php-coding-standard": "^1.5",
-        "pestphp/pest": "^5.3",
-        "pestphp/pest-plugin-agent": "^5.0",
-        "pestphp/pest-plugin-rector": "^5.0",
-        "shipmonk/composer-dependency-analyser": "^1.8"
+        "ergebnis/composer-normalize": "^2.57.0",
+        "hosmelq/php-coding-standard": "^1.5.0",
+        "pestphp/pest": "^5.3.6",
+        "pestphp/pest-plugin-agent": "^5.0.0",
+        "pestphp/pest-plugin-rector": "^5.0.6",
+        "shipmonk/composer-dependency-analyser": "^1.8.4"
     },
     "minimum-stability": "stable",
     "prefer-stable": true,
@@ -58,20 +58,18 @@
         "sort-packages": true
     },
     "scripts": {
-        "ecs": "ecs check --fix=true",
-        "ecs:check": "ecs check",
-        "phpstan": "phpstan analyse --configuration=phpstan.neon.dist --memory-limit=4G",
+        "ecs": "ecs check --fix",
+        "phpstan": "phpstan analyse --memory-limit=4G",
         "rector": "rector",
         "test": "pest",
         "test-coverage": "pest --coverage"
     },
     "scripts-descriptions": {
-        "ecs": "Format PHP code using the shared ECS set.",
-        "ecs:check": "Check PHP formatting using the shared ECS set.",
-        "phpstan": "Run PHPStan static analysis.",
-        "rector": "Run Rector automated refactoring.",
-        "test": "Run the test suite using Pest.",
-        "test-coverage": "Run the test suite with code coverage using Pest."
+        "ecs": "Runs ECS.",
+        "phpstan": "Runs PHPStan analyse.",
+        "rector": "Runs Rector.",
+        "test": "Runs the Pest test suite.",
+        "test-coverage": "Runs the Pest test suite with code coverage."
     },
     "$schema": "https://getcomposer.org/schema.json"
 }

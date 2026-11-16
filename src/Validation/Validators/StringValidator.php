@@ -12,12 +12,9 @@ class StringValidator implements ValidatorInterface
 {
     use ValidatesAttributes;
 
-    /**
-     * Validate that the value is a string.
-     */
     #[Override]
     public function __invoke(mixed $value, string $attribute): bool
     {
-        return $this->validateString($attribute, $value);
+        return $this->validateString($value);
     }
 }

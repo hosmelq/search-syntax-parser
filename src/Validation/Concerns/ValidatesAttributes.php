@@ -4,88 +4,63 @@ declare(strict_types=1);
 
 namespace HosmelQ\SearchSyntaxParser\Validation\Concerns;
 
-use function Safe\preg_match;
-
 use Brick\Math\BigNumber;
 use Brick\Math\Exception\MathException;
 use InvalidArgumentException;
-use Safe\Exceptions\PcreException;
 use Stringable;
-use TypeError;
 
 trait ValidatesAttributes
 {
-    /**
-     * Get the size of an attribute.
-     */
-    protected function getSize(string $attribute, mixed $value): float|int|string
+    protected function assertFinite(float|int ...$bounds): void
     {
-        if (is_numeric($value)) {
-            return $value;
-        }
-
-        if (is_array($value)) {
-            return count($value);
-        }
-
-        if ($value !== null && ! is_string($value)) {
-            throw new TypeError('Attribute size requires a number, string, array, or null.');
-        }
-
-        return mb_strlen($value ?? '');
-    }
-
-    /**
-     * Require a certain number of parameters to be present.
-     *
-     * @param list<float|int|string> $parameters
-     */
-    protected function requireParameterCount(int $count, array $parameters, string $rule): void
-    {
-        if (count($parameters) < $count) {
-            throw new InvalidArgumentException(
-                sprintf('Validation rule %s requires at least %d parameters.', $rule, $count),
-            );
+        foreach ($bounds as $bound) {
+            if (! is_finite($bound)) {
+                throw new InvalidArgumentException('Size bounds must be finite.');
+            }
         }
     }
 
-    /**
-     * Trim the value if it is a string.
-     *
-     * @template TValue
-     *
-     * @param TValue $value
-     *
-     * @return (TValue is string ? string : TValue)
-     */
-    protected function trim(mixed $value): mixed
-    {
-        return is_string($value) ? mb_trim($value) : $value;
-    }
+    protected function getSize(
+        mixed $value,
+        bool $length = false,
+    ): null|BigNumber {
+        $size = match (true) {
+            is_int($value), is_float($value) && is_finite($value) => $value,
+            is_string($value) => ! $length && is_numeric($value) ? $value : mb_strlen($value),
+            is_array($value) => count($value),
+            default => null,
+        };
 
-    /**
-     * Validate the size of an attribute is between a set of values.
-     *
-     * @param list<float|int> $parameters
-     */
-    protected function validateBetween(string $attribute, mixed $value, array $parameters): bool
-    {
-        $this->requireParameterCount(2, $parameters, 'between');
+        if ($size === null) {
+            return null;
+        }
 
         try {
-            $size = BigNumber::of((string) $this->getSize($attribute, $value));
-
-            return $size->isGreaterThanOrEqualTo((string) $this->trim($parameters[0]))
-                && $size->isLessThanOrEqualTo((string) $this->trim($parameters[1]));
+            return BigNumber::of((string) $size);
         } catch (MathException) {
-            return false;
+            return null;
         }
     }
 
     /**
-     * Validate that an attribute is a boolean.
+     * @param array{float|int, float|int} $parameters
      */
-    protected function validateBoolean(string $attribute, mixed $value): bool
+    protected function validateBetween(
+        mixed $value,
+        array $parameters,
+        bool $length = false,
+    ): bool {
+        $size = $this->getSize($value, $length);
+
+        if ($size === null) {
+            return false;
+        }
+
+        return $size->isGreaterThanOrEqualTo((string) $parameters[0])
+            && $size->isLessThanOrEqualTo((string) $parameters[1]);
+    }
+
+    protected function validateBoolean(mixed $value): bool
     {
         $acceptable = [false, true, 0, 1, '0', '1'];
 
@@ -93,41 +68,27 @@ trait ValidatesAttributes
     }
 
     /**
-     * Validate that an attribute has a given number of decimal places.
-     *
-     * @param list<int> $parameters
-     *
-     * @throws PcreException
+     * @param array{int, int} $parameters
      */
-    protected function validateDecimal(string $attribute, mixed $value, array $parameters): bool
+    protected function validateDecimal(mixed $value, array $parameters): bool
     {
-        $this->requireParameterCount(1, $parameters, 'decimal');
-
-        if (! $this->validateNumeric($attribute, $value)) {
+        if (! $this->validateNumeric($value)) {
             return false;
         }
 
-        $matches = [];
-
-        if (preg_match('/^[+-]?\d*\.?(\d*)$/', (string) $value, $matches) !== 1) {
+        if (preg_match('/^[+-]?\d*\.?(\d*)$/D', (string) $value, $matches) !== 1) {
             return false;
         }
 
-        $decimals = mb_strlen(end($matches)); // @phpstan-ignore-line argument.type
-
-        if (! isset($parameters[1])) {
-            return $decimals === $parameters[0];
-        }
+        $decimals = mb_strlen($matches[1]);
 
         return $decimals >= $parameters[0] && $decimals <= $parameters[1];
     }
 
     /**
-     * Validate an attribute is contained within a list of values.
-     *
      * @param list<mixed> $parameters
      */
-    protected function validateIn(string $attribute, mixed $value, array $parameters): bool
+    protected function validateIn(mixed $value, array $parameters): bool
     {
         $allowed = [];
 
@@ -175,79 +136,71 @@ trait ValidatesAttributes
         return in_array((string) $value, $allowed, true);
     }
 
-    /**
-     * Validate that an attribute is an integer.
-     */
-    protected function validateInteger(string $attribute, mixed $value): bool
+    protected function validateInteger(mixed $value): bool
     {
         return filter_var($value, FILTER_VALIDATE_INT) !== false;
     }
 
     /**
-     * Validate the size of an attribute is less than or equal to a maximum value.
-     *
-     * @param list<float|int> $parameters
+     * @param array{float|int} $parameters
      */
-    protected function validateMax(string $attribute, mixed $value, array $parameters): bool
-    {
-        $this->requireParameterCount(1, $parameters, 'max');
+    protected function validateMax(
+        mixed $value,
+        array $parameters,
+        bool $length = false,
+    ): bool {
+        $size = $this->getSize($value, $length);
 
-        try {
-            return BigNumber::of((string) $this->getSize($attribute, $value))
-                ->isLessThanOrEqualTo((string) $this->trim($parameters[0]));
-        } catch (MathException) {
+        if ($size === null) {
             return false;
         }
+
+        return $size->isLessThanOrEqualTo((string) $parameters[0]);
     }
 
     /**
-     * Validate the size of an attribute is greater than or equal to a minimum value.
-     *
-     * @param list<float|int> $parameters
+     * @param array{float|int} $parameters
      */
-    protected function validateMin(string $attribute, mixed $value, array $parameters): bool
-    {
-        $this->requireParameterCount(1, $parameters, 'min');
+    protected function validateMin(
+        mixed $value,
+        array $parameters,
+        bool $length = false,
+    ): bool {
+        $size = $this->getSize($value, $length);
 
-        try {
-            return BigNumber::of((string) $this->getSize($attribute, $value))
-                ->isGreaterThanOrEqualTo((string) $this->trim($parameters[0]));
-        } catch (MathException) {
+        if ($size === null) {
             return false;
         }
+
+        return $size->isGreaterThanOrEqualTo((string) $parameters[0]);
     }
 
     /**
-     * Validate that an attribute is numeric.
-     *
      * @phpstan-assert-if-true float|int|numeric-string $value
      */
-    protected function validateNumeric(string $attribute, mixed $value): bool
+    protected function validateNumeric(mixed $value): bool
     {
-        return is_numeric($value);
+        return is_numeric($value) && (! is_float($value) || is_finite($value));
     }
 
     /**
-     * Validate the size of an attribute.
-     *
-     * @param list<float|int> $parameters
+     * @param array{float|int} $parameters
      */
-    protected function validateSize(string $attribute, mixed $value, array $parameters): bool
-    {
-        $this->requireParameterCount(1, $parameters, 'size');
+    protected function validateSize(
+        mixed $value,
+        array $parameters,
+        bool $length = false,
+    ): bool {
+        $size = $this->getSize($value, $length);
 
-        try {
-            return BigNumber::of((string) $this->getSize($attribute, $value))
-                ->isEqualTo((string) $this->trim($parameters[0]));
-        } catch (MathException) {
+        if ($size === null) {
             return false;
         }
+
+        return $size->isEqualTo((string) $parameters[0]);
     }
 
-    /**
-     * Validate that an attribute is a string.
-     */
-    protected function validateString(string $attribute, mixed $value): bool
+    protected function validateString(mixed $value): bool
     {
         return is_string($value);
     }

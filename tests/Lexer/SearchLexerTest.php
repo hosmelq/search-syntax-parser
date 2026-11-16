@@ -2,115 +2,133 @@
 
 declare(strict_types=1);
 
-use Doctrine\Common\Lexer\Token;
+use HosmelQ\SearchSyntaxParser\Exception\ErrorReason;
+use HosmelQ\SearchSyntaxParser\Exception\ParseException;
+use HosmelQ\SearchSyntaxParser\Exception\SearchSyntaxException;
 use HosmelQ\SearchSyntaxParser\Lexer\SearchLexer;
-use HosmelQ\SearchSyntaxParser\Lexer\TokenType;
+use HosmelQ\SearchSyntaxParser\SearchParser;
 
-function lexTokens(string $input): array
-{
-    $lexer = new SearchLexer();
+it('leaves positions unset when no location applies', function (string $query): void {
+    try {
+        SearchParser::query($query)->build();
 
-    $lexer->setInput($input);
-    $lexer->moveNext();
-
-    $tokens = [];
-
-    while (($type = $lexer->getLookaheadType()) instanceof TokenType) {
-        $value = $lexer->lookahead instanceof Token ? $lexer->lookahead->value : null;
-        $tokens[] = [$type, $value];
-
-        $lexer->moveNext();
+        test()->fail('Expected an error.');
+    } catch (SearchSyntaxException $searchSyntaxException) {
+        expect($searchSyntaxException->getPosition())->toBeNull();
     }
+})->with(["\xff", "é \xff"]);
 
-    return $tokens;
-}
+it('rejects invalid UTF-8', function (string $input): void {
+    SearchParser::query($input)->allowAnyField()->parse();
+})->throws(ParseException::class, 'Search query must be valid UTF-8.')->with([
+    "title:Coffee price:<10 \xff",
+    "\xff",
+]);
 
-it('tokenizes identifiers', function (): void {
-    $tokens = lexTokens('title category_1 1field nested.path');
+it('rejects unterminated quoted values', function (string $input): void {
+    SearchParser::query($input)->allowAnyField()->build();
+})->throws(ParseException::class, 'Unterminated quoted string.')->with([
+    'title:"Coffee',
+    "title:'Coffee",
+    '"',
+    "'",
+]);
 
-    expect($tokens)
-        ->toHaveCount(4)
-        ->{0}->{0}->toBe(TokenType::Identifier)
-        ->{0}->{1}->toBe('title')
-        ->{1}->{0}->toBe(TokenType::Identifier)
-        ->{1}->{1}->toBe('category_1')
-        ->{2}->{0}->toBe(TokenType::Identifier)
-        ->{2}->{1}->toBe('1field')
-        ->{3}->{0}->toBe(TokenType::Identifier)
-        ->{3}->{1}->toBe('nested.path');
+it('reports a tokenization failure reason without a source position', function (): void {
+    $limit = ini_get('pcre.backtrack_limit');
+
+    ini_set('pcre.backtrack_limit', '1');
+
+    try {
+        SearchParser::query('title:Coffee')->allowAnyField()->parse();
+
+        test()->fail('Expected a tokenization failure.');
+    } catch (SearchSyntaxException $searchSyntaxException) {
+        expect($searchSyntaxException->getReason())->toBe(ErrorReason::TokenizationFailed)
+            ->and($searchSyntaxException->getParameters())->toBeEmpty()
+            ->and($searchSyntaxException->getPosition())->toBeNull();
+    } finally {
+        ini_set('pcre.backtrack_limit', (string) $limit);
+    }
 });
 
-it('tokenizes numbers and dates', function (): void {
-    $tokens = lexTokens('10 10.5 2025-01-01 2025-01-01T12:30:45Z');
-
-    expect($tokens)
-        ->toHaveCount(4)
-        ->{0}->{0}->toBe(TokenType::Number)
-        ->{0}->{1}->toBe('10')
-        ->{1}->{0}->toBe(TokenType::Number)
-        ->{1}->{1}->toBe('10.5')
-        ->{2}->{0}->toBe(TokenType::Date)
-        ->{2}->{1}->toBe('2025-01-01')
-        ->{3}->{0}->toBe(TokenType::Date)
-        ->{3}->{1}->toBe('2025-01-01T12:30:45Z');
+it('accepts escaped line breaks inside quotes', function (): void {
+    expect(SearchParser::query("title:\"a\\\nb\"")->allowAnyField()->parse()->getValue())->toBe(
+        "a\\\nb",
+    );
 });
 
-it('tokenizes strings and unescapes quotes', function (): void {
-    $input = "\"hello\\\"world\" \"back\\\\slash\" 'single\\'quote'";
-    $tokens = lexTokens($input);
+it('keeps compact range bounds together including datetime colons and Unicode positions', function (
+    string $value,
+    array $tokens,
+): void {
+    $input = 'é x:'.$value;
+    $result = new SearchLexer()->tokenize($input);
 
-    expect($tokens)
-        ->toHaveCount(3)
-        ->{0}->{0}->toBe(TokenType::String)
-        ->{0}->{1}->toBe('hello"world')
-        ->{1}->{0}->toBe(TokenType::String)
-        ->{1}->{1}->toBe('back\slash')
-        ->{2}->{0}->toBe(TokenType::String)
-        ->{2}->{1}->toBe("single'quote");
-});
+    expect($result->values)->toBe(['é', 'x', ':', ...$tokens])
+        ->and($result->offsets[3])->toBe(4)
+        ->and($result->ends[array_key_last($result->ends)])->toBe(mb_strlen($input));
+})->with([
+    ['1.25..2.50', ['1.25..2.50']],
+    ['-5..5', ['-', '5..5']],
+    ['-2.5..-0.5', ['-', '2.5..-0.5']],
+    ['*..20', ['*..20']],
+    ['10..*', ['10..*']],
+    ['*..*', ['*..*']],
+    ['2024-01-01..2024-03-31', ['2024-01-01..2024-03-31']],
+    ['2024-01-01T10:00..2024-01-01T12:00', ['2024-01-01T10:00..2024-01-01T12:00']],
+    ['*..2024-01-01T12:00', ['*..2024-01-01T12:00']],
+    ['2024-01-01T10:00..*', ['2024-01-01T10:00..*']],
+    ['-30d..2024-01-01T12:00', ['-', '30d..2024-01-01T12:00']],
+    ['2024..2024-06', ['2024..2024-06']],
+    ['../x', ['../x']], ['...', ['...']],
+]);
 
-it('tokenizes operators and punctuation', function (): void {
-    $tokens = lexTokens('>= <= != > < : * , - ( ) [ ]');
-    $types = array_map(fn (array $token) => $token[0], $tokens);
-
-    expect($types)->toBe([
-        TokenType::GreaterEqual,
-        TokenType::LessEqual,
-        TokenType::NotEqual,
-        TokenType::Greater,
-        TokenType::Less,
-        TokenType::Colon,
-        TokenType::Wildcard,
-        TokenType::Comma,
-        TokenType::Minus,
-        TokenType::OpenParenthesis,
-        TokenType::CloseParenthesis,
-        TokenType::OpenBracket,
-        TokenType::CloseBracket,
+it('preserves complete words as terms', function (string $input): void {
+    expect(SearchParser::query($input)->build())->toBe([
+        'quoted' => false,
+        'type' => 'term',
+        'value' => $input,
     ]);
+})->with([
+    'title', 'category_1', '1field', 'nested.path', 'niño', '東京', '🙂',
+    't-shirt', 'ABC-123', 'john@example.com', 'price=10', 'hello!world', '!',
+    "O'Brien", '007', '12.50', 'TRUE', 'TO',
+]);
+
+it('recognizes uppercase boolean operators', function (): void {
+    $result = SearchParser::query('a AND b OR NOT c')->build();
+
+    expect($result['operator'])->toBe('OR')
+        ->and($result['left']['operator'])->toBe('AND')
+        ->and($result['right']['operator'])->toBe('NOT');
 });
 
-it('tokenizes logical keywords and range operator', function (): void {
-    $tokens = lexTokens('AND Or not TO');
-    $types = array_map(fn (array $token) => $token[0], $tokens);
-
-    expect($types)->toBe([
-        TokenType::And,
-        TokenType::Or,
-        TokenType::Not,
-        TokenType::To,
-    ]);
+it('tokenizes very long words', function (): void {
+    expect(
+        SearchParser::query('title:'.str_repeat('a', 1_000_000))
+            ->allowAnyField()
+            ->maxLength(2_000_000)
+            ->parse()
+            ->getValue(),
+    )->toHaveLength(
+        1_000_000,
+    );
 });
 
-it('returns null lookahead when input is consumed', function (): void {
-    $lexer = new SearchLexer();
-
-    $lexer->setInput('title');
-    $lexer->moveNext();
-
-    expect($lexer->getLookaheadType())->toBe(TokenType::Identifier);
-
-    $lexer->moveNext();
-
-    expect($lexer->getLookaheadType())->toBeNull();
-});
+it('unescapes only supported characters in quoted values', function (
+    string $input,
+    string $expected,
+): void {
+    expect(SearchParser::query('title:'.$input)->allowAnyField()->parse()->getValue())->toBe(
+        $expected,
+    );
+})->with([
+    ['"hello\\"world"', 'hello"world'],
+    ['"back\\\\slash"', 'back\slash'],
+    ["'single\\'quote'", "single'quote"],
+    ['"back\\nslash"', 'back\nslash'],
+    ['"a\\\\\'b"', 'a\\\'b'],
+    ['"*"', '*'],
+    ['""', ''],
+]);

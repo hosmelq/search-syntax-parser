@@ -12,12 +12,9 @@ class BooleanValidator implements ValidatorInterface
 {
     use ValidatesAttributes;
 
-    /**
-     * Validate that the value is a boolean or boolean-like value.
-     */
     #[Override]
     public function __invoke(mixed $value, string $attribute): bool
     {
-        return $this->validateBoolean($attribute, $value);
+        return $this->validateBoolean($value);
     }
 }

@@ -1,0 +1,6 @@
+---
+title: Search Syntax Parser
+slogan: Parse search queries into structured data with field searches, boolean logic, ranges, and lists.
+githubUrl: https://github.com/hosmelq/search-syntax-parser
+branch: main
+---

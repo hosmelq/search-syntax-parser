@@ -4,140 +4,112 @@ declare(strict_types=1);
 
 namespace HosmelQ\SearchSyntaxParser\Lexer;
 
-use function Safe\preg_match;
-
-use Doctrine\Common\Lexer\AbstractLexer;
-use Doctrine\Common\Lexer\Token;
-use Override;
-use Safe\Exceptions\PcreException;
+use HosmelQ\SearchSyntaxParser\Exception\ParseException;
 
 /**
- * @extends AbstractLexer<TokenType, string>
+ * @internal
  */
-class SearchLexer extends AbstractLexer
+final class SearchLexer
 {
-    /**
-     * Get the lookahead token as TokenType enum.
-     */
-    public function getLookaheadType(): null|TokenType
-    {
-        if (! $this->lookahead instanceof Token) {
-            return null;
-        }
+    private const string DATETIME = '\d{4}-\d{2}-\d{2}[Tt]\d{2}(?::\d{2}(?::\d{2}(?:\.\d+)?)?)?(?:[Zz]|[+-]\d{2}(?::?\d{2})?)?';
 
-        $type = $this->lookahead->type;
-
-        return $type instanceof TokenType ? $type : null;
-    }
-
-    /**
-     * Lexical patterns that should be captured.
-     */
-    #[Override]
-    protected function getCatchablePatterns(): array
-    {
-        return [
-            // ISO 8601 datetime format with timezone
-            '\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[Z\+\-]\d*:?\d*',
-            // Simple date format YYYY-MM-DD
-            '\d{4}-\d{2}-\d{2}',
-            // Double-quoted strings with escape sequences
-            '"[^"\\\\]*(?:\\\\.[^"\\\\]*)*"',
-            // Single quoted strings with escape sequences
-            "'[^'\\\\]*(?:\\\\.[^'\\\\]*)*'",
-            // Field identifiers (can contain dots for nested fields and start with numbers)
-            '[a-zA-Z0-9_][a-zA-Z0-9_\.]*',
-            // Numbers (integers and decimals) - must not be followed by identifier characters
-            '[0-9]+\.?[0-9]*(?![a-zA-Z_])',
-            // Comparison operators (order matters - longer patterns first)
-            '>=|<=|!=|>|<|:',
-            // Boolean operators (word boundaries ensure complete words)
-            '\bAND\b|\bOR\b|\bNOT\b',
-            // Range operator
-            '\bTO\b',
-            // Wildcard character
-            '\*',
-            // Parentheses and brackets
-            '\(|\)|\[|\]',
-            // Comma separator
-            ',',
-            // Minus sign for negation
-            '-',
-        ];
-    }
+    private const string PATTERN = '/\G(\s*+)\K(?:'
+        // A word starting with an ISO 8601 datetime may contain colons.
+        .self::DATETIME
+        .self::WORD_TAIL
+        .'(*MARK:w)'
+        .'|"[^"\\\\]*+(?:\\\\.[^"\\\\]*+)*+"(?:\*(*MARK:qs)|(*MARK:q))'
+        ."|'[^'\\\\]*+(?:\\\\.[^'\\\\]*+)*+'(?:\\*(*MARK:qs)|(*MARK:q))"
+        .'|(?:>=|<=|!=|[:<>(),\[\]-])(*MARK:p)'
+        .'|(?:[^\s"\'():,<>\[\]!-]|!(?!=))'
+        .self::WORD_TAIL
+        .'(*MARK:w)'
+        .'|["\'](*MARK:e)'
+        .')/su';
 
     /**
-     * Patterns that should be skipped.
+     * Rest of a word, unrolled so long words don't spend one PCRE match step per character.
      */
-    #[Override]
-    protected function getNonCatchablePatterns(): array
+    private const string WORD_TAIL = '[^\s():,<>\[\]!.]*+(?:(?:!(?!=)|\.\.'
+        .self::DATETIME.'|\.++)[^\s():,<>\[\]!.]*+)*+';
+
+    public function tokenize(string $input): Tokens
     {
-        return [
-            // Whitespace
-            '\s+',
-        ];
-    }
-
-    /**
-     * Determine token type and process value.
-     *
-     * @param-out string $value
-     *
-     * @throws PcreException
-     */
-    #[Override]
-    protected function getType(string &$value): TokenType
-    {
-        $type = $this->determineTokenType($value);
-
-        if ($type->is(TokenType::String)) {
-            // Remove surrounding quotes
-            $value = mb_substr($value, 1, -1);
-            // Unescape escaped characters
-            $value = str_replace(['\\\\', '\\"', "\\'"], ['\\', '"', "'"], $value);
+        if (preg_match_all(self::PATTERN, $input, $matches, PREG_PATTERN_ORDER) === false) {
+            throw preg_last_error() === PREG_BAD_UTF8_ERROR
+                ? ParseException::invalidUtf8()
+                : ParseException::tokenizationFailed();
         }
 
-        return $type;
-    }
+        // ASCII byte offsets are already Unicode code point offsets.
+        $encoding = preg_match('/[\x80-\xff]/', $input) === 0 ? '8bit' : 'UTF-8';
+        $types = [];
+        $values = [];
+        $offsets = [];
+        $ends = [];
+        $offset = 0;
 
-    /**
-     * Determine the token type from the raw value.
-     *
-     * @throws PcreException
-     */
-    private function determineTokenType(string $value): TokenType
-    {
-        if (preg_match('/^\d{4}-\d{2}-\d{2}/', $value) > 0) {
-            return TokenType::Date;
+        foreach ($matches[0] as $index => $value) {
+            $whitespace = $matches[1][$index];
+
+            if ($whitespace !== '') {
+                $offset += mb_strlen($whitespace, $encoding);
+            }
+
+            $start = $offset;
+            $offset += isset($value[1]) ? mb_strlen($value, $encoding) : 1;
+            $kind = $matches['MARK'][$index];
+
+            if ($kind === 'e') {
+                throw ParseException::unterminatedQuote($start);
+            }
+
+            $type = match ($kind) {
+                'q' => TokenType::String,
+                'qs' => TokenType::Wildcard,
+                'w' => isset($value[3]) ? TokenType::Word : match ($value) {
+                    'AND' => TokenType::And,
+                    'OR' => TokenType::Or,
+                    'NOT' => TokenType::Not,
+                    default => TokenType::Word,
+                },
+                default => [
+                    ':' => TokenType::Colon,
+                    ',' => TokenType::Comma,
+                    '-' => TokenType::Minus,
+                    '(' => TokenType::OpenParenthesis,
+                    ')' => TokenType::CloseParenthesis,
+                    '[' => TokenType::OpenBracket,
+                    ']' => TokenType::CloseBracket,
+                    '>' => TokenType::Greater,
+                    '>=' => TokenType::GreaterEqual,
+                    '<' => TokenType::Less,
+                    '<=' => TokenType::LessEqual,
+                    '!=' => TokenType::NotEqual,
+                ][$value],
+            };
+
+            if ($type === TokenType::String || $type === TokenType::Wildcard) {
+                $value = mb_substr($value, 1, $kind === 'qs' ? -2 : -1);
+                $value = strtr($value, ['\\\\' => '\\', '\\"' => '"', "\\'" => "'"]);
+
+                if ($kind === 'qs') {
+                    $value .= '*';
+                }
+            }
+
+            $types[] = $type;
+            $values[] = $value;
+            $offsets[] = $start;
+            $ends[] = $offset;
         }
 
-        if (is_numeric($value)) {
-            return TokenType::Number;
-        }
-
-        if (preg_match('/^["\'].*["\']$/', $value) > 0) {
-            return TokenType::String;
-        }
-
-        return match (mb_strtoupper($value)) {
-            '!=' => TokenType::NotEqual,
-            '(' => TokenType::OpenParenthesis,
-            ')' => TokenType::CloseParenthesis,
-            '*' => TokenType::Wildcard,
-            ',' => TokenType::Comma,
-            '-' => TokenType::Minus,
-            ':' => TokenType::Colon,
-            '<' => TokenType::Less,
-            '<=' => TokenType::LessEqual,
-            '>' => TokenType::Greater,
-            '>=' => TokenType::GreaterEqual,
-            'AND' => TokenType::And,
-            'NOT' => TokenType::Not,
-            'OR' => TokenType::Or,
-            'TO' => TokenType::To,
-            '[' => TokenType::OpenBracket,
-            ']' => TokenType::CloseBracket,
-            default => TokenType::Identifier
-        };
+        return new Tokens(
+            $types,
+            $values,
+            $offsets,
+            $ends,
+            mb_strlen($input, $encoding),
+        );
     }
 }
